@@ -31,7 +31,7 @@ const LoginPage: React.FC = () => {
       } else {
         toast({
           title: "Login Failed",
-          description: "Invalid email or password. Try: admin@company.com / password123",
+          description: "Invalid email or password. Please check your credentials.",
           variant: "destructive"
         });
       }
@@ -91,8 +91,8 @@ const LoginPage: React.FC = () => {
             {/* Demo Credentials */}
             <div className="bg-blue-50 p-3 rounded-lg text-sm" data-id="vd6ukug4y" data-path="src/pages/LoginPage.tsx">
               <p className="font-medium text-blue-800 mb-1" data-id="fyvkn5g5t" data-path="src/pages/LoginPage.tsx">Demo Credentials:</p>
-              <p className="text-blue-700" data-id="xx14ho2u4" data-path="src/pages/LoginPage.tsx">Email: admin@company.com</p>
-              <p className="text-blue-700" data-id="woeu2rnkp" data-path="src/pages/LoginPage.tsx">Password: password123</p>
+              <p className="text-blue-700" data-id="xx14ho2u4" data-path="src/pages/LoginPage.tsx">Admin: admin@ciro.gov.et / Admin12345!</p>
+              <p className="text-blue-700" data-id="woeu2rnkp" data-path="src/pages/LoginPage.tsx">Manager: manager@ciro.gov.et / Manager123!</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4" data-id="1x51ohzy6" data-path="src/pages/LoginPage.tsx">

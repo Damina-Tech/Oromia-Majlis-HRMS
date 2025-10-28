@@ -45,16 +45,6 @@ yarn dev
 pnpm dev
 ```
 
-### Backend API
-
-Run the API server in another terminal:
-
-```bash
-npm run server
-```
-
-The frontend is configured to proxy `/api` to `http://localhost:5000`.
-
 4. Open your browser and visit `http://localhost:5173`
 
 ## Project Structure

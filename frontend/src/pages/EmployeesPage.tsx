@@ -1,371 +1,530 @@
-import React, { useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+"use client";
+import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow } from
-'@/components/ui/table';
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger } from
-'@/components/ui/dialog';
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue } from
-'@/components/ui/select';
-import { useEffect, useMemo, useState } from 'react';
-import { Api } from '@/services/api';
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { toast } from "sonner";
 import {
-  Search,
-  Plus,
-  Filter,
-  Download,
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
-  DollarSign,
-  Edit,
-  Trash2,
-  Eye } from
-'lucide-react';
+  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle
+} from "lucide-react";
+import api from "@/services/api"; // Axios instance with baseURL + auth
 
-const EmployeesPage: React.FC = () => {
-  const { hasPermission } = useAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+// ---------- Types ----------
+type Dept = { id: string; name: string };
+type Employee = {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  address?: string | null;
+  emergencyContact?: string | null;
+  designation?: string | null;
+  status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
+  joiningDate?: string | null;
+  salary?: number | null;
+  departmentId?: string | null;
+  department?: { id: string; name: string } | null;
+  manager?: { id: string; firstName: string; lastName: string } | null;
+};
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const [emps, depts] = await Promise.all([
-          Api.employees.list(),
-          Api.departments.list()
-        ]);
-        if (!mounted) return;
-        setEmployees(emps);
-        setDepartments(depts);
-      } catch (e) {
-        // ignore for now; could add toast
-      } finally {
-        if (mounted) setLoading(false);
+// ---------- Helpers ----------
+const toUiStatus = (s: Employee["status"]) =>
+  s === "ACTIVE" ? "active" : s === "INACTIVE" ? "inactive" : "on-leave";
+
+const fromUiStatus = (s: "active" | "inactive" | "on-leave"): Employee["status"] =>
+  s === "active" ? "ACTIVE" : s === "inactive" ? "INACTIVE" : "ON_LEAVE";
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "active": return "bg-green-100 text-green-800";
+    case "inactive": return "bg-red-100 text-red-800";
+    case "on-leave": return "bg-yellow-100 text-yellow-800";
+    default: return "bg-gray-100 text-gray-800";
+  }
+};
+const initials = (first = "", last = "") => (first[0] ?? "").toUpperCase() + (last[0] ?? "").toUpperCase();
+
+// ---------- API calls ----------
+async function apiListEmployees(params: {
+  search?: string; status?: Employee["status"]; departmentId?: string; page?: number; pageSize?: number;
+}) {
+  const { data } = await api.get("/employees", { params });
+  return data as { items: Employee[]; total: number; page: number; pageSize: number };
+}
+async function apiCreateEmployee(payload: Partial<Employee> & { firstName: string; lastName: string; email: string }) {
+  const { data } = await api.post("/employees", payload);
+  return data as Employee;
+}
+async function apiListDepartments() {
+  const { data } = await api.get("/departments");
+  return data as Dept[];
+}
+
+// ---------- Add Employee Dialog (inline component) ----------
+function AddEmployeeDialog({
+  departments, onCreated, canCreate
+}: { departments: Dept[]; onCreated: (e: Employee) => void; canCreate: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", phone: "",
+    designation: "", departmentId: "", status: "ACTIVE" as Employee["status"],
+    joiningDate: "", salary: "", address: "", emergencyContact: "",
+  });
+  const onChange = (k: string, v: string) => {
+    setForm(p => ({ ...p, [k]: v }));
+    // Clear error when user starts typing
+    if (error) setError(null);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true);
+      setError(null);
+      
+      const payload = {
+        ...form,
+        salary: form.salary ? Number(form.salary) : undefined,
+        departmentId: form.departmentId || undefined,
+        joiningDate: form.joiningDate || undefined,
+      };
+      
+      const created = await apiCreateEmployee(payload as any);
+      
+      // Show success toast
+      toast.success("Employee created successfully!", {
+        duration: 3000,
+        description: `${created.firstName} ${created.lastName} has been added to the system.`
+      });
+      
+      // Call parent callback
+      onCreated(created);
+      
+      // Close dialog and reset form
+      setOpen(false);
+      setForm({
+        firstName: "", lastName: "", email: "", phone: "",
+        designation: "", departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
+      });
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.message || "Failed to create employee";
+      
+      // Check for duplicate email error
+      if (errorMessage.includes("email") || errorMessage.includes("Unique constraint")) {
+        setError("An employee with this email already exists in the system.");
+      } else {
+        setError(errorMessage);
       }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const filteredEmployees = useMemo(() => employees.filter((employee) => {
-    const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesDepartment = departmentFilter === 'all' || employee.department === departmentFilter;
-    const matchesStatus = statusFilter === 'all' || employee.status === statusFilter;
-
-    return matchesSearch && matchesDepartment && matchesStatus;
-  }), [employees, searchTerm, departmentFilter, statusFilter]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':return 'bg-green-100 text-green-800';
-      case 'inactive':return 'bg-red-100 text-red-800';
-      case 'on-leave':return 'bg-yellow-100 text-yellow-800';
-      default:return 'bg-gray-100 text-gray-800';
+      
+      // Don't close the dialog on error
+      setSubmitting(false);
+    } finally {
+      if (!error) {
+        setSubmitting(false);
+      }
     }
   };
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase();
+  if (!canCreate) return null;
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      // Reset error when closing
+      setError(null);
+    }
   };
 
   return (
-    <div className="space-y-6" data-id="j45vul2fq" data-path="src/pages/EmployeesPage.tsx">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4" data-id="zw1quag7k" data-path="src/pages/EmployeesPage.tsx">
-        <div data-id="rih5r5klr" data-path="src/pages/EmployeesPage.tsx">
-          <h1 className="text-3xl font-bold text-gray-900" data-id="52k5o77n9" data-path="src/pages/EmployeesPage.tsx">Employee Management</h1>
-          <p className="text-gray-600 mt-1" data-id="kfoqv92sg" data-path="src/pages/EmployeesPage.tsx">Manage and view employee information</p>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="h-4 w-4 mr-2" /> Add Employee
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add Employee</DialogTitle>
+          <DialogDescription>Fill in the new employee's details.</DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input placeholder="First name*" value={form.firstName} onChange={e=>onChange("firstName", e.target.value)} />
+          <Input placeholder="Last name*" value={form.lastName} onChange={e=>onChange("lastName", e.target.value)} />
+          <Input placeholder="Email*" type="email" value={form.email} onChange={e=>onChange("email", e.target.value)} />
+          <Input placeholder="Phone" value={form.phone} onChange={e=>onChange("phone", e.target.value)} />
+          <Input placeholder="Designation" value={form.designation} onChange={e=>onChange("designation", e.target.value)} />
+          <Select value={form.departmentId || undefined} onValueChange={(v)=>onChange("departmentId", v)}>
+            <SelectTrigger><SelectValue placeholder="Department (Optional)" /></SelectTrigger>
+            <SelectContent>
+              {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={form.status} onValueChange={(v)=>onChange("status", v as Employee["status"])}>
+            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ACTIVE">Active</SelectItem>
+              <SelectItem value="INACTIVE">Inactive</SelectItem>
+              <SelectItem value="ON_LEAVE">On Leave</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input type="date" placeholder="Joining date" value={form.joiningDate} onChange={e=>onChange("joiningDate", e.target.value)} />
+          <Input type="number" step="0.01" placeholder="Salary (ETB)" value={form.salary} onChange={e=>onChange("salary", e.target.value)} />
+          <Input placeholder="Address" value={form.address} onChange={e=>onChange("address", e.target.value)} />
+          <Input placeholder="Emergency contact" value={form.emergencyContact} onChange={e=>onChange("emergencyContact", e.target.value)} />
         </div>
-        
-        {hasPermission('employees.write') &&
-        <div className="flex gap-2" data-id="at5omyyg0" data-path="src/pages/EmployeesPage.tsx">
-            <Button variant="outline" data-id="zkn8s5uj8" data-path="src/pages/EmployeesPage.tsx">
-              <Download className="h-4 w-4 mr-2" data-id="53oxfa100" data-path="src/pages/EmployeesPage.tsx" />
-              Export
-            </Button>
-            <Button data-id="d6b7tgzym" data-path="src/pages/EmployeesPage.tsx">
-              <Plus className="h-4 w-4 mr-2" data-id="h7i35ap3x" data-path="src/pages/EmployeesPage.tsx" />
-              Add Employee
-            </Button>
-          </div>
-        }
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Page ----------
+const EmployeesPage: React.FC = () => {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("employees.write");
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all"); // stores deptId or 'all'
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on-leave">("all");
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Load deps & employees
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const [deps, empRes] = await Promise.all([
+          apiListDepartments(),
+          apiListEmployees({ page: 1, pageSize: 200 })
+        ]);
+        setDepartments(deps);
+        setEmployees(empRes.items);
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message ?? "Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Client-side filtering to keep your UX
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((e) => {
+      const fullName = `${e.firstName} ${e.lastName}`.trim();
+      const matchesSearch =
+        fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.employeeCode.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesDepartment =
+        departmentFilter === "all" || e.departmentId === departmentFilter;
+
+      const uiStatus = toUiStatus(e.status);
+      const matchesStatus =
+        statusFilter === "all" || uiStatus === statusFilter;
+
+      return matchesSearch && matchesDepartment && matchesStatus;
+    });
+  }, [employees, searchTerm, departmentFilter, statusFilter]);
+
+  const totals = useMemo(() => {
+    const active = employees.filter(e => e.status === "ACTIVE").length;
+    const onLeave = employees.filter(e => e.status === "ON_LEAVE").length;
+    return { total: employees.length, active, onLeave, departments: departments.length };
+  }, [employees, departments]);
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
+          <p className="text-gray-600 mt-1">Manage and view employee information</p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <AddEmployeeDialog
+            departments={departments}
+            onCreated={(emp) => setEmployees(prev => [emp, ...prev])}
+            canCreate={!!canWrite}
+          />
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6" data-id="osf3e5ga9" data-path="src/pages/EmployeesPage.tsx">
-        <Card data-id="1jk9d9fek" data-path="src/pages/EmployeesPage.tsx">
-          <CardContent className="p-6" data-id="44o1ud7tl" data-path="src/pages/EmployeesPage.tsx">
-            <div className="flex items-center justify-between" data-id="80jxmgx7k" data-path="src/pages/EmployeesPage.tsx">
-              <div data-id="365ep2taa" data-path="src/pages/EmployeesPage.tsx">
-                <p className="text-sm font-medium text-gray-600" data-id="5tgks2sj3" data-path="src/pages/EmployeesPage.tsx">Total Employees</p>
-                <p className="text-2xl font-bold" data-id="ha13ak5gw" data-path="src/pages/EmployeesPage.tsx">{employees.length}</p>
-              </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center" data-id="zi9hm0qhj" data-path="src/pages/EmployeesPage.tsx">
-                <Calendar className="h-6 w-6 text-blue-600" data-id="nztewes0u" data-path="src/pages/EmployeesPage.tsx" />
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Employees</p>
+              <p className="text-2xl font-bold">{totals.total}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Calendar className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card data-id="xk8fgcqnn" data-path="src/pages/EmployeesPage.tsx">
-          <CardContent className="p-6" data-id="2ef4zmslu" data-path="src/pages/EmployeesPage.tsx">
-            <div className="flex items-center justify-between" data-id="hbwbh0go3" data-path="src/pages/EmployeesPage.tsx">
-              <div data-id="3t812kd14" data-path="src/pages/EmployeesPage.tsx">
-                <p className="text-sm font-medium text-gray-600" data-id="n9rqchj5a" data-path="src/pages/EmployeesPage.tsx">Active</p>
-                <p className="text-2xl font-bold" data-id="984loi5x1" data-path="src/pages/EmployeesPage.tsx">
-                  {employees.filter((e) => e.status === 'active').length}
-                </p>
-              </div>
-              <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center" data-id="uphfd6y38" data-path="src/pages/EmployeesPage.tsx">
-                <Calendar className="h-6 w-6 text-green-600" data-id="p6euk6p4o" data-path="src/pages/EmployeesPage.tsx" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active</p>
+              <p className="text-2xl font-bold">{totals.active}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <Calendar className="h-6 w-6 text-green-600" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card data-id="dfod8w99c" data-path="src/pages/EmployeesPage.tsx">
-          <CardContent className="p-6" data-id="quvcytri1" data-path="src/pages/EmployeesPage.tsx">
-            <div className="flex items-center justify-between" data-id="8eqb2x1bb" data-path="src/pages/EmployeesPage.tsx">
-              <div data-id="eqh1slcg3" data-path="src/pages/EmployeesPage.tsx">
-                <p className="text-sm font-medium text-gray-600" data-id="bji1r19ki" data-path="src/pages/EmployeesPage.tsx">On Leave</p>
-                <p className="text-2xl font-bold" data-id="5yr6bqy0c" data-path="src/pages/EmployeesPage.tsx">
-                  {employees.filter((e) => e.status === 'on-leave').length}
-                </p>
-              </div>
-              <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center" data-id="7y5y5a12q" data-path="src/pages/EmployeesPage.tsx">
-                <Calendar className="h-6 w-6 text-yellow-600" data-id="lymrefvtf" data-path="src/pages/EmployeesPage.tsx" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">On Leave</p>
+              <p className="text-2xl font-bold">{totals.onLeave}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <Calendar className="h-6 w-6 text-yellow-600" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card data-id="e5occw85i" data-path="src/pages/EmployeesPage.tsx">
-          <CardContent className="p-6" data-id="cla0w8z9l" data-path="src/pages/EmployeesPage.tsx">
-            <div className="flex items-center justify-between" data-id="begp9rmwl" data-path="src/pages/EmployeesPage.tsx">
-              <div data-id="p57gg2ayq" data-path="src/pages/EmployeesPage.tsx">
-                <p className="text-sm font-medium text-gray-600" data-id="ytt0vxv3p" data-path="src/pages/EmployeesPage.tsx">Departments</p>
-                <p className="text-2xl font-bold" data-id="nz9w26jm7" data-path="src/pages/EmployeesPage.tsx">{departments.length}</p>
-              </div>
-              <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center" data-id="ryzt2oeb6" data-path="src/pages/EmployeesPage.tsx">
-                <Calendar className="h-6 w-6 text-purple-600" data-id="pescqnmjf" data-path="src/pages/EmployeesPage.tsx" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Departments</p>
+              <p className="text-2xl font-bold">{totals.departments}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Calendar className="h-6 w-6 text-purple-600" />
+            </div>
+          </div>
+        </CardContent></Card>
       </div>
 
       {/* Filters and Search */}
-      <Card data-id="17vn8gxlf" data-path="src/pages/EmployeesPage.tsx">
-        <CardHeader data-id="no4xepguy" data-path="src/pages/EmployeesPage.tsx">
-          <CardTitle data-id="wlc75p9bp" data-path="src/pages/EmployeesPage.tsx">Employee Directory</CardTitle>
-          <CardDescription data-id="a30x1u5dp" data-path="src/pages/EmployeesPage.tsx">Search and filter employees</CardDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle>Employee Directory</CardTitle>
+          <CardDescription>Search and filter employees</CardDescription>
         </CardHeader>
-        <CardContent data-id="nf2gjivr8" data-path="src/pages/EmployeesPage.tsx">
-          <div className="flex flex-col sm:flex-row gap-4 mb-6" data-id="86ayriwey" data-path="src/pages/EmployeesPage.tsx">
-            <div className="relative flex-1" data-id="fj3cfjixe" data-path="src/pages/EmployeesPage.tsx">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" data-id="p0jfbnkwq" data-path="src/pages/EmployeesPage.tsx" />
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search by name, email, or employee ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10" data-id="rwcs44g4t" data-path="src/pages/EmployeesPage.tsx" />
-
+                className="pl-10"
+              />
             </div>
-            
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter} data-id="47d64zyue" data-path="src/pages/EmployeesPage.tsx">
-              <SelectTrigger className="w-full sm:w-48" data-id="zwmm3lp14" data-path="src/pages/EmployeesPage.tsx">
-                <SelectValue placeholder="Department" data-id="9g1ldmop5" data-path="src/pages/EmployeesPage.tsx" />
+
+            {/* Department filter uses deptId */}
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Department" />
               </SelectTrigger>
-              <SelectContent data-id="ddkvx0iac" data-path="src/pages/EmployeesPage.tsx">
-                <SelectItem value="all" data-id="hk29kvob7" data-path="src/pages/EmployeesPage.tsx">All Departments</SelectItem>
-                {departments.map((dept) =>
-                <SelectItem key={dept.id} value={dept.name} data-id="5bb1fyfl3" data-path="src/pages/EmployeesPage.tsx">
-                    {dept.name}
-                  </SelectItem>
-                )}
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter} data-id="61l2jhc9e" data-path="src/pages/EmployeesPage.tsx">
-              <SelectTrigger className="w-full sm:w-48" data-id="t4jg8bq6f" data-path="src/pages/EmployeesPage.tsx">
-                <SelectValue placeholder="Status" data-id="e1tav821f" data-path="src/pages/EmployeesPage.tsx" />
+            {/* Status filter keeps your UI values */}
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
-              <SelectContent data-id="5ocum8y0w" data-path="src/pages/EmployeesPage.tsx">
-                <SelectItem value="all" data-id="vgbm9i5t9" data-path="src/pages/EmployeesPage.tsx">All Status</SelectItem>
-                <SelectItem value="active" data-id="rphbvx6lp" data-path="src/pages/EmployeesPage.tsx">Active</SelectItem>
-                <SelectItem value="inactive" data-id="q7xbhkzar" data-path="src/pages/EmployeesPage.tsx">Inactive</SelectItem>
-                <SelectItem value="on-leave" data-id="kw2mwstuz" data-path="src/pages/EmployeesPage.tsx">On Leave</SelectItem>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="on-leave">On Leave</SelectItem>
               </SelectContent>
             </Select>
 
-            <Button variant="outline" data-id="7n814cdop" data-path="src/pages/EmployeesPage.tsx">
-              <Filter className="h-4 w-4 mr-2" data-id="prv6i6ocs" data-path="src/pages/EmployeesPage.tsx" />
+            <Button variant="outline">
+              <Filter className="h-4 w-4 mr-2" />
               More Filters
             </Button>
           </div>
 
           {/* Employee Table */}
-          <div className="border rounded-lg" data-id="79bzjcd05" data-path="src/pages/EmployeesPage.tsx">
-            <Table data-id="fy1zpdl3z" data-path="src/pages/EmployeesPage.tsx">
-              <TableHeader data-id="m47lthzhp" data-path="src/pages/EmployeesPage.tsx">
-                <TableRow data-id="efmcgajon" data-path="src/pages/EmployeesPage.tsx">
-                  <TableHead data-id="jwz0b7sx3" data-path="src/pages/EmployeesPage.tsx">Employee</TableHead>
-                  <TableHead data-id="vn8z2wze2" data-path="src/pages/EmployeesPage.tsx">Department</TableHead>
-                  <TableHead data-id="iu7zrbdj6" data-path="src/pages/EmployeesPage.tsx">Status</TableHead>
-                  <TableHead data-id="ze7v331rl" data-path="src/pages/EmployeesPage.tsx">Joining Date</TableHead>
-                  <TableHead data-id="bskp8ypmv" data-path="src/pages/EmployeesPage.tsx">Contact</TableHead>
-                  <TableHead data-id="p92jmwoxp" data-path="src/pages/EmployeesPage.tsx">Actions</TableHead>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Joining Date</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody data-id="qpwobkjma" data-path="src/pages/EmployeesPage.tsx">
-                {filteredEmployees.map((employee) =>
-                <TableRow key={employee.id} data-id="4hiewevjv" data-path="src/pages/EmployeesPage.tsx">
-                    <TableCell data-id="ixyauz8s0" data-path="src/pages/EmployeesPage.tsx">
-                      <div className="flex items-center space-x-3" data-id="cvv0e3ne5" data-path="src/pages/EmployeesPage.tsx">
-                        <Avatar data-id="u7aqcdi07" data-path="src/pages/EmployeesPage.tsx">
-                          <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white" data-id="oj413i0sw" data-path="src/pages/EmployeesPage.tsx">
-                            {getInitials(employee.name)}
+              <TableBody>
+                {filteredEmployees.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        <Avatar>
+                          <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                            {initials(e.firstName, e.lastName)}
                           </AvatarFallback>
                         </Avatar>
-                        <div data-id="p9psbei6g" data-path="src/pages/EmployeesPage.tsx">
-                          <p className="font-medium" data-id="cbq6o0g5b" data-path="src/pages/EmployeesPage.tsx">{employee.name}</p>
-                          <p className="text-sm text-gray-500" data-id="3yb77pbjz" data-path="src/pages/EmployeesPage.tsx">{employee.designation}</p>
-                          <p className="text-xs text-gray-400" data-id="i1ffnbi1g" data-path="src/pages/EmployeesPage.tsx">{employee.employeeId}</p>
+                        <div>
+                          <p className="font-medium">{e.firstName} {e.lastName}</p>
+                          <p className="text-sm text-gray-500">{e.designation ?? "—"}</p>
+                          <p className="text-xs text-gray-400">{e.employeeCode}</p>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell data-id="28my6ofhd" data-path="src/pages/EmployeesPage.tsx">
-                      <Badge variant="outline" data-id="jr4pa6k5k" data-path="src/pages/EmployeesPage.tsx">{employee.department}</Badge>
+                    <TableCell>
+                      <Badge variant="outline">{e.department?.name ?? "—"}</Badge>
                     </TableCell>
-                    <TableCell data-id="y8muv5y5e" data-path="src/pages/EmployeesPage.tsx">
-                      <Badge className={getStatusColor(employee.status)} data-id="7gh5hws9y" data-path="src/pages/EmployeesPage.tsx">
-                        {employee.status}
+                    <TableCell>
+                      <Badge className={getStatusColor(toUiStatus(e.status))}>
+                        {toUiStatus(e.status)}
                       </Badge>
                     </TableCell>
-                    <TableCell data-id="2s71fbmum" data-path="src/pages/EmployeesPage.tsx">
-                      {new Date(employee.joiningDate).toLocaleDateString()}
+                    <TableCell>
+                      {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}
                     </TableCell>
-                    <TableCell data-id="47vygnxky" data-path="src/pages/EmployeesPage.tsx">
-                      <div className="space-y-1" data-id="pxlh087y6" data-path="src/pages/EmployeesPage.tsx">
-                        <div className="flex items-center text-sm text-gray-600" data-id="lgtcw8hbq" data-path="src/pages/EmployeesPage.tsx">
-                          <Mail className="h-3 w-3 mr-2" data-id="v9mprkbfa" data-path="src/pages/EmployeesPage.tsx" />
-                          {employee.email}
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Mail className="h-3 w-3 mr-2" />
+                          {e.email}
                         </div>
-                        <div className="flex items-center text-sm text-gray-600" data-id="wddakud2y" data-path="src/pages/EmployeesPage.tsx">
-                          <Phone className="h-3 w-3 mr-2" data-id="jnioxvz0g" data-path="src/pages/EmployeesPage.tsx" />
-                          {employee.phone}
-                        </div>
+                        {e.phone && (
+                          <div className="flex items-center text-sm text-gray-600">
+                            <Phone className="h-3 w-3 mr-2" />
+                            {e.phone}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell data-id="ppspfoii3" data-path="src/pages/EmployeesPage.tsx">
-                      <div className="flex items-center space-x-2" data-id="4nnhhffko" data-path="src/pages/EmployeesPage.tsx">
-                        <Dialog data-id="j0kfny4w2" data-path="src/pages/EmployeesPage.tsx">
-                          <DialogTrigger asChild data-id="oos8epea1" data-path="src/pages/EmployeesPage.tsx">
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Dialog>
+                          <DialogTrigger asChild>
                             <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedEmployee(employee)} data-id="551tyajlc" data-path="src/pages/EmployeesPage.tsx">
-
-                              <Eye className="h-4 w-4" data-id="xbiw26ii3" data-path="src/pages/EmployeesPage.tsx" />
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedEmployee(e)}
+                            >
+                              <Eye className="h-4 w-4" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-w-2xl" data-id="g04qhqtu1" data-path="src/pages/EmployeesPage.tsx">
-                            <DialogHeader data-id="nldi79m6o" data-path="src/pages/EmployeesPage.tsx">
-                              <DialogTitle data-id="ba2toixz1" data-path="src/pages/EmployeesPage.tsx">Employee Details</DialogTitle>
-                              <DialogDescription data-id="pjd9bgyk7" data-path="src/pages/EmployeesPage.tsx">
-                                Complete information for {selectedEmployee?.name}
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Employee Details</DialogTitle>
+                              <DialogDescription>
+                                Complete information for {e.firstName} {e.lastName}
                               </DialogDescription>
                             </DialogHeader>
-                            {selectedEmployee &&
-                          <div className="grid grid-cols-2 gap-6 py-4" data-id="tfaug9kcn" data-path="src/pages/EmployeesPage.tsx">
-                                <div className="space-y-4" data-id="kx5nwdfim" data-path="src/pages/EmployeesPage.tsx">
-                                  <div data-id="mjd266a95" data-path="src/pages/EmployeesPage.tsx">
-                                    <h4 className="font-medium text-gray-900" data-id="2n7dzsedm" data-path="src/pages/EmployeesPage.tsx">Personal Information</h4>
-                                    <div className="mt-2 space-y-2 text-sm" data-id="3visobg8a" data-path="src/pages/EmployeesPage.tsx">
-                                      <p data-id="g8e4x2t5w" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="kf5gscm6z" data-path="src/pages/EmployeesPage.tsx">Name:</span> {selectedEmployee.name}</p>
-                                      <p data-id="z5koy4wjy" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="73sy6q0vd" data-path="src/pages/EmployeesPage.tsx">Email:</span> {selectedEmployee.email}</p>
-                                      <p data-id="7ws92g59x" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="gagtjte00" data-path="src/pages/EmployeesPage.tsx">Phone:</span> {selectedEmployee.phone}</p>
-                                      <p data-id="34ogs3a77" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="xko9nu5dd" data-path="src/pages/EmployeesPage.tsx">Address:</span> {selectedEmployee.address}</p>
-                                      <p data-id="z50awe4oa" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="0v6vt12q5" data-path="src/pages/EmployeesPage.tsx">Emergency Contact:</span> {selectedEmployee.emergencyContact}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="space-y-4" data-id="f9rjx7vqq" data-path="src/pages/EmployeesPage.tsx">
-                                  <div data-id="55na8551g" data-path="src/pages/EmployeesPage.tsx">
-                                    <h4 className="font-medium text-gray-900" data-id="iz3j2cs9w" data-path="src/pages/EmployeesPage.tsx">Professional Information</h4>
-                                    <div className="mt-2 space-y-2 text-sm" data-id="v8x4falma" data-path="src/pages/EmployeesPage.tsx">
-                                      <p data-id="u7zan5b6n" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="fh31dwtf6" data-path="src/pages/EmployeesPage.tsx">Employee ID:</span> {selectedEmployee.employeeId}</p>
-                                      <p data-id="siuo2fw48" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="zwyo8dg2p" data-path="src/pages/EmployeesPage.tsx">Department:</span> {selectedEmployee.department}</p>
-                                      <p data-id="xho3byyid" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="83muit8wk" data-path="src/pages/EmployeesPage.tsx">Designation:</span> {selectedEmployee.designation}</p>
-                                      <p data-id="4z0g9brgp" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="idfhy8941" data-path="src/pages/EmployeesPage.tsx">Manager:</span> {selectedEmployee.manager || 'N/A'}</p>
-                                      <p data-id="a5tnx1niq" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="9gkxcey1v" data-path="src/pages/EmployeesPage.tsx">Joining Date:</span> {new Date(selectedEmployee.joiningDate).toLocaleDateString()}</p>
-                                      <p data-id="w5u9foqwc" data-path="src/pages/EmployeesPage.tsx"><span className="font-medium" data-id="nmzpbxbnk" data-path="src/pages/EmployeesPage.tsx">Salary:</span> ${selectedEmployee.salary.toLocaleString()}</p>
-                                    </div>
+                            <div className="grid grid-cols-2 gap-6 py-4">
+                              <div className="space-y-4">
+                                <div>
+                                  <h4 className="font-medium text-gray-900">Personal Information</h4>
+                                  <div className="mt-2 space-y-2 text-sm">
+                                    <p><span className="font-medium">Name:</span> {e.firstName} {e.lastName}</p>
+                                    <p><span className="font-medium">Email:</span> {e.email}</p>
+                                    <p><span className="font-medium">Phone:</span> {e.phone ?? "—"}</p>
+                                    <p><span className="font-medium">Address:</span> {e.address ?? "—"}</p>
+                                    <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact ?? "—"}</p>
                                   </div>
                                 </div>
                               </div>
-                          }
+                              <div className="space-y-4">
+                                <div>
+                                  <h4 className="font-medium text-gray-900">Professional Information</h4>
+                                  <div className="mt-2 space-y-2 text-sm">
+                                    <p><span className="font-medium">Employee ID:</span> {e.employeeCode}</p>
+                                    <p><span className="font-medium">Department:</span> {e.department?.name ?? "—"}</p>
+                                    <p><span className="font-medium">Designation:</span> {e.designation ?? "—"}</p>
+                                    <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
+                                    <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
+                                    <p><span className="font-medium">Salary:</span> {typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : "—"}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </DialogContent>
                         </Dialog>
-                        
-                        {hasPermission('employees.write') &&
-                      <>
-                            <Button variant="ghost" size="sm" data-id="8kiogibeo" data-path="src/pages/EmployeesPage.tsx">
-                              <Edit className="h-4 w-4" data-id="1z8xnzwpk" data-path="src/pages/EmployeesPage.tsx" />
+
+                        {hasPermission("employees.write") && (
+                          <>
+                            <Button variant="ghost" size="sm">
+                              <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" data-id="0i4fbuzce" data-path="src/pages/EmployeesPage.tsx">
-                              <Trash2 className="h-4 w-4" data-id="xkbdennfm" data-path="src/pages/EmployeesPage.tsx" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => toast.info("Hook delete here (api DELETE /employees/:id)")}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </>
-                      }
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
-                )}
+                ))}
               </TableBody>
             </Table>
           </div>
 
-          {filteredEmployees.length === 0 &&
-          <div className="text-center py-8" data-id="nh4jejl5j" data-path="src/pages/EmployeesPage.tsx">
-              <p className="text-gray-500" data-id="vghtx3cbg" data-path="src/pages/EmployeesPage.tsx">No employees found matching your criteria.</p>
+          {!loading && filteredEmployees.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No employees found matching your criteria.</p>
             </div>
-          }
+          )}
         </CardContent>
       </Card>
-    </div>);
-
+    </div>
+  );
 };
 
 export default EmployeesPage;

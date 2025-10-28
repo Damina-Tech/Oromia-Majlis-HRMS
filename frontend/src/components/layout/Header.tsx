@@ -29,12 +29,8 @@ interface HeaderProps {
   isCollapsed: boolean;
 }
 
-const getInitials = (name: string) => {
-  return name
-    .split(" ")
-    .map((word) => word.charAt(0))
-    .join("")
-    .toUpperCase();
+const getInitials = (firstName: string, lastName: string) => {
+  return ((firstName?.[0] || '') + (lastName?.[0] || '')).toUpperCase();
 };
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isCollapsed }) => {
@@ -299,7 +295,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isCollapsed }) => {
                     data-id="qbdfefzyz"
                     data-path="src/components/layout/Header.tsx"
                   >
-                    {getInitials(user?.name || "User")}
+                    {getInitials(user?.firstName || "", user?.lastName || "")}
                   </AvatarFallback>
                 </Avatar>
               </Button>
@@ -324,7 +320,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isCollapsed }) => {
                     data-id="evfyz9g2u"
                     data-path="src/components/layout/Header.tsx"
                   >
-                    {user?.name}
+                    {user?.firstName} {user?.lastName}
                   </p>
                   <p
                     className="text-xs text-gray-500"
@@ -339,7 +335,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isCollapsed }) => {
                     data-id="1jj8sqv3l"
                     data-path="src/components/layout/Header.tsx"
                   >
-                    {user?.role.toUpperCase()}
+                    {user?.roles?.[0]?.toUpperCase() || 'USER'}
                   </Badge>
                 </div>
               </DropdownMenuLabel>

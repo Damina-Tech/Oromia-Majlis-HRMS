@@ -64,7 +64,7 @@ const menuItems = [
   title: 'Payroll',
   icon: DollarSign,
   href: '/payroll',
-  permission: 'payroll.read'
+  permission: 'payroll.view'
 },
 {
   title: 'Timesheet',
@@ -161,18 +161,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
           <div className="flex items-center space-x-3" data-id="nh4dbq063" data-path="src/components/layout/Sidebar.tsx">
             <div className="h-10 w-10 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full flex items-center justify-center" data-id="kjxmlbrk2" data-path="src/components/layout/Sidebar.tsx">
               <span className="text-white font-medium text-sm" data-id="skxif0yac" data-path="src/components/layout/Sidebar.tsx">
-                {user.name.split(' ').map((n) => n[0]).join('')}
+                {(user.firstName?.[0] || '') + (user.lastName?.[0] || '')}
               </span>
             </div>
             <div className="flex-1 min-w-0" data-id="uxi6y0a92" data-path="src/components/layout/Sidebar.tsx">
               <p className="text-sm font-medium text-gray-900 truncate" data-id="3cxcd7hhp" data-path="src/components/layout/Sidebar.tsx">
-                {user.name}
+                {user.firstName} {user.lastName}
               </p>
               <p className="text-xs text-gray-500 truncate" data-id="6i0bmtzoc" data-path="src/components/layout/Sidebar.tsx">
-                {user.designation}
+                {user.email}
               </p>
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mt-1" data-id="f5482szou" data-path="src/components/layout/Sidebar.tsx">
-                {user.role.toUpperCase()}
+                {user.roles?.[0]?.toUpperCase() || 'USER'}
               </span>
             </div>
           </div>
