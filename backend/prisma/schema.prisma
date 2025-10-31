@@ -129,9 +129,16 @@ model Employee {
   lastName         String
   email            String       @unique
   phone            String?
+  dateOfBirth      DateTime?    @db.Date
+  gender           String?       // MALE, FEMALE, OTHER
   address          String?
   emergencyContact String?
   designation      String?
+  employmentType   String?       // e.g., "FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"
+  educationLevel   String?       // GRADE_8, GRADE_10, GRADE_12, DEGREE, MASTER, PHD, OTHER
+  educationOther   String?       // Custom education level if "OTHER" is selected
+  marriageStatus   String?       // SINGLE, MARRIED, DIVORCED, WIDOWED
+  document         String?       // URL or path to document file
   status           EmpStatus    @default(ACTIVE)
   joiningDate      DateTime?
   salary           Decimal?     @db.Decimal(12, 2)

@@ -9,9 +9,39 @@ export declare const CreateEmployeeDto: z.ZodObject<{
     lastName: z.ZodString;
     email: z.ZodString;
     phone: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    dateOfBirth: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    gender: z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        MALE: "MALE";
+        FEMALE: "FEMALE";
+        OTHER: "OTHER";
+    }>>, z.ZodLiteral<"">]>;
     address: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     emergencyContact: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     designation: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    employmentType: z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        FULL_TIME: "FULL_TIME";
+        PART_TIME: "PART_TIME";
+        CONTRACT: "CONTRACT";
+        INTERN: "INTERN";
+        TEMPORARY: "TEMPORARY";
+    }>>, z.ZodLiteral<"">]>;
+    educationLevel: z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        OTHER: "OTHER";
+        GRADE_8: "GRADE_8";
+        GRADE_10: "GRADE_10";
+        GRADE_12: "GRADE_12";
+        DEGREE: "DEGREE";
+        MASTER: "MASTER";
+        PHD: "PHD";
+    }>>, z.ZodLiteral<"">]>;
+    educationOther: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    marriageStatus: z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        SINGLE: "SINGLE";
+        MARRIED: "MARRIED";
+        DIVORCED: "DIVORCED";
+        WIDOWED: "WIDOWED";
+    }>>, z.ZodLiteral<"">]>;
+    document: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     status: z.ZodDefault<z.ZodEnum<{
         ACTIVE: "ACTIVE";
         INACTIVE: "INACTIVE";
@@ -27,9 +57,39 @@ export declare const UpdateEmployeeDto: z.ZodObject<{
     lastName: z.ZodOptional<z.ZodString>;
     email: z.ZodOptional<z.ZodString>;
     phone: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    dateOfBirth: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    gender: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        MALE: "MALE";
+        FEMALE: "FEMALE";
+        OTHER: "OTHER";
+    }>>, z.ZodLiteral<"">]>>;
     address: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
     emergencyContact: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
     designation: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    employmentType: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        FULL_TIME: "FULL_TIME";
+        PART_TIME: "PART_TIME";
+        CONTRACT: "CONTRACT";
+        INTERN: "INTERN";
+        TEMPORARY: "TEMPORARY";
+    }>>, z.ZodLiteral<"">]>>;
+    educationLevel: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        OTHER: "OTHER";
+        GRADE_8: "GRADE_8";
+        GRADE_10: "GRADE_10";
+        GRADE_12: "GRADE_12";
+        DEGREE: "DEGREE";
+        MASTER: "MASTER";
+        PHD: "PHD";
+    }>>, z.ZodLiteral<"">]>>;
+    educationOther: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    marriageStatus: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodEnum<{
+        SINGLE: "SINGLE";
+        MARRIED: "MARRIED";
+        DIVORCED: "DIVORCED";
+        WIDOWED: "WIDOWED";
+    }>>, z.ZodLiteral<"">]>>;
+    document: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
     status: z.ZodOptional<z.ZodDefault<z.ZodEnum<{
         ACTIVE: "ACTIVE";
         INACTIVE: "INACTIVE";

@@ -15,6 +15,7 @@ export declare const AssetConditionSchema: z.ZodEnum<{
     POOR: "POOR";
 }>;
 export declare const AssetCategorySchema: z.ZodEnum<{
+    OTHER: "OTHER";
     LAPTOP: "LAPTOP";
     DESKTOP: "DESKTOP";
     MONITOR: "MONITOR";
@@ -25,7 +26,6 @@ export declare const AssetCategorySchema: z.ZodEnum<{
     HEADSET: "HEADSET";
     PRINTER: "PRINTER";
     NETWORK_EQUIPMENT: "NETWORK_EQUIPMENT";
-    OTHER: "OTHER";
 }>;
 export declare const AssetHistoryActionSchema: z.ZodEnum<{
     ASSIGNED: "ASSIGNED";
@@ -43,6 +43,7 @@ export declare const AssetHistoryActionSchema: z.ZodEnum<{
 export declare const CreateAssetDto: z.ZodObject<{
     name: z.ZodString;
     category: z.ZodEnum<{
+        OTHER: "OTHER";
         LAPTOP: "LAPTOP";
         DESKTOP: "DESKTOP";
         MONITOR: "MONITOR";
@@ -53,7 +54,6 @@ export declare const CreateAssetDto: z.ZodObject<{
         HEADSET: "HEADSET";
         PRINTER: "PRINTER";
         NETWORK_EQUIPMENT: "NETWORK_EQUIPMENT";
-        OTHER: "OTHER";
     }>;
     serialNumber: z.ZodString;
     model: z.ZodOptional<z.ZodString>;
@@ -74,6 +74,7 @@ export declare const CreateAssetDto: z.ZodObject<{
 export declare const UpdateAssetDto: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     category: z.ZodOptional<z.ZodEnum<{
+        OTHER: "OTHER";
         LAPTOP: "LAPTOP";
         DESKTOP: "DESKTOP";
         MONITOR: "MONITOR";
@@ -84,7 +85,6 @@ export declare const UpdateAssetDto: z.ZodObject<{
         HEADSET: "HEADSET";
         PRINTER: "PRINTER";
         NETWORK_EQUIPMENT: "NETWORK_EQUIPMENT";
-        OTHER: "OTHER";
     }>>;
     serialNumber: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
@@ -142,6 +142,7 @@ export declare const UpdateAssetConditionDto: z.ZodObject<{
 export declare const ListAssetsQuery: z.ZodObject<{
     search: z.ZodOptional<z.ZodString>;
     category: z.ZodOptional<z.ZodEnum<{
+        OTHER: "OTHER";
         LAPTOP: "LAPTOP";
         DESKTOP: "DESKTOP";
         MONITOR: "MONITOR";
@@ -152,7 +153,6 @@ export declare const ListAssetsQuery: z.ZodObject<{
         HEADSET: "HEADSET";
         PRINTER: "PRINTER";
         NETWORK_EQUIPMENT: "NETWORK_EQUIPMENT";
-        OTHER: "OTHER";
     }>>;
     status: z.ZodOptional<z.ZodEnum<{
         AVAILABLE: "AVAILABLE";
@@ -190,6 +190,7 @@ export declare const ListAssetsQuery: z.ZodObject<{
 }, z.core.$strip>;
 export declare const AssetStatsQuery: z.ZodObject<{
     category: z.ZodOptional<z.ZodEnum<{
+        OTHER: "OTHER";
         LAPTOP: "LAPTOP";
         DESKTOP: "DESKTOP";
         MONITOR: "MONITOR";
@@ -200,7 +201,6 @@ export declare const AssetStatsQuery: z.ZodObject<{
         HEADSET: "HEADSET";
         PRINTER: "PRINTER";
         NETWORK_EQUIPMENT: "NETWORK_EQUIPMENT";
-        OTHER: "OTHER";
     }>>;
     location: z.ZodOptional<z.ZodString>;
     dateFrom: z.ZodOptional<z.ZodString>;

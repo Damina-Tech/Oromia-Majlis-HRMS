@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import {
   Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle
 } from "lucide-react";
-import api from "@/services/api"; // Axios instance with baseURL + auth
+import api, { uploadDocument } from "@/services/api"; // Axios instance with baseURL + auth
 
 // ---------- Types ----------
 type Dept = { id: string; name: string };
@@ -31,9 +32,16 @@ type Employee = {
   lastName: string;
   email: string;
   phone?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
   address?: string | null;
   emergencyContact?: string | null;
   designation?: string | null;
+  employmentType?: string | null;
+  educationLevel?: string | null;
+  educationOther?: string | null;
+  marriageStatus?: string | null;
+  document?: string | null;
   status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
   joiningDate?: string | null;
   salary?: number | null;
@@ -66,9 +74,20 @@ async function apiListEmployees(params: {
   const { data } = await api.get("/employees", { params });
   return data as { items: Employee[]; total: number; page: number; pageSize: number };
 }
+async function apiGetEmployee(id: string) {
+  const { data } = await api.get(`/employees/${id}`);
+  return data as Employee;
+}
 async function apiCreateEmployee(payload: Partial<Employee> & { firstName: string; lastName: string; email: string }) {
   const { data } = await api.post("/employees", payload);
   return data as Employee;
+}
+async function apiUpdateEmployee(id: string, payload: Partial<Employee>) {
+  const { data } = await api.put(`/employees/${id}`, payload);
+  return data as Employee;
+}
+async function apiDeleteEmployee(id: string) {
+  await api.delete(`/employees/${id}`);
 }
 async function apiListDepartments() {
   const { data } = await api.get("/departments");
@@ -82,27 +101,123 @@ function AddEmployeeDialog({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
-    designation: "", departmentId: "", status: "ACTIVE" as Employee["status"],
+    dateOfBirth: "", gender: "", designation: "", employmentType: "",
+    educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+    departmentId: "", status: "ACTIVE" as Employee["status"],
     joiningDate: "", salary: "", address: "", emergencyContact: "",
   });
+  
+  const validateField = (name: string, value: string): string => {
+    if (name === "firstName" && !value.trim()) {
+      return "This field is required";
+    }
+    if (name === "lastName" && !value.trim()) {
+      return "This field is required";
+    }
+    if (name === "email") {
+      if (!value.trim()) {
+        return "This field is required";
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        return "Please enter a valid email address";
+      }
+    }
+    return "";
+  };
+
   const onChange = (k: string, v: string) => {
     setForm(p => ({ ...p, [k]: v }));
-    // Clear error when user starts typing
+    // Clear field error when user starts typing
+    if (fieldErrors[k]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[k];
+        return newErrors;
+      });
+    }
+    // Clear general error
     if (error) setError(null);
   };
 
+  const onBlur = (fieldName: string) => {
+    const error = validateField(fieldName, form[fieldName as keyof typeof form]);
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, [fieldName]: error }));
+    } else {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
+
   const handleSubmit = async () => {
+    // Validate all required fields
+    const errors: Record<string, string> = {};
+    
+    const firstNameError = validateField("firstName", form.firstName);
+    if (firstNameError) errors.firstName = firstNameError;
+    
+    const lastNameError = validateField("lastName", form.lastName);
+    if (lastNameError) errors.lastName = lastNameError;
+    
+    const emailError = validateField("email", form.email);
+    if (emailError) errors.email = emailError;
+    
+    // If there are validation errors, set them and stop submission
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setSubmitting(false);
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);
+      setFieldErrors({}); // Clear field errors
       
-      const payload = {
-        ...form,
-        salary: form.salary ? Number(form.salary) : undefined,
-        departmentId: form.departmentId || undefined,
+      // Upload document if a file is selected
+      let documentUrl = form.document || undefined;
+      if (selectedFile) {
+        try {
+          setUploading(true);
+          const uploadResult = await uploadDocument(selectedFile);
+          documentUrl = uploadResult.url;
+        } catch (uploadError: any) {
+          setError(uploadError?.response?.data?.message || "Failed to upload document");
+          setSubmitting(false);
+          setUploading(false);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+      
+      const payload: any = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone || undefined,
+        dateOfBirth: form.dateOfBirth || undefined,
+        gender: form.gender || undefined,
+        address: form.address || undefined,
+        emergencyContact: form.emergencyContact || undefined,
+        designation: form.designation || undefined,
+        employmentType: form.employmentType || undefined,
+        educationLevel: form.educationLevel || undefined,
+        educationOther: form.educationOther || undefined,
+        marriageStatus: form.marriageStatus || undefined,
+        document: documentUrl,
+        status: form.status,
         joiningDate: form.joiningDate || undefined,
+        salary: form.salary ? Number(form.salary) : undefined,
+        departmentId: form.departmentId && form.departmentId.trim() !== "" ? form.departmentId : undefined,
       };
       
       const created = await apiCreateEmployee(payload as any);
@@ -120,8 +235,12 @@ function AddEmployeeDialog({
       setOpen(false);
       setForm({
         firstName: "", lastName: "", email: "", phone: "",
-        designation: "", departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
+        dateOfBirth: "", gender: "", designation: "", employmentType: "",
+        educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+        departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
       });
+      setSelectedFile(null);
+      setFieldErrors({});
     } catch (e: any) {
       const errorMessage = e?.response?.data?.message || "Failed to create employee";
       
@@ -146,8 +265,17 @@ function AddEmployeeDialog({
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (!newOpen) {
-      // Reset error when closing
+      // Reset errors when closing
       setError(null);
+      setFieldErrors({});
+      setSelectedFile(null);
+      // Reset form
+      setForm({
+        firstName: "", lastName: "", email: "", phone: "",
+        dateOfBirth: "", gender: "", designation: "", employmentType: "",
+        educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+        departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
+      });
     }
   };
 
@@ -158,48 +286,704 @@ function AddEmployeeDialog({
           <Plus className="h-4 w-4 mr-2" /> Add Employee
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Add Employee</DialogTitle>
           <DialogDescription>Fill in the new employee's details.</DialogDescription>
         </DialogHeader>
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="flex-shrink-0">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input placeholder="First name*" value={form.firstName} onChange={e=>onChange("firstName", e.target.value)} />
-          <Input placeholder="Last name*" value={form.lastName} onChange={e=>onChange("lastName", e.target.value)} />
-          <Input placeholder="Email*" type="email" value={form.email} onChange={e=>onChange("email", e.target.value)} />
-          <Input placeholder="Phone" value={form.phone} onChange={e=>onChange("phone", e.target.value)} />
-          <Input placeholder="Designation" value={form.designation} onChange={e=>onChange("designation", e.target.value)} />
-          <Select value={form.departmentId || undefined} onValueChange={(v)=>onChange("departmentId", v)}>
-            <SelectTrigger><SelectValue placeholder="Department (Optional)" /></SelectTrigger>
-            <SelectContent>
-              {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={form.status} onValueChange={(v)=>onChange("status", v as Employee["status"])}>
-            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ACTIVE">Active</SelectItem>
-              <SelectItem value="INACTIVE">Inactive</SelectItem>
-              <SelectItem value="ON_LEAVE">On Leave</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input type="date" placeholder="Joining date" value={form.joiningDate} onChange={e=>onChange("joiningDate", e.target.value)} />
-          <Input type="number" step="0.01" placeholder="Salary (ETB)" value={form.salary} onChange={e=>onChange("salary", e.target.value)} />
-          <Input placeholder="Address" value={form.address} onChange={e=>onChange("address", e.target.value)} />
-          <Input placeholder="Emergency contact" value={form.emergencyContact} onChange={e=>onChange("emergencyContact", e.target.value)} />
+        <div className="flex-1 overflow-y-auto pr-2">
+
+        <div className="space-y-6">
+          {/* Personal Information Section */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Personal Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  placeholder="Enter first name"
+                  value={form.firstName}
+                  onChange={e => onChange("firstName", e.target.value)}
+                  onBlur={() => onBlur("firstName")}
+                  className={fieldErrors.firstName ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  required
+                />
+                {fieldErrors.firstName && (
+                  <p className="text-sm text-red-500">{fieldErrors.firstName}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  placeholder="Enter last name"
+                  value={form.lastName}
+                  onChange={e => onChange("lastName", e.target.value)}
+                  onBlur={() => onBlur("lastName")}
+                  className={fieldErrors.lastName ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  required
+                />
+                {fieldErrors.lastName && (
+                  <p className="text-sm text-red-500">{fieldErrors.lastName}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter email address"
+                  value={form.email}
+                  onChange={e => onChange("email", e.target.value)}
+                  onBlur={() => onBlur("email")}
+                  className={fieldErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  required
+                />
+                {fieldErrors.email && (
+                  <p className="text-sm text-red-500">{fieldErrors.email}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={form.phone}
+                  onChange={e => onChange("phone", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                <Input
+                  id="dateOfBirth"
+                  type="date"
+                  value={form.dateOfBirth}
+                  onChange={e => onChange("dateOfBirth", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Select value={form.gender || undefined} onValueChange={(v) => onChange("gender", v)}>
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MALE">Male</SelectItem>
+                    <SelectItem value="FEMALE">Female</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="marriageStatus">Marriage Status</Label>
+                <Select value={form.marriageStatus || undefined} onValueChange={(v) => onChange("marriageStatus", v)}>
+                  <SelectTrigger id="marriageStatus">
+                    <SelectValue placeholder="Select marriage status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SINGLE">Single</SelectItem>
+                    <SelectItem value="MARRIED">Married</SelectItem>
+                    <SelectItem value="DIVORCED">Divorced</SelectItem>
+                    <SelectItem value="WIDOWED">Widowed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address</Label>
+                <Input
+                  id="address"
+                  placeholder="Enter address"
+                  value={form.address}
+                  onChange={e => onChange("address", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                <Input
+                  id="emergencyContact"
+                  placeholder="Enter emergency contact"
+                  value={form.emergencyContact}
+                  onChange={e => onChange("emergencyContact", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Professional Information Section */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Professional Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="designation">Designation</Label>
+                <Input
+                  id="designation"
+                  placeholder="Enter designation/position"
+                  value={form.designation}
+                  onChange={e => onChange("designation", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="employmentType">Employment Type</Label>
+                <Select
+                  value={form.employmentType || undefined}
+                  onValueChange={(v) => onChange("employmentType", v)}
+                >
+                  <SelectTrigger id="employmentType">
+                    <SelectValue placeholder="Select employment type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FULL_TIME">Full Time</SelectItem>
+                    <SelectItem value="PART_TIME">Part Time</SelectItem>
+                    <SelectItem value="CONTRACT">Contract</SelectItem>
+                    <SelectItem value="INTERN">Intern</SelectItem>
+                    <SelectItem value="TEMPORARY">Temporary</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="educationLevel">Education Level</Label>
+                <Select
+                  value={form.educationLevel || undefined}
+                  onValueChange={(v) => {
+                    onChange("educationLevel", v);
+                    // Clear educationOther if not "OTHER" is selected
+                    if (v !== "OTHER") {
+                      onChange("educationOther", "");
+                    }
+                  }}
+                >
+                  <SelectTrigger id="educationLevel">
+                    <SelectValue placeholder="Select education level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GRADE_8">Grade 8</SelectItem>
+                    <SelectItem value="GRADE_10">Grade 10</SelectItem>
+                    <SelectItem value="GRADE_12">Grade 12</SelectItem>
+                    <SelectItem value="DEGREE">Degree</SelectItem>
+                    <SelectItem value="MASTER">Master</SelectItem>
+                    <SelectItem value="PHD">PhD</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.educationLevel === "OTHER" && (
+                  <div className="mt-2">
+                    <Input
+                      id="educationOther"
+                      placeholder="Enter education level"
+                      value={form.educationOther}
+                      onChange={e => onChange("educationOther", e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="departmentId">Department</Label>
+                <Select
+                  value={form.departmentId || undefined}
+                  onValueChange={(v) => onChange("departmentId", v)}
+                >
+                  <SelectTrigger id="departmentId">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => onChange("status", v as Employee["status"])}
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="INACTIVE">Inactive</SelectItem>
+                    <SelectItem value="ON_LEAVE">On Leave</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="joiningDate">Joining Date</Label>
+                <Input
+                  id="joiningDate"
+                  type="date"
+                  value={form.joiningDate}
+                  onChange={e => onChange("joiningDate", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="salary">Salary (ETB)</Label>
+                <Input
+                  id="salary"
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter salary"
+                  value={form.salary}
+                  onChange={e => onChange("salary", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="document">Document (Optional)</Label>
+                <Input
+                  id="document"
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedFile(file);
+                      onChange("document", file.name);
+                    } else {
+                      setSelectedFile(null);
+                      onChange("document", "");
+                    }
+                  }}
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                />
+                {selectedFile && (
+                  <p className="text-sm text-gray-500">Selected: {selectedFile.name}</p>
+                )}
+                {form.document && !selectedFile && (
+                  <p className="text-sm text-gray-500">Current: {form.document}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex justify-end gap-2 pt-4 border-t mt-4 flex-shrink-0">
           <Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Saving..." : "Save"}
+          <Button onClick={handleSubmit} disabled={submitting || uploading}>
+            {uploading ? "Uploading..." : submitting ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Edit Employee Dialog ----------
+function EditEmployeeDialog({
+  employee,
+  departments,
+  onUpdated,
+  canEdit
+}: { 
+  employee: Employee | null; 
+  departments: Dept[]; 
+  onUpdated: (e: Employee) => void;
+  canEdit: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", phone: "",
+    dateOfBirth: "", gender: "", designation: "", employmentType: "",
+    educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+    departmentId: "", status: "ACTIVE" as Employee["status"],
+    joiningDate: "", salary: "", address: "", emergencyContact: "",
+  });
+
+  // Initialize form when employee changes
+  useEffect(() => {
+    if (employee) {
+      setForm({
+        firstName: employee.firstName || "",
+        lastName: employee.lastName || "",
+        email: employee.email || "",
+        phone: employee.phone || "",
+        dateOfBirth: employee.dateOfBirth ? new Date(employee.dateOfBirth).toISOString().split('T')[0] : "",
+        gender: employee.gender || "",
+        designation: employee.designation || "",
+        employmentType: employee.employmentType || "",
+        educationLevel: employee.educationLevel || "",
+        educationOther: employee.educationOther || "",
+        marriageStatus: employee.marriageStatus || "",
+        document: employee.document || "",
+        departmentId: employee.departmentId || "",
+        status: employee.status || "ACTIVE",
+        joiningDate: employee.joiningDate ? new Date(employee.joiningDate).toISOString().split('T')[0] : "",
+        salary: employee.salary ? String(employee.salary) : "",
+        address: employee.address || "",
+        emergencyContact: employee.emergencyContact || "",
+      });
+      setSelectedFile(null); // Reset selected file when employee changes
+      setOpen(true);
+    }
+  }, [employee]);
+
+  const validateField = (name: string, value: string): string => {
+    if (name === "firstName" && !value.trim()) {
+      return "This field is required";
+    }
+    if (name === "lastName" && !value.trim()) {
+      return "This field is required";
+    }
+    if (name === "email") {
+      if (!value.trim()) {
+        return "This field is required";
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        return "Please enter a valid email address";
+      }
+    }
+    return "";
+  };
+
+  const onChange = (k: string, v: string) => {
+    setForm(p => ({ ...p, [k]: v }));
+    if (fieldErrors[k]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[k];
+        return newErrors;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const onBlur = (fieldName: string) => {
+    const error = validateField(fieldName, form[fieldName as keyof typeof form]);
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, [fieldName]: error }));
+    } else {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!employee) return;
+
+    const errors: Record<string, string> = {};
+    const firstNameError = validateField("firstName", form.firstName);
+    if (firstNameError) errors.firstName = firstNameError;
+    const lastNameError = validateField("lastName", form.lastName);
+    if (lastNameError) errors.lastName = lastNameError;
+    const emailError = validateField("email", form.email);
+    if (emailError) errors.email = emailError;
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      setFieldErrors({});
+
+      // Upload document if a new file is selected
+      let documentUrl = form.document || undefined;
+      if (selectedFile) {
+        try {
+          setUploading(true);
+          const uploadResult = await uploadDocument(selectedFile);
+          documentUrl = uploadResult.url;
+        } catch (uploadError: any) {
+          setError(uploadError?.response?.data?.message || "Failed to upload document");
+          setSubmitting(false);
+          setUploading(false);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const payload: any = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone || undefined,
+        dateOfBirth: form.dateOfBirth || undefined,
+        gender: form.gender || undefined,
+        address: form.address || undefined,
+        emergencyContact: form.emergencyContact || undefined,
+        designation: form.designation || undefined,
+        employmentType: form.employmentType || undefined,
+        educationLevel: form.educationLevel || undefined,
+        educationOther: form.educationOther || undefined,
+        marriageStatus: form.marriageStatus || undefined,
+        document: documentUrl,
+        status: form.status,
+        joiningDate: form.joiningDate || undefined,
+        salary: form.salary ? Number(form.salary) : undefined,
+        departmentId: form.departmentId && form.departmentId.trim() !== "" ? form.departmentId : undefined,
+      };
+
+      const updated = await apiUpdateEmployee(employee.id, payload);
+      toast.success("Employee updated successfully!");
+      onUpdated(updated);
+      setOpen(false);
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.message || "Failed to update employee";
+      setError(errorMessage);
+      setSubmitting(false);
+    }
+  };
+
+  if (!canEdit || !employee) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle>Edit Employee</DialogTitle>
+          <DialogDescription>Update employee information</DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <Alert variant="destructive" className="flex-shrink-0">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex-1 overflow-y-auto pr-2">
+          {/* Use the same form structure as AddEmployeeDialog */}
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Personal Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-firstName">First Name *</Label>
+                  <Input
+                    id="edit-firstName"
+                    value={form.firstName}
+                    onChange={e => onChange("firstName", e.target.value)}
+                    onBlur={() => onBlur("firstName")}
+                    className={fieldErrors.firstName ? "border-red-500" : ""}
+                  />
+                  {fieldErrors.firstName && <p className="text-sm text-red-500">{fieldErrors.firstName}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-lastName">Last Name *</Label>
+                  <Input
+                    id="edit-lastName"
+                    value={form.lastName}
+                    onChange={e => onChange("lastName", e.target.value)}
+                    onBlur={() => onBlur("lastName")}
+                    className={fieldErrors.lastName ? "border-red-500" : ""}
+                  />
+                  {fieldErrors.lastName && <p className="text-sm text-red-500">{fieldErrors.lastName}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email Address *</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={form.email}
+                    onChange={e => onChange("email", e.target.value)}
+                    onBlur={() => onBlur("email")}
+                    className={fieldErrors.email ? "border-red-500" : ""}
+                  />
+                  {fieldErrors.email && <p className="text-sm text-red-500">{fieldErrors.email}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Phone Number</Label>
+                  <Input id="edit-phone" type="tel" value={form.phone} onChange={e => onChange("phone", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dateOfBirth">Date of Birth</Label>
+                  <Input id="edit-dateOfBirth" type="date" value={form.dateOfBirth} onChange={e => onChange("dateOfBirth", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-gender">Gender</Label>
+                  <Select value={form.gender || undefined} onValueChange={(v) => onChange("gender", v)}>
+                    <SelectTrigger id="edit-gender">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MALE">Male</SelectItem>
+                      <SelectItem value="FEMALE">Female</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-marriageStatus">Marriage Status</Label>
+                  <Select value={form.marriageStatus || undefined} onValueChange={(v) => onChange("marriageStatus", v)}>
+                    <SelectTrigger id="edit-marriageStatus">
+                      <SelectValue placeholder="Select marriage status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SINGLE">Single</SelectItem>
+                      <SelectItem value="MARRIED">Married</SelectItem>
+                      <SelectItem value="DIVORCED">Divorced</SelectItem>
+                      <SelectItem value="WIDOWED">Widowed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address">Address</Label>
+                  <Input id="edit-address" value={form.address} onChange={e => onChange("address", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-emergencyContact">Emergency Contact</Label>
+                  <Input id="edit-emergencyContact" value={form.emergencyContact} onChange={e => onChange("emergencyContact", e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Professional Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-designation">Designation</Label>
+                  <Input id="edit-designation" value={form.designation} onChange={e => onChange("designation", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-employmentType">Employment Type</Label>
+                  <Select value={form.employmentType || undefined} onValueChange={(v) => onChange("employmentType", v)}>
+                    <SelectTrigger id="edit-employmentType">
+                      <SelectValue placeholder="Select employment type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FULL_TIME">Full Time</SelectItem>
+                      <SelectItem value="PART_TIME">Part Time</SelectItem>
+                      <SelectItem value="CONTRACT">Contract</SelectItem>
+                      <SelectItem value="INTERN">Intern</SelectItem>
+                      <SelectItem value="TEMPORARY">Temporary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-educationLevel">Education Level</Label>
+                  <Select
+                    value={form.educationLevel || undefined}
+                    onValueChange={(v) => {
+                      onChange("educationLevel", v);
+                      if (v !== "OTHER") {
+                        onChange("educationOther", "");
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="edit-educationLevel">
+                      <SelectValue placeholder="Select education level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GRADE_8">Grade 8</SelectItem>
+                      <SelectItem value="GRADE_10">Grade 10</SelectItem>
+                      <SelectItem value="GRADE_12">Grade 12</SelectItem>
+                      <SelectItem value="DEGREE">Degree</SelectItem>
+                      <SelectItem value="MASTER">Master</SelectItem>
+                      <SelectItem value="PHD">PhD</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.educationLevel === "OTHER" && (
+                    <div className="mt-2">
+                      <Input
+                        id="edit-educationOther"
+                        placeholder="Enter education level"
+                        value={form.educationOther}
+                        onChange={e => onChange("educationOther", e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-departmentId">Department</Label>
+                  <Select value={form.departmentId || undefined} onValueChange={(v) => onChange("departmentId", v)}>
+                    <SelectTrigger id="edit-departmentId">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-status">Status</Label>
+                  <Select value={form.status} onValueChange={(v) => onChange("status", v as Employee["status"])}>
+                    <SelectTrigger id="edit-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ACTIVE">Active</SelectItem>
+                      <SelectItem value="INACTIVE">Inactive</SelectItem>
+                      <SelectItem value="ON_LEAVE">On Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-joiningDate">Joining Date</Label>
+                  <Input id="edit-joiningDate" type="date" value={form.joiningDate} onChange={e => onChange("joiningDate", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-salary">Salary (ETB)</Label>
+                  <Input id="edit-salary" type="number" step="0.01" value={form.salary} onChange={e => onChange("salary", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-document">Document (Optional)</Label>
+                  {form.document && !selectedFile && (
+                    <div className="mb-2 p-2 bg-gray-50 rounded-md">
+                      <p className="text-sm text-gray-700 mb-1">
+                        <span className="font-medium">Current document:</span> {form.document.split('/').pop()}
+                      </p>
+                      <a
+                        href={`${import.meta.env.VITE_API_URL || "http://localhost:4000"}${form.document}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                      >
+                        <Download className="h-3 w-3" />
+                        View/Download
+                      </a>
+                    </div>
+                  )}
+                  <Input
+                    id="edit-document"
+                    type="file"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setSelectedFile(file);
+                        onChange("document", file.name);
+                      } else {
+                        setSelectedFile(null);
+                      }
+                    }}
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  />
+                  {selectedFile && (
+                    <p className="text-sm text-gray-500">New file selected: {selectedFile.name}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedFile ? "Select a new file to replace the current document" : "Select a file to upload"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t mt-4 flex-shrink-0">
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={submitting || uploading}>
+            {uploading ? "Uploading..." : submitting ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </DialogContent>
@@ -216,6 +1000,8 @@ const EmployeesPage: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState("all"); // stores deptId or 'all'
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on-leave">("all");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Dept[]>([]);
@@ -256,7 +1042,7 @@ const EmployeesPage: React.FC = () => {
       const matchesStatus =
         statusFilter === "all" || uiStatus === statusFilter;
 
-      return matchesSearch && matchesDepartment && matchesStatus;
+    return matchesSearch && matchesDepartment && matchesStatus;
     });
   }, [employees, searchTerm, departmentFilter, statusFilter]);
 
@@ -266,6 +1052,23 @@ const EmployeesPage: React.FC = () => {
     return { total: employees.length, active, onLeave, departments: departments.length };
   }, [employees, departments]);
 
+  const handleEmployeeUpdated = (updated: Employee) => {
+    setEmployees(prev => prev.map(emp => emp.id === updated.id ? updated : emp));
+    setEditingEmployee(null);
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!deletingEmployee) return;
+    try {
+      await apiDeleteEmployee(deletingEmployee.id);
+      toast.success("Employee deleted successfully");
+      setEmployees(prev => prev.filter(emp => emp.id !== deletingEmployee.id));
+      setDeletingEmployee(null);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to delete employee");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -274,18 +1077,18 @@ const EmployeesPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
           <p className="text-gray-600 mt-1">Manage and view employee information</p>
         </div>
-
+        
         <div className="flex gap-2">
           <Button variant="outline">
             <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+              Export
+            </Button>
           <AddEmployeeDialog
             departments={departments}
             onCreated={(emp) => setEmployees(prev => [emp, ...prev])}
             canCreate={!!canWrite}
           />
-        </div>
+          </div>
       </div>
 
       {/* Stats Cards */}
@@ -295,11 +1098,11 @@ const EmployeesPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
               <p className="text-2xl font-bold">{totals.total}</p>
-            </div>
+              </div>
             <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-blue-600" />
             </div>
-          </div>
+              </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -307,11 +1110,11 @@ const EmployeesPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
               <p className="text-2xl font-bold">{totals.active}</p>
-            </div>
+              </div>
             <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-green-600" />
             </div>
-          </div>
+              </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -319,11 +1122,11 @@ const EmployeesPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">On Leave</p>
               <p className="text-2xl font-bold">{totals.onLeave}</p>
-            </div>
+              </div>
             <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-yellow-600" />
             </div>
-          </div>
+              </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -331,7 +1134,7 @@ const EmployeesPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Departments</p>
               <p className="text-2xl font-bold">{totals.departments}</p>
-            </div>
+              </div>
             <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-purple-600" />
             </div>
@@ -356,7 +1159,7 @@ const EmployeesPage: React.FC = () => {
                 className="pl-10"
               />
             </div>
-
+            
             {/* Department filter uses deptId */}
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger className="w-full sm:w-48">
@@ -440,7 +1243,7 @@ const EmployeesPage: React.FC = () => {
                           <div className="flex items-center text-sm text-gray-600">
                             <Phone className="h-3 w-3 mr-2" />
                             {e.phone}
-                          </div>
+                        </div>
                         )}
                       </div>
                     </TableCell>
@@ -449,8 +1252,8 @@ const EmployeesPage: React.FC = () => {
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
-                              variant="ghost"
-                              size="sm"
+                            variant="ghost"
+                            size="sm"
                               onClick={() => setSelectedEmployee(e)}
                             >
                               <Eye className="h-4 w-4" />
@@ -471,11 +1274,14 @@ const EmployeesPage: React.FC = () => {
                                     <p><span className="font-medium">Name:</span> {e.firstName} {e.lastName}</p>
                                     <p><span className="font-medium">Email:</span> {e.email}</p>
                                     <p><span className="font-medium">Phone:</span> {e.phone ?? "—"}</p>
+                                    <p><span className="font-medium">Date of Birth:</span> {e.dateOfBirth ? new Date(e.dateOfBirth).toLocaleDateString() : "—"}</p>
+                                    <p><span className="font-medium">Gender:</span> {e.gender ? e.gender.charAt(0) + e.gender.slice(1).toLowerCase() : "—"}</p>
+                                    <p><span className="font-medium">Marriage Status:</span> {e.marriageStatus ? e.marriageStatus.charAt(0) + e.marriageStatus.slice(1).toLowerCase().replace('_', ' ') : "—"}</p>
                                     <p><span className="font-medium">Address:</span> {e.address ?? "—"}</p>
-                                    <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact ?? "—"}</p>
+                                    <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact || "—"}</p>
                                   </div>
                                 </div>
-                              </div>
+                                    </div>
                               <div className="space-y-4">
                                 <div>
                                   <h4 className="font-medium text-gray-900">Professional Information</h4>
@@ -483,26 +1289,57 @@ const EmployeesPage: React.FC = () => {
                                     <p><span className="font-medium">Employee ID:</span> {e.employeeCode}</p>
                                     <p><span className="font-medium">Department:</span> {e.department?.name ?? "—"}</p>
                                     <p><span className="font-medium">Designation:</span> {e.designation ?? "—"}</p>
+                                    <p><span className="font-medium">Employment Type:</span> {e.employmentType ? e.employmentType.replace('_', ' ') : "—"}</p>
+                                    <p><span className="font-medium">Education Level:</span> {
+                                      e.educationLevel === "OTHER" && e.educationOther 
+                                        ? e.educationOther 
+                                        : e.educationLevel 
+                                          ? e.educationLevel.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+                                          : "—"
+                                    }</p>
                                     <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
                                     <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
-                                    <p><span className="font-medium">Salary:</span> {typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : "—"}</p>
+                                    <p><span className="font-medium">Salary:</span> {e.salary != null && typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
                                   </div>
                                 </div>
+                                {e.document && (
+                                  <div>
+                                    <h4 className="font-medium text-gray-900 mb-2">Document</h4>
+                                    <div className="p-3 bg-gray-50 rounded-md">
+                                      <p className="text-sm text-gray-700 mb-2">
+                                        <span className="font-medium">Document Name:</span> {e.document.split('/').pop()}
+                                      </p>
+                                      <a
+                                        href={`${import.meta.env.VITE_API_URL || "http://localhost:4000"}${e.document}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        View/Download Document
+                                      </a>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </DialogContent>
                         </Dialog>
-
+                        
                         {hasPermission("employees.write") && (
-                          <>
-                            <Button variant="ghost" size="sm">
+                      <>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => setEditingEmployee(e)}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               className="text-red-600 hover:text-red-700"
-                              onClick={() => toast.info("Hook delete here (api DELETE /employees/:id)")}
+                              onClick={() => setDeletingEmployee(e)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -523,6 +1360,37 @@ const EmployeesPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Employee Dialog */}
+      <EditEmployeeDialog
+        employee={editingEmployee}
+        departments={departments}
+        onUpdated={handleEmployeeUpdated}
+        canEdit={canWrite}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingEmployee} onOpenChange={(open) => !open && setDeletingEmployee(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Employee</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {deletingEmployee?.firstName} {deletingEmployee?.lastName}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setDeletingEmployee(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteEmployee}
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -5,19 +5,19 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 const prisma = new PrismaClient();
-const r = Router();
+const router = Router();
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
 
 function signAccess(userId: string, roles: string[], permissions: string[], employeeId?: string) {
   const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
-  return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "15m" });
+  return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "2h" });
 }
 function signRefresh(userId: string, roles: string[], permissions: string[], employeeId?: string) {
   const secret = process.env.JWT_REFRESH_SECRET || "your-refresh-secret";
   return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "14d" });
 }
 
-r.post("/login", async (req, res) => {
+router.post("/login", async (req, res) => {
   const { email, password } = LoginDto.parse(req.body);
   const user = await prisma.user.findUnique({ 
     where: { email }, 
@@ -71,7 +71,7 @@ r.post("/login", async (req, res) => {
   });
 });
 
-r.post("/refresh", async (req, res) => {
+router.post("/refresh", async (req, res) => {
   const token = req.cookies?.refreshToken;
   if (!token) return res.status(401).json({ message: "No refresh token" });
   try {
@@ -117,4 +117,4 @@ r.post("/refresh", async (req, res) => {
   }
 });
 
-export default r;
+export default router;

@@ -51,10 +51,13 @@ const OrganizationPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [deletingDepartment, setDeletingDepartment] = useState<Department | null>(null);
   const [newDeptName, setNewDeptName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const canWrite = hasPermission("departments.write");
 
@@ -145,7 +148,7 @@ const OrganizationPage: React.FC = () => {
     }
   };
 
-  const handleDeleteDepartment = async (dept: Department) => {
+  const handleDeleteClick = (dept: Department) => {
     const employeeCount = getDepartmentEmployees(dept.id).length;
     
     if (employeeCount > 0) {
@@ -153,17 +156,25 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete the "${dept.name}" department?`)) {
-      return;
-    }
+    setDeletingDepartment(dept);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteDepartment = async () => {
+    if (!deletingDepartment) return;
 
     try {
-      await deleteDepartment(dept.id);
-      toast.success(`Department "${dept.name}" deleted successfully!`);
+      setDeleting(true);
+      await deleteDepartment(deletingDepartment.id);
+      toast.success(`Department "${deletingDepartment.name}" deleted successfully!`);
+      setShowDeleteDialog(false);
+      setDeletingDepartment(null);
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to delete department';
       toast.error(message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -372,7 +383,7 @@ const OrganizationPage: React.FC = () => {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleDeleteDepartment(department)}
+                        onClick={() => handleDeleteClick(department)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -526,6 +537,51 @@ const OrganizationPage: React.FC = () => {
             <Button onClick={handleEditDepartment} disabled={submitting}>
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Department Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={(open) => { 
+        setShowDeleteDialog(open); 
+        if (!open) {
+          setDeletingDepartment(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Department</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the <span className="font-bold">"{deletingDepartment?.name}"</span> department? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This will permanently delete the department. Make sure there are no employees assigned to this department.
+            </AlertDescription>
+          </Alert>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setDeletingDepartment(null);
+              }} 
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteDepartment} 
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete Department
             </Button>
           </DialogFooter>
         </DialogContent>

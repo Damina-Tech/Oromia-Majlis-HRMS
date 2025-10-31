@@ -160,7 +160,208 @@ async function main() {
   });
 
   console.log("✅ Created employee:", employeeEmp.employeeCode);
-  console.log("🎉 Database seeding completed successfully!");
+
+  // Create additional department manager (Finance Department)
+  const financeManagerEmail = "finance.manager@ciro.gov.et";
+  const financeManagerPassword = await bcrypt.hash("FinanceMgr123!", 10);
+  const financeManagerUser = await prisma.user.upsert({
+    where: { email: financeManagerEmail },
+    update: {},
+    create: { 
+      email: financeManagerEmail, 
+      passwordHash: financeManagerPassword, 
+      firstName: "Finance", 
+      lastName: "Manager" 
+    }
+  });
+
+  // Assign manager role to finance manager
+  if (managerRole) {
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: financeManagerUser.id, roleId: managerRole.id } },
+      update: {},
+      create: { userId: financeManagerUser.id, roleId: managerRole.id },
+    });
+  }
+
+  // Create finance manager employee record
+  const financeManagerEmp = await prisma.employee.upsert({
+    where: { email: financeManagerEmail },
+    update: {},
+    create: {
+      employeeCode: "EMP-000004",
+      firstName: "Finance",
+      lastName: "Manager",
+      email: financeManagerEmail,
+      designation: "Finance Department Manager",
+      status: "ACTIVE",
+      departmentId: depts[2].id, // Finance department
+      userId: financeManagerUser.id,
+      joiningDate: new Date(),
+      salary: 40000.00,
+    }
+  });
+  console.log("✅ Created finance manager:", financeManagerEmp.employeeCode);
+
+  // Create additional employees under different managers
+  const employee2Email = "john.doe@ciro.gov.et";
+  const employee2Password = await bcrypt.hash("Employee123!", 10);
+  const employee2User = await prisma.user.upsert({
+    where: { email: employee2Email },
+    update: {},
+    create: { 
+      email: employee2Email, 
+      passwordHash: employee2Password, 
+      firstName: "John", 
+      lastName: "Doe" 
+    }
+  });
+
+  // Assign employee role
+  if (employeeRole) {
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: employee2User.id, roleId: employeeRole.id } },
+      update: {},
+      create: { userId: employee2User.id, roleId: employeeRole.id },
+    });
+  }
+
+  const employee2Emp = await prisma.employee.upsert({
+    where: { email: employee2Email },
+    update: {},
+    create: {
+      employeeCode: "EMP-000005",
+      firstName: "John",
+      lastName: "Doe",
+      email: employee2Email,
+      designation: "Senior Developer",
+      status: "ACTIVE",
+      departmentId: depts[3].id, // IT department
+      userId: employee2User.id,
+      managerId: managerEmp.id, // Reports to manager
+      joiningDate: new Date(),
+      salary: 28000.00,
+    }
+  });
+  console.log("✅ Created employee 2:", employee2Emp.employeeCode);
+
+  // Create HR user
+  const hrEmail = "hr@ciro.gov.et";
+  const hrPassword = await bcrypt.hash("HrUser123!", 10);
+  const hrUser = await prisma.user.upsert({
+    where: { email: hrEmail },
+    update: {},
+    create: { 
+      email: hrEmail, 
+      passwordHash: hrPassword, 
+      firstName: "HR", 
+      lastName: "Specialist" 
+    }
+  });
+
+  // Assign HR role
+  const hrRole = await prisma.role.findUnique({ where: { name: "HR" } });
+  if (hrRole) {
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: hrUser.id, roleId: hrRole.id } },
+      update: {},
+      create: { userId: hrUser.id, roleId: hrRole.id },
+    });
+  }
+
+  const hrEmp = await prisma.employee.upsert({
+    where: { email: hrEmail },
+    update: {},
+    create: {
+      employeeCode: "EMP-000006",
+      firstName: "HR",
+      lastName: "Specialist",
+      email: hrEmail,
+      designation: "HR Specialist",
+      status: "ACTIVE",
+      departmentId: depts[1].id, // HR department
+      userId: hrUser.id,
+      joiningDate: new Date(),
+      salary: 30000.00,
+    }
+  });
+  console.log("✅ Created HR user:", hrEmp.employeeCode);
+
+  // Create an employee under finance manager
+  const financeEmployeeEmail = "finance.emp@ciro.gov.et";
+  const financeEmployeePassword = await bcrypt.hash("FinanceEmp123!", 10);
+  const financeEmployeeUser = await prisma.user.upsert({
+    where: { email: financeEmployeeEmail },
+    update: {},
+    create: { 
+      email: financeEmployeeEmail, 
+      passwordHash: financeEmployeePassword, 
+      firstName: "Finance", 
+      lastName: "Employee" 
+    }
+  });
+
+  if (employeeRole) {
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: financeEmployeeUser.id, roleId: employeeRole.id } },
+      update: {},
+      create: { userId: financeEmployeeUser.id, roleId: employeeRole.id },
+    });
+  }
+
+  const financeEmployeeEmp = await prisma.employee.upsert({
+    where: { email: financeEmployeeEmail },
+    update: {},
+    create: {
+      employeeCode: "EMP-000007",
+      firstName: "Finance",
+      lastName: "Employee",
+      email: financeEmployeeEmail,
+      designation: "Accountant",
+      status: "ACTIVE",
+      departmentId: depts[2].id, // Finance department
+      userId: financeEmployeeUser.id,
+      managerId: financeManagerEmp.id, // Reports to finance manager
+      joiningDate: new Date(),
+      salary: 23000.00,
+    }
+  });
+  console.log("✅ Created finance employee:", financeEmployeeEmp.employeeCode);
+
+  console.log("\n🎉 Database seeding completed successfully!");
+  console.log("\n📋 Test User Credentials:");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🔴 ADMIN ROLE:");
+  console.log("   Email: admin@ciro.gov.et");
+  console.log("   Password: Admin12345!");
+  console.log("   Access: Full system access with all permissions");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🟡 DEPARTMENT MANAGER ROLES:");
+  console.log("   1. Main Manager (HR Department):");
+  console.log("      Email: manager@ciro.gov.et");
+  console.log("      Password: Manager123!");
+  console.log("   2. Finance Manager (Finance Department):");
+  console.log("      Email: finance.manager@ciro.gov.et");
+  console.log("      Password: FinanceMgr123!");
+  console.log("   Access: Department management, team oversight");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🟢 EMPLOYEE ROLES:");
+  console.log("   1. Test Employee (IT Department):");
+  console.log("      Email: employee@ciro.gov.et");
+  console.log("      Password: Employee123!");
+  console.log("   2. John Doe (IT Department):");
+  console.log("      Email: john.doe@ciro.gov.et");
+  console.log("      Password: Employee123!");
+  console.log("   3. Finance Employee (Finance Department):");
+  console.log("      Email: finance.emp@ciro.gov.et");
+  console.log("      Password: FinanceEmp123!");
+  console.log("   Access: Basic employee features");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🔵 HR ROLE:");
+  console.log("   Email: hr@ciro.gov.et");
+  console.log("   Password: HrUser123!");
+  console.log("   Access: HR management features");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
 main()

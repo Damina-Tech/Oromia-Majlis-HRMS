@@ -9,13 +9,20 @@ import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import payrollRoutes from "../modules/payroll/payroll.routes.js";
 import timesheetRoutes from "../modules/timesheet/timesheet.routes.js";
 import assetRoutes from "../modules/assets/asset.routes.js";
+import { uploadDocument } from "../modules/employees/employee.controller.js";
+import { upload } from "../lib/upload.js";
 const router = Router();
 // Public routes
 router.use("/v1/auth", authRoutes);
 // Protected routes with permission-based access
 router.use("/v1/departments", requireAuth, hasAnyPermission("departments.read", "departments.write"), departmentsRoutes);
 router.use("/v1/users", requireAuth, hasPermission("users.read"), usersRoutes);
-router.use("/v1/employees", requireAuth, hasPermission("employees.read"), employeesRoutes);
+// Register upload-document route BEFORE mounting employeesRoutes to ensure it's matched first
+router.post("/v1/employees/upload-document", requireAuth, hasPermission("employees.write"), upload.single("document"), uploadDocument);
+router.use("/v1/employees", (req, res, next) => {
+    console.log(`📋 [ROUTES] Employees route matched: ${req.method} ${req.path}`);
+    next();
+}, requireAuth, hasAnyPermission("employees.read", "employees.write"), employeesRoutes);
 router.use("/v1/leaves", requireAuth, hasAnyPermission("leave.apply", "leave.view", "leave.approve"), leavesRoutes);
 router.use("/v1/attendance", requireAuth, hasAnyPermission("attendance.mark", "attendance.view"), attendanceRoutes);
 router.use("/v1/payroll", requireAuth, hasAnyPermission("payroll.view", "payroll.process"), payrollRoutes);

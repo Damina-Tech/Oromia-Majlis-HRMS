@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 const prisma = new PrismaClient();
-const r = Router();
+const router = Router();
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
 function signAccess(userId, roles, permissions, employeeId) {
     const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
@@ -14,7 +14,7 @@ function signRefresh(userId, roles, permissions, employeeId) {
     const secret = process.env.JWT_REFRESH_SECRET || "your-refresh-secret";
     return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "14d" });
 }
-r.post("/login", async (req, res) => {
+router.post("/login", async (req, res) => {
     const { email, password } = LoginDto.parse(req.body);
     const user = await prisma.user.findUnique({
         where: { email },
@@ -66,7 +66,7 @@ r.post("/login", async (req, res) => {
         }
     });
 });
-r.post("/refresh", async (req, res) => {
+router.post("/refresh", async (req, res) => {
     const token = req.cookies?.refreshToken;
     if (!token)
         return res.status(401).json({ message: "No refresh token" });
@@ -111,5 +111,5 @@ r.post("/refresh", async (req, res) => {
         return res.status(401).json({ message: "Invalid refresh" });
     }
 });
-export default r;
+export default router;
 //# sourceMappingURL=auth.routes.js.map

@@ -4,7 +4,12 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import path from "path";
+import { fileURLToPath } from "url";
 import apiRoutes from "./routes/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -32,9 +37,19 @@ app.use(cookieParser());
 // Logging
 app.use(morgan("combined"));
 
+// Serve static files from uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+// Debug: Log all incoming requests to /api (before routing)
+app.use("/api", (req, res, next) => {
+  console.log(`🔍 [SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
+  console.log(`🔍 [SERVER] Original URL: ${req.originalUrl}`);
+  next();
 });
 
 // API routes

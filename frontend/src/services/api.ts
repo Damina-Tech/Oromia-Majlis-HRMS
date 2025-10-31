@@ -38,4 +38,18 @@ api.interceptors.response.use(
   }
 );
 
+// Document upload helper
+export async function uploadDocument(file: File): Promise<{ url: string; filename: string; originalName: string; size: number }> {
+  const formData = new FormData();
+  formData.append("document", file);
+  
+  const { data } = await api.post("/employees/upload-document", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  
+  return data;
+}
+
 export default api;
