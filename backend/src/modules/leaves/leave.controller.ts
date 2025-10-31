@@ -3,6 +3,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import {
   CreateLeaveRequestDto,
   UpdateLeaveStatusDto,
+  UpdateLeaveRequestDto,
   ListLeaveRequestsQuery,
 } from "./leave.dto.js";
 
@@ -19,7 +20,13 @@ function calculateDays(startDate: Date, endDate: Date): number {
 export async function listLeaveRequests(req: Request, res: Response) {
   try {
     const query = ListLeaveRequestsQuery.parse(req.query);
-    const { status, employeeId, page, pageSize } = query;
+    const { status, employeeId, search, sortBy, sortOrder, page, pageSize } = query;
+    const user = (req as any).user;
+    const userRoles = user?.roles || [];
+    const userPermissions = user?.permissions || [];
+    const isAdminOrHR = userRoles.includes("ADMIN") || userRoles.includes("HR") || 
+                       userPermissions.includes("leave.manage") || userPermissions.includes("leave.approve");
+    const userEmployeeId = user?.employeeId;
 
     const where: Prisma.LeaveRequestWhereInput = {};
     
@@ -27,13 +34,37 @@ export async function listLeaveRequests(req: Request, res: Response) {
       where.status = status;
     }
     
-    // If user is not admin/HR, only show their own leave requests
-    const userEmployeeId = (req as any).user?.employeeId;
+    // If user is not admin/HR/manager, only show their own leave requests
     if (employeeId) {
       where.employeeId = employeeId;
-    } else if (userEmployeeId) {
+    } else if (!isAdminOrHR && userEmployeeId) {
       // Regular employees can only see their own leaves
       where.employeeId = userEmployeeId;
+    }
+    
+    // Search by employee name or email
+    if (search) {
+      where.employee = {
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+
+    // Build orderBy clause
+    let orderBy: Prisma.LeaveRequestOrderByWithRelationInput = {};
+    if (sortBy === "startDate") {
+      orderBy = { startDate: sortOrder };
+    } else if (sortBy === "endDate") {
+      orderBy = { endDate: sortOrder };
+    } else if (sortBy === "days") {
+      orderBy = { days: sortOrder };
+    } else if (sortBy === "status") {
+      orderBy = { status: sortOrder };
+    } else {
+      orderBy = { createdAt: sortOrder };
     }
 
     const [items, total] = await Promise.all([
@@ -57,7 +88,7 @@ export async function listLeaveRequests(req: Request, res: Response) {
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -116,40 +147,61 @@ export async function getLeaveRequest(req: Request, res: Response) {
 export async function createLeaveRequest(req: Request, res: Response) {
   try {
     const data = CreateLeaveRequestDto.parse(req.body);
-    const userEmployeeId = (req as any).user?.employeeId;
-
-    if (!userEmployeeId) {
-      return res.status(403).json({ message: "Employee record not found for user" });
+    const user = (req as any).user;
+    const userRoles = user?.roles || [];
+    const userPermissions = user?.permissions || [];
+    const isAdminOrHR = userRoles.includes("ADMIN") || userRoles.includes("HR") || 
+                       userPermissions.includes("leave.manage");
+    
+    // Determine which employee this request is for
+    let targetEmployeeId: string;
+    if (data.employeeId) {
+      // If employeeId is provided, check if user has permission to create for others
+      if (!isAdminOrHR) {
+        return res.status(403).json({ message: "You don't have permission to create leave requests for other employees" });
+      }
+      targetEmployeeId = data.employeeId;
+    } else {
+      // Otherwise, create for the current user
+      const userEmployeeId = user?.employeeId;
+      if (!userEmployeeId) {
+        return res.status(403).json({ message: "Employee record not found for user" });
+      }
+      targetEmployeeId = userEmployeeId;
     }
 
     const startDate = new Date(data.startDate);
     const endDate = new Date(data.endDate);
-    const days = calculateDays(startDate, endDate);
+    let days = calculateDays(startDate, endDate);
+    
+    // If half day is enabled and startDate === endDate, reduce to 0.5
+    if (data.halfDay && startDate.toDateString() === endDate.toDateString()) {
+      days = 0.5;
+    }
 
-    // Check if employee has leave balance
-    const balance = await prisma.leaveBalance.findUnique({
-      where: { employeeId: userEmployeeId },
+    // Check if employee has leave balance (for the target employee)
+    const currentYear = new Date().getFullYear();
+    const balances = await prisma.leaveBalance.findMany({
+      where: {
+        employeeId: targetEmployeeId,
+        year: currentYear,
+        leaveType: data.type,
+      },
     });
 
-    if (balance) {
-      const leaveTypeMap: Record<string, keyof typeof balance> = {
-        CASUAL: "casualLeave",
-        SICK: "sickLeave",
-        VACATION: "vacationLeave",
-        PERSONAL: "personalLeave",
-      };
-
-      const balanceField = leaveTypeMap[data.type];
-      if (balanceField && (balance[balanceField] as number) < days) {
+    if (balances.length > 0) {
+      const balance = balances[0];
+      const availableDays = Number(balance.availableDays);
+      if (availableDays < days) {
         return res.status(400).json({
-          message: `Insufficient leave balance. Available: ${balance[balanceField]} days, Requested: ${days} days`,
+          message: `Insufficient leave balance. Available: ${availableDays} days, Requested: ${days} days`,
         });
       }
     }
 
     const leave = await prisma.leaveRequest.create({
       data: {
-        employeeId: userEmployeeId,
+        employeeId: targetEmployeeId,
         type: data.type,
         startDate,
         endDate,
@@ -182,7 +234,25 @@ export async function createLeaveRequest(req: Request, res: Response) {
 export async function updateLeaveStatus(req: Request, res: Response) {
   try {
     const data = UpdateLeaveStatusDto.parse(req.body);
-    const approverId = (req as any).user?.employeeId || null; // Admin might not have employee record
+    const user = (req as any).user;
+    // For approval, we need an approver. If admin doesn't have employeeId, we'll use their userId
+    // But first, try to find if they have an employee record
+    let approverId: string | null = null;
+    if (user?.employeeId) {
+      approverId = user.employeeId;
+    } else if (user?.id) {
+      // Admin might not have employee record, but we still want to track who approved
+      // We'll try to find their employee record by userId
+      const adminEmployee = await prisma.employee.findFirst({
+        where: {
+          user: {
+            id: user.id,
+          },
+        },
+        select: { id: true },
+      });
+      approverId = adminEmployee?.id || null;
+    }
 
     const leave = await prisma.leaveRequest.findUnique({
       where: { id: req.params.id },
@@ -199,29 +269,48 @@ export async function updateLeaveStatus(req: Request, res: Response) {
 
     // Update leave balance if approved
     if (data.status === "APPROVED") {
+      const currentYear = new Date(leave.startDate).getFullYear();
       const balance = await prisma.leaveBalance.findUnique({
-        where: { employeeId: leave.employeeId },
+        where: {
+          employeeId_leaveType_year: {
+            employeeId: leave.employeeId,
+            leaveType: leave.type,
+            year: currentYear,
+          },
+        },
       });
 
       if (balance) {
-        const leaveTypeMap: Record<string, keyof typeof balance> = {
-          CASUAL: "casualLeave",
-          SICK: "sickLeave",
-          VACATION: "vacationLeave",
-          PERSONAL: "personalLeave",
-        };
-
-        const balanceField = leaveTypeMap[leave.type];
-        if (balanceField) {
-          await prisma.leaveBalance.update({
-            where: { employeeId: leave.employeeId },
-            data: {
-              [balanceField]: {
-                decrement: leave.days,
-              },
+        // Update usedDays and recalculate availableDays
+        const newUsedDays = Number(balance.usedDays) + Number(leave.days);
+        const availableDays = Number(balance.allocatedDays) + Number(balance.carriedOver) - newUsedDays;
+        
+        await prisma.leaveBalance.update({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: leave.employeeId,
+              leaveType: leave.type,
+              year: currentYear,
             },
-          });
-        }
+          },
+          data: {
+            usedDays: newUsedDays,
+            availableDays: availableDays,
+          },
+        });
+      } else {
+        // Create balance entry if it doesn't exist
+        await prisma.leaveBalance.create({
+          data: {
+            employeeId: leave.employeeId,
+            leaveType: leave.type,
+            year: currentYear,
+            allocatedDays: 0,
+            usedDays: Number(leave.days),
+            carriedOver: 0,
+            availableDays: -Number(leave.days), // Negative balance
+          },
+        });
       }
     }
 
@@ -231,7 +320,7 @@ export async function updateLeaveStatus(req: Request, res: Response) {
         status: data.status,
         approverId,
         approvedAt: new Date(),
-        rejectionReason: data.rejectionReason,
+        rejectionReason: data.comment || data.rejectionReason, // Use comment for both approval comments and rejection reasons
       },
       include: {
         employee: {
@@ -266,36 +355,194 @@ export async function updateLeaveStatus(req: Request, res: Response) {
 export async function getLeaveBalance(req: Request, res: Response) {
   try {
     const { employeeId } = req.params;
+    const { year } = req.query;
     const userEmployeeId = (req as any).user?.employeeId;
 
+    // Check if user has permission to view other employees' balances
+    const user = (req as any).user;
+    const userRoles = user?.roles || [];
+    const userPermissions = user?.permissions || [];
+    const isAdminOrHR = userRoles.includes("ADMIN") || userRoles.includes("HR") || 
+                       userPermissions.includes("leave.manage") || userPermissions.includes("leave.read");
+    
     // Users can only see their own balance unless they're admin/HR
-    if (employeeId !== userEmployeeId) {
-      // TODO: Add role check for admin/HR
+    if (employeeId !== userEmployeeId && !isAdminOrHR) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    let balance = await prisma.leaveBalance.findUnique({
-      where: { employeeId },
+    // Get current year if not specified
+    const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
+
+    // Fetch all leave balances for this employee and year
+    const balances = await prisma.leaveBalance.findMany({
+      where: {
+        employeeId,
+        year: currentYear,
+      },
     });
 
-    // Create default balance if doesn't exist
-    if (!balance) {
-      balance = await prisma.leaveBalance.create({
-        data: { employeeId },
-      });
+    // Aggregate balances into the old format for backward compatibility
+    // Default values if no balances exist
+    const aggregated = {
+      id: `balance-${employeeId}-${currentYear}`,
+      employeeId,
+      casualLeave: 0,
+      sickLeave: 0,
+      vacationLeave: 0,
+      personalLeave: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Aggregate by leave type
+    balances.forEach((balance) => {
+      const availableDays = Number(balance.availableDays);
+      switch (balance.leaveType) {
+        case "CASUAL":
+          aggregated.casualLeave = availableDays;
+          break;
+        case "SICK":
+          aggregated.sickLeave = availableDays;
+          break;
+        case "VACATION":
+          aggregated.vacationLeave = availableDays;
+          break;
+        case "PERSONAL":
+          aggregated.personalLeave = availableDays;
+          break;
+      }
+    });
+
+    // If no balances exist, create default balances for current year
+    if (balances.length === 0) {
+      const defaultBalances = [
+        { leaveType: "CASUAL" as const, allocatedDays: 12 },
+        { leaveType: "SICK" as const, allocatedDays: 10 },
+        { leaveType: "VACATION" as const, allocatedDays: 21 },
+        { leaveType: "PERSONAL" as const, allocatedDays: 5 },
+      ];
+
+      await prisma.$transaction(
+        defaultBalances.map((defaultBalance) =>
+          prisma.leaveBalance.create({
+            data: {
+              employeeId,
+              leaveType: defaultBalance.leaveType,
+              year: currentYear,
+              allocatedDays: defaultBalance.allocatedDays,
+              usedDays: 0,
+              carriedOver: 0,
+              availableDays: defaultBalance.allocatedDays,
+            },
+          })
+        )
+      );
+
+      // Update aggregated with defaults
+      aggregated.casualLeave = 12;
+      aggregated.sickLeave = 10;
+      aggregated.vacationLeave = 21;
+      aggregated.personalLeave = 5;
     }
 
-    res.json(balance);
+    res.json(aggregated);
   } catch (error) {
     console.error("Get leave balance error:", error);
     res.status(500).json({ message: "Failed to fetch leave balance" });
   }
 }
 
+// PUT /api/v1/leaves/:id - Update leave request (for admins/managers)
+export async function updateLeaveRequest(req: Request, res: Response) {
+  try {
+    const data = UpdateLeaveRequestDto.parse(req.body);
+    const user = (req as any).user;
+    const userRoles = user?.roles || [];
+    const userPermissions = user?.permissions || [];
+    const isAdminOrHR = userRoles.includes("ADMIN") || userRoles.includes("HR") || 
+                       userPermissions.includes("leave.manage");
+
+    const leave = await prisma.leaveRequest.findUnique({
+      where: { id: req.params.id },
+      include: { employee: true },
+    });
+
+    if (!leave) {
+      return res.status(404).json({ message: "Leave request not found" });
+    }
+
+    // Only admins/managers can edit leave requests
+    if (!isAdminOrHR) {
+      return res.status(403).json({ message: "You don't have permission to edit leave requests" });
+    }
+
+    // Can only edit pending requests
+    if (leave.status !== "PENDING") {
+      return res.status(400).json({ message: "Can only edit pending leave requests" });
+    }
+
+    // Calculate new days if dates changed
+    let days = leave.days;
+    if (data.startDate || data.endDate) {
+      const startDate = new Date(data.startDate || leave.startDate);
+      const endDate = new Date(data.endDate || leave.endDate);
+      days = calculateDays(startDate, endDate);
+      
+      // Apply half day if enabled and same day
+      if (data.halfDay && startDate.toDateString() === endDate.toDateString()) {
+        days = 0.5;
+      }
+    }
+
+    // Update leave request
+    const updated = await prisma.leaveRequest.update({
+      where: { id: req.params.id },
+      data: {
+        type: data.type || leave.type,
+        startDate: data.startDate ? new Date(data.startDate) : leave.startDate,
+        endDate: data.endDate ? new Date(data.endDate) : leave.endDate,
+        days,
+        reason: data.reason || leave.reason,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            designation: true,
+          },
+        },
+        approver: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.name === "ZodError") {
+      return res.status(400).json({ message: "Invalid input data", errors: error });
+    }
+    console.error("Update leave request error:", error);
+    res.status(500).json({ message: "Failed to update leave request" });
+  }
+}
+
 // DELETE /api/v1/leaves/:id - Cancel leave request
 export async function cancelLeaveRequest(req: Request, res: Response) {
   try {
-    const userEmployeeId = (req as any).user?.employeeId;
+    const user = (req as any).user;
+    const userEmployeeId = user?.employeeId;
+    const userRoles = user?.roles || [];
+    const userPermissions = user?.permissions || [];
+    const isAdminOrHR = userRoles.includes("ADMIN") || userRoles.includes("HR") || 
+                       userPermissions.includes("leave.manage");
 
     const leave = await prisma.leaveRequest.findUnique({
       where: { id: req.params.id },
@@ -305,8 +552,8 @@ export async function cancelLeaveRequest(req: Request, res: Response) {
       return res.status(404).json({ message: "Leave request not found" });
     }
 
-    // Only the employee who created the request can cancel it
-    if (leave.employeeId !== userEmployeeId) {
+    // Only the employee who created the request or admin/manager can cancel it
+    if (leave.employeeId !== userEmployeeId && !isAdminOrHR) {
       return res.status(403).json({ message: "Access denied" });
     }
 

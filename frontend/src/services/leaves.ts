@@ -45,6 +45,9 @@ export type LeaveBalance = {
 export async function listLeaveRequests(params: {
   status?: LeaveStatus;
   employeeId?: string;
+  search?: string;
+  sortBy?: "createdAt" | "startDate" | "endDate" | "days" | "status";
+  sortOrder?: "asc" | "desc";
   page?: number;
   pageSize?: number;
 }) {
@@ -58,10 +61,12 @@ export async function getLeaveRequest(id: string) {
 }
 
 export async function createLeaveRequest(payload: {
+  employeeId?: string; // Optional: for creating on behalf of others
   type: LeaveType;
   startDate: string;
   endDate: string;
   reason: string;
+  halfDay?: boolean;
 }) {
   const { data } = await api.post("/leaves", payload);
   return data as LeaveRequest;
@@ -72,6 +77,7 @@ export async function updateLeaveStatus(
   payload: {
     status: "APPROVED" | "REJECTED";
     rejectionReason?: string;
+    comment?: string;
   }
 ) {
   const { data } = await api.put(`/leaves/${id}/status`, payload);
@@ -81,6 +87,20 @@ export async function updateLeaveStatus(
 export async function getLeaveBalance(employeeId: string) {
   const { data } = await api.get(`/leaves/balance/${employeeId}`);
   return data as LeaveBalance;
+}
+
+export async function updateLeaveRequest(
+  id: string,
+  payload: {
+    type?: LeaveType;
+    startDate?: string;
+    endDate?: string;
+    reason?: string;
+    halfDay?: boolean;
+  }
+) {
+  const { data } = await api.put(`/leaves/${id}`, payload);
+  return data as LeaveRequest;
 }
 
 export async function cancelLeaveRequest(id: string) {

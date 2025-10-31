@@ -11,6 +11,8 @@ import Dashboard from "./pages/Dashboard";
 import EmployeesPage from "./pages/EmployeesPage";
 import AttendancePage from "./pages/AttendancePage";
 import LeaveManagement from "./pages/LeaveManagement";
+import LeaveBalancesPage from "./pages/LeaveBalancesPage";
+import LeaveRequestsPage from "./pages/LeaveRequestsPage";
 import PayrollPage from "./pages/PayrollPage";
 import OrganizationPage from "./pages/OrganizationPage";
 import TimesheetPage from "./pages/TimesheetPage";
@@ -158,6 +160,22 @@ function AppRoutes() {
             <LeaveManagement data-id="mxpxjn5vk" data-path="src/App.tsx" />
           }
           data-id="wkgyrsdqz"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="leave-balances"
+          element={
+            <LeaveBalancesPage data-id="leave-balances-page" data-path="src/App.tsx" />
+          }
+          data-id="leave-balances-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="leave-requests"
+          element={
+            <LeaveRequestsPage data-id="leave-requests-page" data-path="src/App.tsx" />
+          }
+          data-id="leave-requests-route"
           data-path="src/App.tsx"
         />
         <Route

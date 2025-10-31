@@ -1101,8 +1101,8 @@ const EmployeesPage: React.FC = () => {
               </div>
             <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-blue-600" />
-            </div>
               </div>
+            </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -1113,8 +1113,8 @@ const EmployeesPage: React.FC = () => {
               </div>
             <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-green-600" />
-            </div>
               </div>
+            </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -1125,8 +1125,8 @@ const EmployeesPage: React.FC = () => {
               </div>
             <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-yellow-600" />
-            </div>
               </div>
+            </div>
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
@@ -1137,8 +1137,8 @@ const EmployeesPage: React.FC = () => {
               </div>
             <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-purple-600" />
+              </div>
             </div>
-          </div>
         </CardContent></Card>
       </div>
 
@@ -1279,9 +1279,9 @@ const EmployeesPage: React.FC = () => {
                                     <p><span className="font-medium">Marriage Status:</span> {e.marriageStatus ? e.marriageStatus.charAt(0) + e.marriageStatus.slice(1).toLowerCase().replace('_', ' ') : "—"}</p>
                                     <p><span className="font-medium">Address:</span> {e.address ?? "—"}</p>
                                     <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact || "—"}</p>
+                                    </div>
                                   </div>
                                 </div>
-                                    </div>
                               <div className="space-y-4">
                                 <div>
                                   <h4 className="font-medium text-gray-900">Professional Information</h4>
@@ -1300,8 +1300,8 @@ const EmployeesPage: React.FC = () => {
                                     <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
                                     <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
                                     <p><span className="font-medium">Salary:</span> {e.salary != null && typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
+                                    </div>
                                   </div>
-                                </div>
                                 {e.document && (
                                   <div>
                                     <h4 className="font-medium text-gray-900 mb-2">Document</h4>
@@ -1318,8 +1318,8 @@ const EmployeesPage: React.FC = () => {
                                         <Download className="h-3 w-3" />
                                         View/Download Document
                                       </a>
-                                    </div>
-                                  </div>
+                                </div>
+                              </div>
                                 )}
                               </div>
                             </div>

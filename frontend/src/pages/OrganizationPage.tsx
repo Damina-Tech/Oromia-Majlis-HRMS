@@ -16,6 +16,13 @@ import {
 '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { 
   listDepartments, 
   getDepartment, 
   createDepartment, 
@@ -24,6 +31,7 @@ import {
   type Department 
 } from '@/services/departments';
 import { listEmployees, type Employee } from '@/services/employees';
+import { listUsers, type User } from '@/services/users';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -46,6 +54,7 @@ const OrganizationPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
   const [selectedDeptEmployees, setSelectedDeptEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +64,7 @@ const OrganizationPage: React.FC = () => {
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [deletingDepartment, setDeletingDepartment] = useState<Department | null>(null);
   const [newDeptName, setNewDeptName] = useState('');
+  const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -69,12 +79,22 @@ const OrganizationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [depts, emps] = await Promise.all([
+      const [depts, emps, users] = await Promise.all([
         listDepartments(),
-        listEmployees({ page: 1, pageSize: 1000 })
+        listEmployees({ page: 1, pageSize: 1000 }),
+        listUsers(true) // Only fetch active users
       ]);
       setDepartments(depts);
       setAllEmployees(emps.items);
+      
+      // Filter active users and exclude those already managing other departments (unless editing current department)
+      const activeUsers = users.filter(user => user.status === 'ACTIVE');
+      const managerIds = new Set(depts.map(d => d.managerId).filter(Boolean));
+      
+      setAllUsers(activeUsers.map(user => ({
+        ...user,
+        isManager: managerIds.has(user.id)
+      })));
     } catch (err) {
       toast.error('Failed to load organization data');
       console.error(err);
@@ -107,13 +127,22 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
+    if (!selectedManagerId) {
+      setError('Department manager is required');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError('');
-      await createDepartment({ name: newDeptName.trim() });
+      await createDepartment({ 
+        name: newDeptName.trim(),
+        managerId: selectedManagerId
+      });
       toast.success(`Department "${newDeptName}" created successfully!`);
       setShowAddDialog(false);
       setNewDeptName('');
+      setSelectedManagerId('');
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to create department';
@@ -130,14 +159,23 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
+    if (!selectedManagerId) {
+      setError('Department manager is required');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError('');
-      await updateDepartment(editingDepartment.id, { name: newDeptName.trim() });
-      toast.success(`Department renamed to "${newDeptName}" successfully!`);
+      await updateDepartment(editingDepartment.id, { 
+        name: newDeptName.trim(),
+        managerId: selectedManagerId
+      });
+      toast.success(`Department updated successfully!`);
       setShowEditDialog(false);
       setEditingDepartment(null);
       setNewDeptName('');
+      setSelectedManagerId('');
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to update department';
@@ -181,6 +219,7 @@ const OrganizationPage: React.FC = () => {
   const openEditDialog = (dept: Department) => {
     setEditingDepartment(dept);
     setNewDeptName(dept.name);
+    setSelectedManagerId(dept.managerId || '');
     setShowEditDialog(true);
     setError('');
   };
@@ -211,7 +250,12 @@ const OrganizationPage: React.FC = () => {
         </div>
         
         {canWrite && (
-          <Button onClick={() => { setShowAddDialog(true); setError(''); setNewDeptName(''); }}>
+          <Button onClick={() => { 
+            setShowAddDialog(true); 
+            setError(''); 
+            setNewDeptName(''); 
+            setSelectedManagerId(''); 
+          }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Department
           </Button>
@@ -333,7 +377,14 @@ const OrganizationPage: React.FC = () => {
             <Card key={department.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-center justify-between">
+                  <div>
                   <CardTitle className="text-lg">{department.name}</CardTitle>
+                    {department.manager && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Manager: {department.manager.firstName} {department.manager.lastName}
+                      </p>
+                    )}
+                  </div>
                   <Badge variant="outline">{employees.length} member{employees.length !== 1 ? 's' : ''}</Badge>
                 </div>
               </CardHeader>
@@ -418,6 +469,20 @@ const OrganizationPage: React.FC = () => {
                       <p className="font-semibold">{selectedDeptEmployees.length} employee{selectedDeptEmployees.length !== 1 ? 's' : ''}</p>
                     </div>
                     <div>
+                      <p className="text-sm font-medium text-gray-600">Department Manager</p>
+                      {selectedDepartment.manager ? (
+                        <div>
+                          <p className="font-semibold">{selectedDepartment.manager.firstName} {selectedDepartment.manager.lastName}</p>
+                          <p className="text-sm text-gray-500">{selectedDepartment.manager.email}</p>
+                          {selectedDepartment.manager.employee?.designation && (
+                            <p className="text-xs text-gray-400">{selectedDepartment.manager.employee.designation}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">No manager assigned</p>
+                      )}
+                    </div>
+                    <div>
                       <p className="text-sm font-medium text-gray-600">Status</p>
                       <Badge className="bg-green-100 text-green-800">Active</Badge>
                     </div>
@@ -488,6 +553,43 @@ const OrganizationPage: React.FC = () => {
                 disabled={submitting}
               />
             </div>
+            <div>
+              <Label htmlFor="dept-manager">Department Manager *</Label>
+              <Select
+                value={selectedManagerId}
+                onValueChange={(value) => {
+                  setSelectedManagerId(value);
+                  setError('');
+                }}
+                disabled={submitting}
+                required
+              >
+                <SelectTrigger id="dept-manager" className={!selectedManagerId && error ? "border-red-500" : ""}>
+                  <SelectValue placeholder="Select a manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allUsers.map((user: User & { isManager?: boolean }) => {
+                    // In add dialog, disable users who are already managers
+                    const isOtherManager = user.isManager;
+                    
+                    return (
+                      <SelectItem 
+                        key={user.id} 
+                        value={user.id}
+                        disabled={isOtherManager}
+                        className={isOtherManager ? "opacity-50" : ""}
+                      >
+                        {user.firstName} {user.lastName} {user.employee?.designation ? `(${user.employee.designation})` : ''}
+                        {isOtherManager && " - Already managing another department"}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {!selectedManagerId && error && error.includes('manager') && (
+                <p className="text-sm text-red-500 mt-1">This field is required</p>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
@@ -527,6 +629,44 @@ const OrganizationPage: React.FC = () => {
                 placeholder="e.g., Human Resources"
                 disabled={submitting}
               />
+            </div>
+            <div>
+              <Label htmlFor="edit-dept-manager">Department Manager *</Label>
+              <Select
+                value={selectedManagerId}
+                onValueChange={(value) => {
+                  setSelectedManagerId(value);
+                  setError('');
+                }}
+                disabled={submitting}
+                required
+              >
+                <SelectTrigger id="edit-dept-manager" className={!selectedManagerId && error ? "border-red-500" : ""}>
+                  <SelectValue placeholder="Select a manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allUsers.map((user: User & { isManager?: boolean }) => {
+                    // When editing, allow current manager to be selected even if they manage another dept
+                    const isCurrentManager = editingDepartment?.managerId === user.id;
+                    const isOtherManager = user.isManager && !isCurrentManager;
+                    
+                    return (
+                      <SelectItem 
+                        key={user.id} 
+                        value={user.id}
+                        disabled={isOtherManager}
+                        className={isOtherManager ? "opacity-50" : ""}
+                      >
+                        {user.firstName} {user.lastName} {user.employee?.designation ? `(${user.employee.designation})` : ''}
+                        {isOtherManager && " - Already managing another department"}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {!selectedManagerId && error && error.includes('manager') && (
+                <p className="text-sm text-red-500 mt-1">This field is required</p>
+              )}
             </div>
           </div>
 

@@ -25,6 +25,7 @@ const PERMISSIONS = [
   // Leave
   { name: "leave.apply", module: "leave", action: "apply", description: "Apply for leave" },
   { name: "leave.view", module: "leave", action: "view", description: "View leave requests" },
+  { name: "leave.read", module: "leave", action: "read", description: "Read leave balances" },
   { name: "leave.approve", module: "leave", action: "approve", description: "Approve/Reject leave" },
   { name: "leave.manage", module: "leave", action: "manage", description: "Manage all leaves" },
   
@@ -95,6 +96,7 @@ const ROLE_PERMISSIONS = {
     "attendance.manage",
     "leave.apply",
     "leave.view",
+    "leave.read",
     "leave.approve",
     "leave.manage",
     "payroll.read",
@@ -129,6 +131,7 @@ const ROLE_PERMISSIONS = {
     "attendance.view",
     "leave.apply",
     "leave.view",
+    "leave.read",
     "leave.approve",
     "payroll.read",
     "reports.view",

@@ -4,6 +4,18 @@ import { Employee } from "./employees";
 export type Department = {
   id: string;
   name: string;
+  managerId?: string | null;
+  manager?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    employee?: {
+      id: string;
+      employeeCode: string;
+      designation?: string | null;
+    } | null;
+  } | null;
   createdAt?: string;
   updatedAt?: string;
   employees?: Employee[];
@@ -22,12 +34,12 @@ export async function getDepartment(id: string) {
   return data as Department;
 }
 
-export async function createDepartment(payload: { name: string }) {
+export async function createDepartment(payload: { name: string; managerId?: string }) {
   const { data } = await api.post("/departments", payload);
   return data as Department;
 }
 
-export async function updateDepartment(id: string, payload: { name: string }) {
+export async function updateDepartment(id: string, payload: { name: string; managerId?: string }) {
   const { data } = await api.put(`/departments/${id}`, payload);
   return data as Department;
 }

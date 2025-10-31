@@ -9,11 +9,27 @@ const router = Router();
 // GET /api/v1/users - List users
 router.get("/", async (req: Request, res: Response) => {
   try {
+    const { active } = req.query;
+    const where: any = {};
+    
+    // Filter by active status if requested
+    if (active === 'true') {
+      where.status = 'ACTIVE';
+    }
+    
     const users = await prisma.user.findMany({
+      where,
       include: {
         userRoles: {
           include: {
             role: true
+          }
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            designation: true
           }
         }
       }

@@ -5,6 +5,7 @@ import usersRoutes from "../modules/users/users.routes.js";
 import employeesRoutes from "../modules/employees/employees.routes.js";
 import departmentsRoutes from "../modules/departments/departments.routes.js";
 import leavesRoutes from "../modules/leaves/leaves.routes.js";
+import leaveBalancesRoutes from "../modules/leaves/leave-balances.routes.js";
 import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import payrollRoutes from "../modules/payroll/payroll.routes.js";
 import timesheetRoutes from "../modules/timesheet/timesheet.routes.js";
@@ -38,6 +39,7 @@ router.use("/v1/employees",
   employeesRoutes
 );
 router.use("/v1/leaves", requireAuth, hasAnyPermission("leave.apply", "leave.view", "leave.approve"), leavesRoutes);
+router.use("/v1/leave-balances", requireAuth, leaveBalancesRoutes);
 router.use("/v1/attendance", requireAuth, hasAnyPermission("attendance.mark", "attendance.view"), attendanceRoutes);
 router.use("/v1/payroll", requireAuth, hasAnyPermission("payroll.view", "payroll.process"), payrollRoutes);
 router.use("/v1/timesheets", requireAuth, hasAnyPermission("timesheet.create", "timesheet.view", "timesheet.approve"), timesheetRoutes);

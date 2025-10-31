@@ -4,6 +4,7 @@ import {
   getLeaveRequest,
   createLeaveRequest,
   updateLeaveStatus,
+  updateLeaveRequest,
   getLeaveBalance,
   cancelLeaveRequest,
 } from "./leave.controller.js";
@@ -24,6 +25,9 @@ router.post("/", createLeaveRequest);
 
 // PUT /api/v1/leaves/:id/status - Approve/reject leave
 router.put("/:id/status", updateLeaveStatus);
+
+// PUT /api/v1/leaves/:id - Update leave request (admins/managers only)
+router.put("/:id", updateLeaveRequest);
 
 // DELETE /api/v1/leaves/:id - Cancel leave request
 router.delete("/:id", cancelLeaveRequest);

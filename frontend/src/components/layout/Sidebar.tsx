@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,7 +22,8 @@ import {
   UserPlus,
   LogOut,
   ChevronRight,
-  Timer } from
+  Timer,
+  ChevronDown } from
 'lucide-react';
 
 interface SidebarProps {
@@ -127,6 +128,8 @@ const adminItems = [
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const { user, logout, hasPermission } = useAuth();
+  const location = useLocation();
+  const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set());
 
   const filteredMenuItems = menuItems.filter((item) =>
   item.permission === '*' || hasPermission(item.permission)
@@ -135,6 +138,36 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const filteredAdminItems = adminItems.filter((item) =>
   item.permission === '*' || hasPermission(item.permission)
   );
+
+  // Leave Management submenu items - always include both items if user has leave.view permission
+  // (since they can see the main Leave Management menu item)
+  const leaveSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // If user can see Leave Management, they should see both submenu items
+  if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
+    leaveSubmenuItems.push({ title: 'Leave Management', href: '/leave', permission: 'leave.view' });
+    leaveSubmenuItems.push({ title: 'Leave Requests', href: '/leave-requests', permission: 'leave.view' });
+    leaveSubmenuItems.push({ title: 'Leave Balance', href: '/leave-balances', permission: 'leave.read' });
+  }
+
+  // Auto-expand Leave Management when on leave-related pages
+  React.useEffect(() => {
+    if (location.pathname.startsWith('/leave')) {
+      setExpandedItems(prev => new Set([...prev, 'Leave Management']));
+    }
+  }, [location.pathname]);
+
+  const toggleExpand = (item: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(item)) {
+        next.delete(item);
+      } else {
+        next.add(item);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className={`bg-white border-r border-gray-200 transition-all duration-300 ${
@@ -184,6 +217,51 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         <nav className="space-y-1" data-id="vlfl8b3tl" data-path="src/components/layout/Sidebar.tsx">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
+            const isLeaveManagement = item.title === 'Leave Management';
+            const isExpanded = expandedItems.has(item.title);
+            const isLeavePage = location.pathname.startsWith('/leave');
+            
+            if (isLeaveManagement && leaveSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isLeavePage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {leaveSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            
             return (
               <NavLink
                 key={item.href}
@@ -204,7 +282,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   </>
                 }
               </NavLink>);
-
           })}
 
           {filteredAdminItems.length > 0 &&
