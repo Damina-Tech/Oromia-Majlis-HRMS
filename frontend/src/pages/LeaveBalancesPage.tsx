@@ -55,9 +55,15 @@ import {
 } from 'lucide-react';
 
 const LeaveBalancesPage: React.FC = () => {
-  const { hasPermission } = useAuth();
-  const canManage = hasPermission('leave.manage');
-  const canRead = hasPermission('leave.read') || canManage;
+  const { user, hasPermission } = useAuth();
+  
+  // Only ADMIN and MANAGER can access this page
+  const isAdminOrManager = user?.roles?.some(role => 
+    role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'MANAGER'
+  ) || false;
+  
+  const canManage = isAdminOrManager && hasPermission('leave.manage');
+  const canRead = isAdminOrManager && (hasPermission('leave.read') || canManage);
 
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -299,6 +305,27 @@ const LeaveBalancesPage: React.FC = () => {
   }, [balances, searchTerm]);
 
   const totalPages = Math.ceil(total / pageSize);
+
+  // Access control check - Only ADMIN and MANAGER
+  if (!isAdminOrManager) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-orange-500" />
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
+                <p className="text-sm text-gray-600">
+                  Only Administrators and Managers can access this page.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!canRead) {
     return (

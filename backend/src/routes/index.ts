@@ -20,7 +20,7 @@ router.use("/v1/auth", authRoutes);
 
 // Protected routes with permission-based access
 router.use("/v1/departments", requireAuth, hasAnyPermission("departments.read", "departments.write"), departmentsRoutes);
-router.use("/v1/users", requireAuth, hasPermission("users.read"), usersRoutes);
+router.use("/v1/users", usersRoutes);
 // Register upload-document route BEFORE mounting employeesRoutes to ensure it's matched first
 router.post("/v1/employees/upload-document",
   requireAuth,

@@ -975,7 +975,7 @@ export default function AssetManagementPage() {
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       <span className="font-medium">
-                        {getActionLabel(entry.action)}
+                        {getConditionLabel(entry.action)}
                       </span>
                     </div>
                     <span className="text-sm text-muted-foreground">

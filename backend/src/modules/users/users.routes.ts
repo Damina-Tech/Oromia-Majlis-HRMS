@@ -1,67 +1,39 @@
 import { Router } from "express";
-import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import {
+  listUsers,
+  getUser,
+  createUser,
+  updateUser,
+  deleteUser,
+  getRoles,
+  getRole,
+  getPermissions,
+  createRole,
+  updateRole,
+  deleteRole,
+} from "./user.controller.js";
+import { requireAuth, hasAnyPermission, hasPermission } from "../../middleware/auth.js";
 
 const router = Router();
 
-// GET /api/v1/users - List users
-router.get("/", async (req: Request, res: Response) => {
-  try {
-    const { active } = req.query;
-    const where: any = {};
-    
-    // Filter by active status if requested
-    if (active === 'true') {
-      where.status = 'ACTIVE';
-    }
-    
-    const users = await prisma.user.findMany({
-      where,
-      include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
-        employee: {
-          select: {
-            id: true,
-            employeeCode: true,
-            designation: true
-          }
-        }
-      }
-    });
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch users" });
-  }
-});
+// All routes require authentication
+router.use(requireAuth);
 
-// GET /api/v1/users/:id - Get specific user
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch user" });
-  }
-});
+// Get permissions (for dropdowns)
+router.get("/permissions", getPermissions);
+
+// Role CRUD operations - specific routes must come before general routes
+router.get("/roles/:id", hasAnyPermission("users.read", "users.write"), getRole);
+router.post("/roles", hasPermission("users.write"), createRole);
+router.put("/roles/:id", hasPermission("users.write"), updateRole);
+router.delete("/roles/:id", hasPermission("users.delete"), deleteRole);
+router.get("/roles", getRoles);
+
+// User CRUD operations
+router.get("/", hasAnyPermission("users.read", "users.write"), listUsers);
+router.get("/:id", hasAnyPermission("users.read", "users.write"), getUser);
+router.post("/", hasPermission("users.write"), createUser);
+router.put("/:id", hasPermission("users.write"), updateUser);
+router.delete("/:id", hasPermission("users.delete"), deleteUser);
 
 export default router;

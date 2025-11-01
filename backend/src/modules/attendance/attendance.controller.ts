@@ -4,6 +4,7 @@ import {
   CheckInDto,
   CheckOutDto,
   ListAttendanceQuery,
+  CreateAttendanceDto,
   UpdateAttendanceDto,
 } from "./attendance.dto.js";
 import { getLocationInfo, parseLocationString } from "../../utils/location.js";
@@ -260,16 +261,37 @@ export async function listAttendance(req: Request, res: Response) {
   try {
     const query = ListAttendanceQuery.parse(req.query);
     const currentUserEmployeeId = (req as any).user?.employeeId;
+    const userPermissions = (req as any).user?.permissions || [];
+    const hasManagePermission = userPermissions.includes("attendance.manage") || userPermissions.includes("attendance.read");
     
     // Build where clause
     const where: any = {};
     
-    // If employeeId is provided in query, use it (for managers/HR viewing team attendance)
-    // Otherwise, show current user's attendance
-    if (query.employeeId) {
+    // If allEmployees is true and user has permission, show all records
+    // Otherwise, filter by employeeId
+    if (query.allEmployees && hasManagePermission) {
+      // Show all employees - no employeeId filter
+      // If search is provided, filter by employee fields
+      if (query.search) {
+        where.employee = {
+          OR: [
+            { firstName: { contains: query.search, mode: "insensitive" } },
+            { lastName: { contains: query.search, mode: "insensitive" } },
+            { email: { contains: query.search, mode: "insensitive" } },
+            { employeeCode: { contains: query.search, mode: "insensitive" } },
+          ],
+        };
+      }
+    } else if (query.employeeId) {
       where.employeeId = query.employeeId;
     } else if (currentUserEmployeeId) {
       where.employeeId = currentUserEmployeeId;
+    }
+    
+    // Search by employee name or email (only applies when showing all employees)
+    // Note: When filtering by specific employeeId, search doesn't apply
+    if (query.search && query.allEmployees && hasManagePermission) {
+      // Already handled above in allEmployees block
     }
 
     if (query.startDate) {
@@ -284,18 +306,33 @@ export async function listAttendance(req: Request, res: Response) {
 
     const skip = (query.page - 1) * query.pageSize;
 
+    // Build orderBy clause
+    const orderBy: any = {};
+    if (query.sortBy === "checkInTime") {
+      orderBy.checkInTime = query.sortOrder;
+    } else if (query.sortBy === "checkOutTime") {
+      orderBy.checkOutTime = query.sortOrder;
+    } else if (query.sortBy === "status") {
+      orderBy.status = query.sortOrder;
+    } else if (query.sortBy === "createdAt") {
+      orderBy.createdAt = query.sortOrder;
+    } else {
+      orderBy.date = query.sortOrder;
+    }
+
     const [items, total] = await Promise.all([
       prisma.attendance.findMany({
         where,
         skip,
         take: query.pageSize,
-        orderBy: { date: "desc" },
+        orderBy,
         include: {
           employee: {
             select: {
               id: true,
               firstName: true,
               lastName: true,
+              email: true,
               employeeCode: true,
               designation: true,
             },
@@ -390,6 +427,85 @@ export async function getAttendanceStats(req: Request, res: Response) {
 }
 
 /**
+ * Create attendance record (for HR/Admin manual entry)
+ */
+export async function createAttendance(req: Request, res: Response) {
+  try {
+    const body = CreateAttendanceDto.parse(req.body);
+    const userPermissions = (req as any).user?.permissions || [];
+    const hasManagePermission = userPermissions.includes("attendance.manage") || userPermissions.includes("attendance.read");
+    
+    if (!hasManagePermission) {
+      return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
+    }
+
+    const date = new Date(body.date);
+    date.setHours(0, 0, 0, 0);
+
+    // Check if record already exists
+    const existing = await prisma.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: body.employeeId,
+          date: date,
+        },
+      },
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: "Attendance record already exists for this employee on this date" });
+    }
+
+    // Calculate work hours if both check-in and check-out are provided
+    let workHours = null;
+    if (body.checkInTime && body.checkOutTime) {
+      const checkIn = new Date(body.checkInTime);
+      const checkOut = new Date(body.checkOutTime);
+      const diffMs = checkOut.getTime() - checkIn.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+      workHours = new Prisma.Decimal(diffHours.toFixed(2));
+    }
+
+    const attendance = await prisma.attendance.create({
+      data: {
+        employeeId: body.employeeId,
+        date: date,
+        checkInTime: body.checkInTime ? new Date(body.checkInTime) : null,
+        checkOutTime: body.checkOutTime ? new Date(body.checkOutTime) : null,
+        checkInLocation: body.checkInLocation || null,
+        checkOutLocation: body.checkOutLocation || null,
+        status: body.status,
+        notes: body.notes || null,
+        workHours: workHours,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeCode: true,
+            designation: true,
+          },
+        },
+      },
+    });
+
+    return res.status(201).json(attendance);
+  } catch (error: any) {
+    console.error("Create attendance error:", error);
+    if (error.name === "ZodError") {
+      return res.status(400).json({ message: "Invalid input", errors: error.errors });
+    }
+    if (error.code === "P2002") {
+      return res.status(400).json({ message: "Attendance record already exists for this employee on this date" });
+    }
+    return res.status(500).json({ message: "Failed to create attendance record" });
+  }
+}
+
+/**
  * Update attendance record (for HR/Admin manual corrections)
  */
 export async function updateAttendance(req: Request, res: Response) {
@@ -397,16 +513,42 @@ export async function updateAttendance(req: Request, res: Response) {
     const { id } = req.params;
     const body = UpdateAttendanceDto.parse(req.body);
 
+    // Calculate work hours if both check-in and check-out are provided
+    let workHours = undefined;
+    const updateData: any = {};
+    
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.checkInTime !== undefined) updateData.checkInTime = body.checkInTime ? new Date(body.checkInTime) : null;
+    if (body.checkOutTime !== undefined) updateData.checkOutTime = body.checkOutTime ? new Date(body.checkOutTime) : null;
+    if (body.checkInLocation !== undefined) updateData.checkInLocation = body.checkInLocation || null;
+    if (body.checkOutLocation !== undefined) updateData.checkOutLocation = body.checkOutLocation || null;
+    if (body.notes !== undefined) updateData.notes = body.notes || null;
+
+    // If check-in or check-out times are updated, recalculate work hours
+    const existing = await prisma.attendance.findUnique({ where: { id } });
+    if (existing) {
+      const checkInTime = body.checkInTime !== undefined ? (body.checkInTime ? new Date(body.checkInTime) : null) : existing.checkInTime;
+      const checkOutTime = body.checkOutTime !== undefined ? (body.checkOutTime ? new Date(body.checkOutTime) : null) : existing.checkOutTime;
+      
+      if (checkInTime && checkOutTime) {
+        const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        updateData.workHours = new Prisma.Decimal((diffHours - (existing.breakMinutes / 60)).toFixed(2));
+      }
+    }
+
     const attendance = await prisma.attendance.update({
       where: { id },
-      data: body,
+      data: updateData,
       include: {
         employee: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
+            email: true,
             employeeCode: true,
+            designation: true,
           },
         },
       },

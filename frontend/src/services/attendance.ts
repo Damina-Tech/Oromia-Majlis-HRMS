@@ -9,6 +9,7 @@ export interface Attendance {
     id: string;
     firstName: string;
     lastName: string;
+    email: string;
     employeeCode: string;
     designation?: string;
   };
@@ -17,6 +18,20 @@ export interface Attendance {
   checkOutTime?: string;
   checkInLocation?: string;
   checkOutLocation?: string;
+  checkInLocationInfo?: {
+    type: string;
+    displayName: string;
+    isOffice: boolean;
+    officeName?: string;
+    distanceMeters?: number;
+  } | null;
+  checkOutLocationInfo?: {
+    type: string;
+    displayName: string;
+    isOffice: boolean;
+    officeName?: string;
+    distanceMeters?: number;
+  } | null;
   status: AttendanceStatus;
   workHours?: number;
   breakMinutes: number;
@@ -40,8 +55,12 @@ export interface ListAttendanceParams {
   startDate?: string; // YYYY-MM-DD
   endDate?: string;   // YYYY-MM-DD
   status?: AttendanceStatus;
+  search?: string; // Search by employee name or email
+  sortBy?: "date" | "checkInTime" | "checkOutTime" | "status" | "createdAt";
+  sortOrder?: "asc" | "desc";
   page?: number;
   pageSize?: number;
+  allEmployees?: boolean; // If true, show all employees (for admins/HR/managers)
 }
 
 export interface ListAttendanceResponse {
@@ -93,6 +112,23 @@ export async function listAttendance(params: ListAttendanceParams = {}): Promise
 }
 
 /**
+ * Create attendance record (for HR/Admin)
+ */
+export async function createAttendanceRecord(data: {
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  checkInTime?: string; // ISO datetime string
+  checkOutTime?: string; // ISO datetime string
+  checkInLocation?: string;
+  checkOutLocation?: string;
+  status?: AttendanceStatus;
+  notes?: string;
+}): Promise<Attendance> {
+  const response = await api.post("/attendance", data);
+  return response.data;
+}
+
+/**
  * Update attendance record (for HR/Admin)
  */
 export async function updateAttendance(
@@ -101,6 +137,8 @@ export async function updateAttendance(
     status?: AttendanceStatus;
     checkInTime?: string;
     checkOutTime?: string;
+    checkInLocation?: string;
+    checkOutLocation?: string;
     notes?: string;
   }
 ): Promise<Attendance> {

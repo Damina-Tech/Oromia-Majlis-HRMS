@@ -139,21 +139,45 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   item.permission === '*' || hasPermission(item.permission)
   );
 
-  // Leave Management submenu items - always include both items if user has leave.view permission
-  // (since they can see the main Leave Management menu item)
+  // Check if user is ADMIN or MANAGER
+  const isAdminOrManager = user?.roles?.some(role => 
+    role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'MANAGER'
+  ) || false;
+
+  // Leave Management submenu items
   const leaveSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
   
-  // If user can see Leave Management, they should see both submenu items
+  // Only show Leave Management submenu items if user has leave.view permission
   if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
     leaveSubmenuItems.push({ title: 'Leave Management', href: '/leave', permission: 'leave.view' });
-    leaveSubmenuItems.push({ title: 'Leave Requests', href: '/leave-requests', permission: 'leave.view' });
-    leaveSubmenuItems.push({ title: 'Leave Balance', href: '/leave-balances', permission: 'leave.read' });
+    
+    // Only ADMIN and MANAGER can see Leave Requests and Leave Balance
+    if (isAdminOrManager) {
+      leaveSubmenuItems.push({ title: 'Leave Requests', href: '/leave-requests', permission: 'leave.view' });
+      leaveSubmenuItems.push({ title: 'Leave Balance', href: '/leave-balances', permission: 'leave.read' });
+    }
+  }
+
+  // Attendance submenu items
+  const attendanceSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Attendance submenu items if user has attendance.view permission
+  if (hasPermission('attendance.view') || hasPermission('attendance.read') || hasPermission('attendance.manage')) {
+    attendanceSubmenuItems.push({ title: 'Attendance', href: '/attendance', permission: 'attendance.view' });
+    
+    // Only ADMIN and MANAGER can see Attendance Records
+    if (isAdminOrManager) {
+      attendanceSubmenuItems.push({ title: 'Attendance Records', href: '/attendance-records', permission: 'attendance.read' });
+    }
   }
 
   // Auto-expand Leave Management when on leave-related pages
   React.useEffect(() => {
     if (location.pathname.startsWith('/leave')) {
       setExpandedItems(prev => new Set([...prev, 'Leave Management']));
+    }
+    if (location.pathname.startsWith('/attendance')) {
+      setExpandedItems(prev => new Set([...prev, 'Attendance']));
     }
   }, [location.pathname]);
 
@@ -218,8 +242,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
             const isLeaveManagement = item.title === 'Leave Management';
+            const isAttendance = item.title === 'Attendance';
             const isExpanded = expandedItems.has(item.title);
             const isLeavePage = location.pathname.startsWith('/leave');
+            const isAttendancePage = location.pathname.startsWith('/attendance');
             
             if (isLeaveManagement && leaveSubmenuItems.length > 0 && !isCollapsed) {
               return (
@@ -242,6 +268,47 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
                       {leaveSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            
+            if (isAttendance && attendanceSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isAttendancePage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {attendanceSubmenuItems.map((subItem) => (
                         <NavLink
                           key={subItem.href}
                           to={subItem.href}

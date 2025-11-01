@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcrypt";
 import { CreateEmployeeDto, UpdateEmployeeDto, ListEmployeesQuery } from "./employee.dto.js";
 import { paginate } from "../../lib/paginate.js";
 import { nextEmployeeCode } from "../../lib/employee-code.js";
@@ -38,7 +39,19 @@ export async function listEmployees(req: Request, res: Response) {
       skip,
       take,
       orderBy: [{ createdAt: "desc" }],
-      include: { department: true, manager: { select: { id: true, firstName: true, lastName: true } } },
+      include: { 
+        department: true, 
+        manager: { select: { id: true, firstName: true, lastName: true } },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            status: true,
+          }
+        }
+      },
     }),
     prisma.employee.count({ where }),
   ]);
@@ -76,36 +89,106 @@ export async function createEmployee(req: Request, res: Response) {
     const count = await prisma.employee.count(); // simple sequence
     const employeeCode = nextEmployeeCode(count + 1);
 
-    const emp = await prisma.employee.create({
-      data: {
-        employeeCode,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        email: dto.email,
-        phone: dto.phone || null,
-        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
-        gender: dto.gender && dto.gender.trim() !== "" ? dto.gender : null,
-        address: dto.address || null,
-        emergencyContact: dto.emergencyContact || null,
-        designation: dto.designation || null,
-        employmentType: dto.employmentType || null,
-        educationLevel: dto.educationLevel && dto.educationLevel.trim() !== "" ? dto.educationLevel : null,
-        educationOther: dto.educationOther && dto.educationOther.trim() !== "" ? dto.educationOther : null,
-        marriageStatus: dto.marriageStatus && dto.marriageStatus.trim() !== "" ? dto.marriageStatus : null,
-        document: dto.document && dto.document.trim() !== "" ? dto.document : null,
-        status: dto.status || "ACTIVE",
-        joiningDate: dto.joiningDate ? new Date(dto.joiningDate) : null,
-        salary: dto.salary ?? null,
-        departmentId: dto.departmentId && dto.departmentId.trim() !== "" ? dto.departmentId : null,
-        managerId: dto.managerId && dto.managerId.trim() !== "" ? dto.managerId : null,
-      },
-      include: { department: true, manager: { select: { id: true, firstName: true, lastName: true } } },
+    // Create employee and automatically create user account with EMPLOYEE role
+    const emp = await prisma.$transaction(async (tx) => {
+      const newEmp = await tx.employee.create({
+        data: {
+          employeeCode,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          email: dto.email,
+          phone: dto.phone || null,
+          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+          gender: dto.gender && dto.gender.trim() !== "" ? dto.gender : null,
+          address: dto.address || null,
+          emergencyContact: dto.emergencyContact || null,
+          designation: dto.designation || null,
+          employmentType: dto.employmentType || null,
+          educationLevel: dto.educationLevel && dto.educationLevel.trim() !== "" ? dto.educationLevel : null,
+          educationOther: dto.educationOther && dto.educationOther.trim() !== "" ? dto.educationOther : null,
+          marriageStatus: dto.marriageStatus && dto.marriageStatus.trim() !== "" ? dto.marriageStatus : null,
+          document: dto.document && dto.document.trim() !== "" ? dto.document : null,
+          status: dto.status || "ACTIVE",
+          joiningDate: dto.joiningDate ? new Date(dto.joiningDate) : null,
+          salary: dto.salary ?? null,
+          departmentId: dto.departmentId && dto.departmentId.trim() !== "" ? dto.departmentId : null,
+          managerId: dto.managerId && dto.managerId.trim() !== "" ? dto.managerId : null,
+        },
+      });
+
+      // Automatically create user account with EMPLOYEE role
+      try {
+        // Find EMPLOYEE role
+        const employeeRole = await tx.role.findUnique({
+          where: { name: "EMPLOYEE" },
+        });
+
+        if (employeeRole) {
+          // Check if user already exists with this email
+          const existingUser = await tx.user.findUnique({
+            where: { email: dto.email },
+          });
+
+          if (!existingUser) {
+            // Generate default password (employee email + employeeCode)
+            const defaultPassword = `${dto.email}${employeeCode}`;
+            const passwordHash = await bcrypt.hash(defaultPassword, 10);
+
+            // Create user account
+            const user = await tx.user.create({
+              data: {
+                email: dto.email,
+                passwordHash,
+                firstName: dto.firstName,
+                lastName: dto.lastName,
+                status: dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+              },
+            });
+
+            // Assign EMPLOYEE role
+            await tx.userRole.create({
+              data: {
+                userId: user.id,
+                roleId: employeeRole.id,
+              },
+            });
+
+            // Link employee to user
+            await tx.employee.update({
+              where: { id: newEmp.id },
+              data: { userId: user.id },
+            });
+          }
+        }
+      } catch (userError: any) {
+        // If user creation fails, log but don't fail employee creation
+        console.error("Failed to auto-create user account for employee:", userError);
+        // Employee is still created, but without user account
+      }
+
+      // Reload employee with all relations
+      return await tx.employee.findUnique({
+        where: { id: newEmp.id },
+        include: { 
+          department: true, 
+          manager: { select: { id: true, firstName: true, lastName: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              status: true,
+            }
+          }
+        },
+      });
     });
 
     // Convert Decimal salary to number for JSON serialization
     const serialized = {
       ...emp,
-      salary: emp.salary ? Number(emp.salary) : null,
+      salary: emp!.salary ? Number(emp!.salary) : null,
     };
 
     res.status(201).json(serialized);
@@ -149,8 +232,29 @@ export async function updateEmployee(req: Request, res: Response) {
   const emp = await prisma.employee.update({
     where: { id },
     data: updateData,
-    include: { department: true, manager: { select: { id: true, firstName: true, lastName: true } } },
+    include: { 
+      department: true, 
+      manager: { select: { id: true, firstName: true, lastName: true } },
+      user: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+        }
+      }
+    },
   });
+
+  // Sync status with user if employee has linked user and status is being updated
+  if (dto.status !== undefined && emp.user) {
+    const userStatus = dto.status === "ACTIVE" || dto.status === "ON_LEAVE" ? "ACTIVE" : "INACTIVE";
+    await prisma.user.update({
+      where: { id: emp.user.id },
+      data: { status: userStatus },
+    });
+  }
 
   // Convert Decimal salary to number for JSON serialization
   const serialized = {

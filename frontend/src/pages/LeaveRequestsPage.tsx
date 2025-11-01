@@ -114,8 +114,14 @@ const ViewRequestAvailableDays: React.FC<{ employeeId: string; leaveType: LeaveT
 
 const LeaveRequestsPage: React.FC = () => {
   const { user, hasPermission } = useAuth();
-  const canManage = hasPermission('leave.manage') || hasPermission('leave.approve');
-  const canCreateForOthers = hasPermission('leave.manage') || hasPermission('leave.approve');
+  
+  // Only ADMIN and MANAGER can access this page
+  const isAdminOrManager = user?.roles?.some(role => 
+    role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'MANAGER'
+  ) || false;
+  
+  const canManage = isAdminOrManager && (hasPermission('leave.manage') || hasPermission('leave.approve'));
+  const canCreateForOthers = isAdminOrManager && (hasPermission('leave.manage') || hasPermission('leave.approve'));
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -541,6 +547,18 @@ const LeaveRequestsPage: React.FC = () => {
   };
 
   const totalPages = Math.ceil(total / pageSize);
+
+  // Access control check
+  if (!isAdminOrManager) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center space-y-4">
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">Only Administrators and Managers can access this page.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
@@ -1211,7 +1229,7 @@ const LeaveRequestsPage: React.FC = () => {
                   <Badge className={getStatusColor(selectedRequest.status)}>
                     {selectedRequest.status}
                   </Badge>
-                </div>
+                </div>  
                 <div className="space-y-1">
                   <Label className="text-xs text-gray-500 uppercase">Start Date</Label>
                   <p className="font-semibold text-base">{format(new Date(selectedRequest.startDate), 'dd/MM/yyyy')}</p>

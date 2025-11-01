@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
+import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
@@ -37,10 +38,14 @@ import {
   listLeaveRequests,
   createLeaveRequest,
   updateLeaveStatus,
+  updateLeaveRequest,
+  getLeaveRequest,
   getLeaveBalance,
+  cancelLeaveRequest,
   type LeaveRequest,
   type LeaveBalance,
   type LeaveType,
+  type LeaveStatus,
 } from '@/services/leaves';
 import {
   Calendar as CalendarIcon,
@@ -50,8 +55,11 @@ import {
   Clock,
   FileText,
   AlertCircle,
-  Loader2 } from
-'lucide-react';
+  Loader2,
+  Eye,
+  Edit,
+  Trash2,
+} from 'lucide-react';
 
 const LeaveManagement: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -65,6 +73,23 @@ const LeaveManagement: React.FC = () => {
   const [error, setError] = useState('');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
+
+  // Dialog states for view/edit/delete
+  const [showViewDialog, setShowViewDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
+  const [requestToDelete, setRequestToDelete] = useState<LeaveRequest | null>(null);
+  
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    leaveType: '' as LeaveType | '',
+    startDate: '',
+    endDate: '',
+    reason: '',
+    halfDay: false,
+  });
+  const [editAvailableDays, setEditAvailableDays] = useState<number>(0);
 
   const leaveTypes: { value: LeaveType; label: string }[] = [
     { value: 'CASUAL', label: 'Casual Leave' },
@@ -100,7 +125,7 @@ const LeaveManagement: React.FC = () => {
     try {
       setLoading(true);
       const [requests, leaveBalance] = await Promise.all([
-        listLeaveRequests({ page: 1, pageSize: 100 }),
+        listLeaveRequests({ page: 1, pageSize: 100, employeeId }),
         getLeaveBalance(employeeId),
       ]);
       setLeaveRequests(requests.items);
@@ -218,6 +243,129 @@ const LeaveManagement: React.FC = () => {
   const getLeaveTypeLabel = (type: LeaveType) => {
     const found = leaveTypes.find(t => t.value === type);
     return found?.label || type;
+  };
+
+  const handleViewRequest = async (request: LeaveRequest) => {
+    try {
+      const fullRequest = await getLeaveRequest(request.id);
+      setSelectedRequest(fullRequest);
+      setShowViewDialog(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to load leave request');
+    }
+  };
+
+  const handleEditRequest = async (request: LeaveRequest) => {
+    if (request.status !== 'PENDING') {
+      toast.error('Only pending requests can be edited');
+      return;
+    }
+
+    try {
+      const fullRequest = await getLeaveRequest(request.id);
+      setSelectedRequest(fullRequest);
+      setEditForm({
+        leaveType: fullRequest.type,
+        startDate: fullRequest.startDate.split('T')[0],
+        endDate: fullRequest.endDate.split('T')[0],
+        reason: fullRequest.reason,
+        halfDay: (fullRequest as any).halfDay || false,
+      });
+      
+      // Load available days for the leave type
+      if (employeeId) {
+        const leaveBalance = await getLeaveBalance(employeeId);
+        let available = 0;
+        switch (fullRequest.type) {
+          case 'CASUAL':
+            available = leaveBalance.casualLeave;
+            break;
+          case 'SICK':
+            available = leaveBalance.sickLeave;
+            break;
+          case 'VACATION':
+            available = leaveBalance.vacationLeave;
+            break;
+          case 'PERSONAL':
+            available = leaveBalance.personalLeave;
+            break;
+        }
+        setEditAvailableDays(available);
+      }
+      
+      setShowEditDialog(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to load leave request');
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedRequest) return;
+
+    if (!editForm.leaveType || !editForm.startDate || !editForm.endDate || !editForm.reason) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    if (editForm.reason.length < 10) {
+      toast.error('Reason must be at least 10 characters');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError('');
+      await updateLeaveRequest(selectedRequest.id, {
+        type: editForm.leaveType,
+        startDate: editForm.startDate,
+        endDate: editForm.endDate,
+        reason: editForm.reason,
+        halfDay: editForm.halfDay,
+      });
+      toast.success('Leave request updated successfully!');
+      setShowEditDialog(false);
+      await loadData();
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to update leave request';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = (request: LeaveRequest) => {
+    if (request.status !== 'PENDING') {
+      toast.error('Only pending requests can be cancelled');
+      return;
+    }
+    setRequestToDelete(request);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!requestToDelete) return;
+
+    try {
+      await cancelLeaveRequest(requestToDelete.id);
+      toast.success('Leave request cancelled successfully!');
+      setShowDeleteDialog(false);
+      setRequestToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to cancel leave request');
+    }
+  };
+
+  const calculateEditDays = () => {
+    if (editForm.startDate && editForm.endDate) {
+      const start = new Date(editForm.startDate);
+      const end = new Date(editForm.endDate);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      return editForm.halfDay && start.toDateString() === end.toDateString() ? 0.5 : diffDays;
+    }
+    return 0;
   };
 
   if (loading) {
@@ -440,40 +588,33 @@ const LeaveManagement: React.FC = () => {
       {/* Leave Requests */}
       <Card data-id="lru4h97kd" data-path="src/pages/LeaveManagement.tsx">
         <CardHeader data-id="rr4di7p4x" data-path="src/pages/LeaveManagement.tsx">
-          <CardTitle data-id="p34mbb747" data-path="src/pages/LeaveManagement.tsx">Leave Requests</CardTitle>
+          <CardTitle data-id="p34mbb747" data-path="src/pages/LeaveManagement.tsx">My Leave Requests</CardTitle>
           <CardDescription data-id="sf6pro3jt" data-path="src/pages/LeaveManagement.tsx">
-            {hasPermission('leave.approve') ?
-            'Manage leave requests from your team' :
-            'Track your leave request status'
-            }
+            Track your leave request history and status
           </CardDescription>
         </CardHeader>
         <CardContent data-id="j9udllfh2" data-path="src/pages/LeaveManagement.tsx">
           <Table data-id="dfdgdssx6" data-path="src/pages/LeaveManagement.tsx">
             <TableHeader data-id="a05syyzv3" data-path="src/pages/LeaveManagement.tsx">
               <TableRow data-id="z6wt21qb0" data-path="src/pages/LeaveManagement.tsx">
-                <TableHead data-id="y98nq2uc3" data-path="src/pages/LeaveManagement.tsx">Employee</TableHead>
                 <TableHead data-id="zo3fl877y" data-path="src/pages/LeaveManagement.tsx">Type</TableHead>
                 <TableHead data-id="za6qnrf2j" data-path="src/pages/LeaveManagement.tsx">Period</TableHead>
                 <TableHead data-id="xc4mn810v" data-path="src/pages/LeaveManagement.tsx">Days</TableHead>
                 <TableHead data-id="xyvfadbic" data-path="src/pages/LeaveManagement.tsx">Status</TableHead>
                 <TableHead data-id="baeh3xuvo" data-path="src/pages/LeaveManagement.tsx">Applied Date</TableHead>
-                {hasPermission('leave.approve') && <TableHead data-id="uxczbqrwa" data-path="src/pages/LeaveManagement.tsx">Actions</TableHead>}
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {leaveRequests.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">
-                    No leave requests found
+                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    No leave requests found. Click "Apply Leave" to submit your first request.
                   </TableCell>
                 </TableRow>
               ) : (
                 leaveRequests.map((request) => (
                   <TableRow key={request.id}>
-                    <TableCell className="font-medium">
-                      {request.employee.firstName} {request.employee.lastName}
-                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
                         {getLeaveTypeLabel(request.type)}
@@ -497,30 +638,36 @@ const LeaveManagement: React.FC = () => {
                     <TableCell>
                       {new Date(request.createdAt).toLocaleDateString()}
                     </TableCell>
-                    {hasPermission('leave.approve') && (
                       <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewRequest(request)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         {request.status === 'PENDING' && (
-                          <div className="flex space-x-2">
+                          <>
                             <Button
+                              variant="ghost"
                               size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-700"
-                              onClick={() => handleApprove(request.id)}
+                              onClick={() => handleEditRequest(request)}
                             >
-                              <Check className="h-4 w-4" />
+                              <Edit className="h-4 w-4" />
                             </Button>
                             <Button
+                              variant="ghost"
                               size="sm"
-                              variant="outline"
                               className="text-red-600 hover:text-red-700"
-                              onClick={() => handleReject(request.id)}
+                              onClick={() => handleDelete(request)}
                             >
-                              <X className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                          </div>
+                          </>
                         )}
+                      </div>
                       </TableCell>
-                    )}
                   </TableRow>
                 ))
               )}
@@ -575,6 +722,230 @@ const LeaveManagement: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* View Leave Request Dialog */}
+      {selectedRequest && (
+        <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Leave Request Details</DialogTitle>
+              <DialogDescription>
+                View details of your leave request
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Leave Type</Label>
+                  <p className="font-medium">{getLeaveTypeLabel(selectedRequest.type)}</p>
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Badge className={getStatusColor(selectedRequest.status)}>
+                    {selectedRequest.status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label>Start Date</Label>
+                  <p className="font-medium">{new Date(selectedRequest.startDate).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <Label>End Date</Label>
+                  <p className="font-medium">{new Date(selectedRequest.endDate).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <Label>Days</Label>
+                  <p className="font-medium">{selectedRequest.days} day(s)</p>
+                </div>
+                <div>
+                  <Label>Applied Date</Label>
+                  <p className="font-medium">{new Date(selectedRequest.createdAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div>
+                <Label>Reason</Label>
+                <p className="text-sm bg-gray-50 p-3 rounded-lg mt-1">{selectedRequest.reason}</p>
+              </div>
+              {selectedRequest.approver && (
+                <div>
+                  <Label>Approved/Rejected By</Label>
+                  <p className="font-medium">{selectedRequest.approver.firstName} {selectedRequest.approver.lastName}</p>
+                  {selectedRequest.approvedAt && (
+                    <p className="text-sm text-gray-500">{new Date(selectedRequest.approvedAt).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+              {selectedRequest.rejectionReason && (
+                <div>
+                  <Label>Rejection Reason / Comment</Label>
+                  <p className="text-sm bg-red-50 p-3 rounded-lg mt-1">{selectedRequest.rejectionReason}</p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              {selectedRequest.status === 'PENDING' && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowViewDialog(false);
+                    handleEditRequest(selectedRequest);
+                  }}
+                >
+                  Edit Request
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setShowViewDialog(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Leave Request Dialog */}
+      {selectedRequest && (
+        <Dialog open={showEditDialog} onOpenChange={(open) => { setShowEditDialog(open); if (!open) setError(''); }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Leave Request</DialogTitle>
+              <DialogDescription>
+                Update your leave request details
+              </DialogDescription>
+            </DialogHeader>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-leaveType">Leave Type</Label>
+                <Select
+                  value={editForm.leaveType}
+                  onValueChange={(value) => setEditForm({ ...editForm, leaveType: value as LeaveType })}
+                >
+                  <SelectTrigger id="edit-leaveType">
+                    <SelectValue placeholder="Select leave type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leaveTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-startDate">Start Date</Label>
+                  <Input
+                    id="edit-startDate"
+                    type="date"
+                    value={editForm.startDate}
+                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-endDate">End Date</Label>
+                  <Input
+                    id="edit-endDate"
+                    type="date"
+                    value={editForm.endDate}
+                    onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                    min={editForm.startDate || new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <Label htmlFor="edit-halfDay">Half Day</Label>
+                  <p className="text-sm text-gray-500">Apply for half day on the last day</p>
+                </div>
+                <Switch
+                  id="edit-halfDay"
+                  checked={editForm.halfDay}
+                  onCheckedChange={(checked) => setEditForm({ ...editForm, halfDay: checked })}
+                />
+              </div>
+
+              {editForm.startDate && editForm.endDate && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Available Days</Label>
+                    <p className="text-lg font-semibold text-green-600">{editAvailableDays.toFixed(1)}</p>
+                  </div>
+                  <div>
+                    <Label>Requested Days</Label>
+                    <p className="text-lg font-semibold">{calculateEditDays().toFixed(1)}</p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="edit-reason">Reason</Label>
+                <Textarea
+                  id="edit-reason"
+                  value={editForm.reason}
+                  onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
+                  rows={3}
+                  placeholder="Please provide a reason for your leave request..."
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={submitting}>
+                {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Leave Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this leave request? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {requestToDelete && (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600">
+                <strong>Leave Type:</strong> {getLeaveTypeLabel(requestToDelete.type)}
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Period:</strong> {new Date(requestToDelete.startDate).toLocaleDateString()} - {new Date(requestToDelete.endDate).toLocaleDateString()}
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Days:</strong> {requestToDelete.days}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Cancel Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>);
 
 };

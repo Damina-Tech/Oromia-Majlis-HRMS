@@ -14,6 +14,7 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
@@ -22,6 +23,7 @@ import {
   Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle
 } from "lucide-react";
 import api, { uploadDocument } from "@/services/api"; // Axios instance with baseURL + auth
+import { createUser, getRoles, type Role } from "@/services/users";
 
 // ---------- Types ----------
 type Dept = { id: string; name: string };
@@ -48,6 +50,14 @@ type Employee = {
   departmentId?: string | null;
   department?: { id: string; name: string } | null;
   manager?: { id: string; firstName: string; lastName: string } | null;
+  userId?: string | null;
+  user?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    status: string;
+  } | null;
 };
 
 // ---------- Helpers ----------
@@ -98,19 +108,46 @@ async function apiListDepartments() {
 function AddEmployeeDialog({
   departments, onCreated, canCreate
 }: { departments: Dept[]; onCreated: (e: Employee) => void; canCreate: boolean }) {
+  const { hasPermission } = useAuth();
+  const canManageUsers = hasPermission("users.write");
+  
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     dateOfBirth: "", gender: "", designation: "", employmentType: "",
     educationLevel: "", educationOther: "", marriageStatus: "", document: "",
     departmentId: "", status: "ACTIVE" as Employee["status"],
     joiningDate: "", salary: "", address: "", emergencyContact: "",
+    createUserAccount: false,
+    userPassword: "",
+    userConfirmPassword: "",
+    userRoleId: "",
   });
+  
+  // Load roles when user account creation is enabled
+  useEffect(() => {
+    if (form.createUserAccount && canManageUsers && roles.length === 0 && !loadingRoles) {
+      setLoadingRoles(true);
+      getRoles()
+        .then((data) => {
+          setRoles(data);
+        })
+        .catch((err) => {
+          console.error("Failed to load roles:", err);
+          toast.error("Failed to load roles");
+        })
+        .finally(() => {
+          setLoadingRoles(false);
+        });
+    }
+  }, [form.createUserAccount, canManageUsers, roles.length, loadingRoles]);
   
   const validateField = (name: string, value: string): string => {
     if (name === "firstName" && !value.trim()) {
@@ -130,7 +167,7 @@ function AddEmployeeDialog({
     return "";
   };
 
-  const onChange = (k: string, v: string) => {
+  const onChange = (k: string, v: string | boolean) => {
     setForm(p => ({ ...p, [k]: v }));
     // Clear field error when user starts typing
     if (fieldErrors[k]) {
@@ -145,15 +182,18 @@ function AddEmployeeDialog({
   };
 
   const onBlur = (fieldName: string) => {
-    const error = validateField(fieldName, form[fieldName as keyof typeof form]);
-    if (error) {
-      setFieldErrors(prev => ({ ...prev, [fieldName]: error }));
-    } else {
-      setFieldErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[fieldName];
-        return newErrors;
-      });
+    const fieldValue = form[fieldName as keyof typeof form];
+    if (typeof fieldValue === 'string') {
+      const error = validateField(fieldName, fieldValue);
+      if (error) {
+        setFieldErrors(prev => ({ ...prev, [fieldName]: error }));
+      } else {
+        setFieldErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[fieldName];
+          return newErrors;
+        });
+      }
     }
   };
 
@@ -222,11 +262,51 @@ function AddEmployeeDialog({
       
       const created = await apiCreateEmployee(payload as any);
       
-      // Show success toast
-      toast.success("Employee created successfully!", {
-        duration: 3000,
-        description: `${created.firstName} ${created.lastName} has been added to the system.`
-      });
+      // Create user account if requested
+      if (form.createUserAccount && canManageUsers) {
+        if (!form.userPassword || form.userPassword.length < 6) {
+          setError("Password must be at least 6 characters");
+          setSubmitting(false);
+          return;
+        }
+        if (form.userPassword !== form.userConfirmPassword) {
+          setError("Passwords do not match");
+          setSubmitting(false);
+          return;
+        }
+        if (!form.userRoleId) {
+          setError("Please select a role for the user account");
+          setSubmitting(false);
+          return;
+        }
+        
+        try {
+          await createUser({
+            email: form.email,
+            password: form.userPassword,
+            firstName: form.firstName,
+            lastName: form.lastName,
+            roleIds: [form.userRoleId],
+            employeeId: created.id,
+            status: "ACTIVE",
+          });
+          toast.success("Employee and user account created successfully!", {
+            duration: 3000,
+            description: `${created.firstName} ${created.lastName} has been added with login access.`
+          });
+        } catch (userError: any) {
+          // Employee was created but user creation failed
+          toast.warning("Employee created but user account creation failed", {
+            description: userError?.response?.data?.message || "You can create a user account later from User Management."
+          });
+        }
+      } else {
+        // Show success toast
+        toast.success("Employee created successfully!", {
+          duration: 3000,
+          description: `${created.firstName} ${created.lastName} has been added to the system.`
+        });
+      }
       
       // Call parent callback
       onCreated(created);
@@ -238,6 +318,10 @@ function AddEmployeeDialog({
         dateOfBirth: "", gender: "", designation: "", employmentType: "",
         educationLevel: "", educationOther: "", marriageStatus: "", document: "",
         departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
+        createUserAccount: false,
+        userPassword: "",
+        userConfirmPassword: "",
+        userRoleId: "",
       });
       setSelectedFile(null);
       setFieldErrors({});
@@ -275,6 +359,10 @@ function AddEmployeeDialog({
         dateOfBirth: "", gender: "", designation: "", employmentType: "",
         educationLevel: "", educationOther: "", marriageStatus: "", document: "",
         departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
+        createUserAccount: false,
+        userPassword: "",
+        userConfirmPassword: "",
+        userRoleId: "",
       });
     }
   };
@@ -563,6 +651,77 @@ function AddEmployeeDialog({
               </div>
             </div>
           </div>
+
+          {/* User Account Creation Section */}
+          {canManageUsers && (
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <Label htmlFor="createUserAccount" className="text-base font-semibold">Create User Account</Label>
+                  <p className="text-sm text-gray-500">Enable this employee to log in to the HRMS portal</p>
+                </div>
+                <Switch
+                  id="createUserAccount"
+                  checked={form.createUserAccount}
+                  onCheckedChange={(checked) => setForm({ ...form, createUserAccount: checked })}
+                />
+              </div>
+              
+              {form.createUserAccount && (
+                <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="userRoleId">User Role *</Label>
+                      <Select
+                        value={form.userRoleId}
+                        onValueChange={(value) => onChange("userRoleId", value)}
+                        disabled={loadingRoles}
+                      >
+                        <SelectTrigger id="userRoleId">
+                          <SelectValue placeholder={loadingRoles ? "Loading roles..." : "Select role"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              {role.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="userPassword">Password *</Label>
+                      <Input
+                        id="userPassword"
+                        type="password"
+                        value={form.userPassword}
+                        onChange={(e) => onChange("userPassword", e.target.value)}
+                        placeholder="At least 6 characters"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="userConfirmPassword">Confirm Password *</Label>
+                      <Input
+                        id="userConfirmPassword"
+                        type="password"
+                        value={form.userConfirmPassword}
+                        onChange={(e) => onChange("userConfirmPassword", e.target.value)}
+                        placeholder="Confirm password"
+                      />
+                    </div>
+                  </div>
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      The user account will be created with the same email as the employee. The employee can use this email and password to log in.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         </div>
 
@@ -1219,6 +1378,11 @@ const EmployeesPage: React.FC = () => {
                           <p className="font-medium">{e.firstName} {e.lastName}</p>
                           <p className="text-sm text-gray-500">{e.designation ?? "—"}</p>
                           <p className="text-xs text-gray-400">{e.employeeCode}</p>
+                          {e.userId && e.user?.status === "ACTIVE" && (
+                            <Badge variant="outline" className="mt-1 text-xs bg-green-50 text-green-700 border-green-200">
+                              Has Account
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -1300,6 +1464,12 @@ const EmployeesPage: React.FC = () => {
                                     <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
                                     <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
                                     <p><span className="font-medium">Salary:</span> {e.salary != null && typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
+                                    {e.userId && e.user?.status === "ACTIVE" && (
+                                      <p><span className="font-medium">User Account:</span> <Badge className="bg-green-100 text-green-800">Active</Badge></p>
+                                    )}
+                                    {e.userId && e.user?.status === "INACTIVE" && (
+                                      <p><span className="font-medium">User Account:</span> <Badge className="bg-red-100 text-red-800">Inactive</Badge></p>
+                                    )}
                                     </div>
                                   </div>
                                 {e.document && (

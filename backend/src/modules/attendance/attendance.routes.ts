@@ -16,6 +16,9 @@ router.get("/stats", attendanceController.getAttendanceStats);
 // List attendance records
 router.get("/", attendanceController.listAttendance);
 
+// Create attendance record (for HR/Admin)
+router.post("/", attendanceController.createAttendance);
+
 // Update/delete attendance (for HR/Admin)
 router.put("/:id", attendanceController.updateAttendance);
 router.delete("/:id", attendanceController.deleteAttendance);

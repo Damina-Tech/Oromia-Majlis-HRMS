@@ -10,6 +10,7 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import EmployeesPage from "./pages/EmployeesPage";
 import AttendancePage from "./pages/AttendancePage";
+import AttendanceRecordsPage from "./pages/AttendanceRecordsPage";
 import LeaveManagement from "./pages/LeaveManagement";
 import LeaveBalancesPage from "./pages/LeaveBalancesPage";
 import LeaveRequestsPage from "./pages/LeaveRequestsPage";
@@ -144,6 +145,14 @@ function AppRoutes() {
             <AttendancePage data-id="25b8aufj8" data-path="src/App.tsx" />
           }
           data-id="u9467awkg"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="attendance-records"
+          element={
+            <AttendanceRecordsPage data-id="attendance-records-page" data-path="src/App.tsx" />
+          }
+          data-id="attendance-records-route"
           data-path="src/App.tsx"
         />
         <Route

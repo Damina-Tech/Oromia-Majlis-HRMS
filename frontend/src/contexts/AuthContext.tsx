@@ -82,10 +82,10 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
           refreshUserData().then((success) => {
             if (!success) {
               console.warn('Token refresh failed. Please re-login.');
-              localStorage.removeItem('hrms_user');
-              localStorage.removeItem('accessToken');
+          localStorage.removeItem('hrms_user');
+          localStorage.removeItem('accessToken');
             }
-            setIsLoading(false);
+          setIsLoading(false);
           });
           return;
         }
