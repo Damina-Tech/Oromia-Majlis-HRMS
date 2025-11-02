@@ -30,6 +30,9 @@ export const ListLeaveRequestsQuery = z.object({
   status: LeaveStatusEnum.optional(),
   employeeId: z.string().optional(),
   search: z.string().optional(), // Search by employee name or email
+  startDate: z.string().optional(), // Filter by start date (YYYY-MM-DD)
+  endDate: z.string().optional(), // Filter by end date (YYYY-MM-DD)
+  type: LeaveTypeEnum.optional(), // Filter by leave type
   sortBy: z.enum(["createdAt", "startDate", "endDate", "days", "status"]).optional().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
   page: z.coerce.number().int().positive().default(1),

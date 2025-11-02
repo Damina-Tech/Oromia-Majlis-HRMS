@@ -52,4 +52,34 @@ export async function uploadDocument(file: File): Promise<{ url: string; filenam
   return data;
 }
 
+// Bulk import helper
+export async function bulkImportEmployees(file: File): Promise<{ message: string; results: { total: number; successful: number; failed: number; errors: Array<{ row: number; email?: string; error: string }> } }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const { data } = await api.post("/employees/bulk-import", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  
+  return data;
+}
+
+// Download sample template
+export async function downloadSampleTemplate(): Promise<void> {
+  const response = await api.get("/employees/sample-template", {
+    responseType: "blob",
+  });
+  
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "employee_import_template.csv");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default api;

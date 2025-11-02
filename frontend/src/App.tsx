@@ -15,6 +15,14 @@ import LeaveManagement from "./pages/LeaveManagement";
 import LeaveBalancesPage from "./pages/LeaveBalancesPage";
 import LeaveRequestsPage from "./pages/LeaveRequestsPage";
 import PayrollPage from "./pages/PayrollPage";
+import PayrollRunsPage from "./pages/PayrollRunsPage";
+import PayrollRunItemsPage from "./pages/PayrollRunItemsPage";
+import SalaryGradesPage from "./pages/SalaryGradesPage";
+import LoansPage from "./pages/LoansPage";
+import AdvancesPage from "./pages/AdvancesPage";
+import AllowancesPage from "./pages/AllowancesPage";
+import TaxPensionPage from "./pages/TaxPensionPage";
+import EmployeeSalaryPortal from "./pages/EmployeeSalaryPortal";
 import OrganizationPage from "./pages/OrganizationPage";
 import TimesheetPage from "./pages/TimesheetPage";
 import AssetManagementPage from "./pages/AssetManagementPage";
@@ -192,6 +200,38 @@ function AppRoutes() {
           element={<PayrollPage data-id="gcl3okxuk" data-path="src/App.tsx" />}
           data-id="fxuwv8fkq"
           data-path="src/App.tsx"
+        />
+        <Route
+          path="payroll/runs"
+          element={<PayrollRunsPage />}
+        />
+        <Route
+          path="payroll/runs/:runId/items"
+          element={<PayrollRunItemsPage />}
+        />
+        <Route
+          path="payroll/salary-grades"
+          element={<SalaryGradesPage />}
+        />
+        <Route
+          path="payroll/loans"
+          element={<LoansPage />}
+        />
+        <Route
+          path="payroll/advances"
+          element={<AdvancesPage />}
+        />
+        <Route
+          path="payroll/allowances"
+          element={<AllowancesPage />}
+        />
+        <Route
+          path="payroll/tax-pension"
+          element={<TaxPensionPage />}
+        />
+        <Route
+          path="my-salary"
+          element={<EmployeeSalaryPortal />}
         />
         <Route
           path="timesheet"

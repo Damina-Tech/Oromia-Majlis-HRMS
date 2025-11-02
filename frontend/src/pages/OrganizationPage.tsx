@@ -79,16 +79,16 @@ const OrganizationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [depts, emps, users] = await Promise.all([
+      const [depts, emps, usersResponse] = await Promise.all([
         listDepartments(),
         listEmployees({ page: 1, pageSize: 1000 }),
-        listUsers(true) // Only fetch active users
+        listUsers({ status: 'ACTIVE', page: 1, pageSize: 1000 }) // Only fetch active users
       ]);
       setDepartments(depts);
       setAllEmployees(emps.items);
       
-      // Filter active users and exclude those already managing other departments (unless editing current department)
-      const activeUsers = users.filter(user => user.status === 'ACTIVE');
+      // Get active users from response
+      const activeUsers = usersResponse.items.filter(user => user.status === 'ACTIVE');
       const managerIds = new Set(depts.map(d => d.managerId).filter(Boolean));
       
       setAllUsers(activeUsers.map(user => ({

@@ -20,7 +20,7 @@ function calculateDays(startDate: Date, endDate: Date): number {
 export async function listLeaveRequests(req: Request, res: Response) {
   try {
     const query = ListLeaveRequestsQuery.parse(req.query);
-    const { status, employeeId, search, sortBy, sortOrder, page, pageSize } = query;
+    const { status, employeeId, search, startDate, endDate, type, sortBy, sortOrder, page, pageSize } = query;
     const user = (req as any).user;
     const userRoles = user?.roles || [];
     const userPermissions = user?.permissions || [];
@@ -32,6 +32,18 @@ export async function listLeaveRequests(req: Request, res: Response) {
     
     if (status) {
       where.status = status;
+    }
+    
+    if (type) {
+      where.type = type;
+    }
+    
+    // Date range filtering
+    if (startDate || endDate) {
+      where.AND = [
+        startDate ? { startDate: { gte: new Date(startDate) } } : undefined,
+        endDate ? { endDate: { lte: new Date(endDate) } } : undefined,
+      ].filter(Boolean) as Prisma.LeaveRequestWhereInput[];
     }
     
     // If user is not admin/HR/manager, only show their own leave requests

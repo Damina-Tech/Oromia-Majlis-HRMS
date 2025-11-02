@@ -10,8 +10,8 @@ import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import payrollRoutes from "../modules/payroll/payroll.routes.js";
 import timesheetRoutes from "../modules/timesheet/timesheet.routes.js";
 import assetRoutes from "../modules/assets/asset.routes.js";
-import { uploadDocument } from "../modules/employees/employee.controller.js";
-import { upload } from "../lib/upload.js";
+import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
+import { upload, uploadImport } from "../lib/upload.js";
 
 const router = Router();
 
@@ -27,6 +27,14 @@ router.post("/v1/employees/upload-document",
   hasPermission("employees.write"),
   upload.single("document"),
   uploadDocument
+);
+
+// Register bulk-import route BEFORE mounting employeesRoutes
+router.post("/v1/employees/bulk-import",
+  requireAuth,
+  hasPermission("employees.write"),
+  uploadImport.single("file"),
+  bulkImportEmployees
 );
 
 router.use("/v1/employees", 

@@ -1,4 +1,38 @@
--- Ensure LeaveType enum exists (it should from previous migrations)
+-- Ensure LeaveType enum exists (create if it doesn't)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'LeaveType') THEN
+        CREATE TYPE "LeaveType" AS ENUM ('CASUAL', 'SICK', 'VACATION', 'MATERNITY', 'PERSONAL');
+    END IF;
+END $$;
+
+-- Check if LeaveBalance table exists, if not create it first
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'LeaveBalance') THEN
+        -- Create the old format table first (it will be transformed below)
+        CREATE TABLE "LeaveBalance" (
+            "id" TEXT NOT NULL,
+            "employeeId" TEXT NOT NULL,
+            "casualLeave" INTEGER NOT NULL DEFAULT 12,
+            "sickLeave" INTEGER NOT NULL DEFAULT 10,
+            "vacationLeave" INTEGER NOT NULL DEFAULT 21,
+            "personalLeave" INTEGER NOT NULL DEFAULT 5,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "LeaveBalance_pkey" PRIMARY KEY ("id")
+        );
+        
+        CREATE UNIQUE INDEX "LeaveBalance_employeeId_key" ON "LeaveBalance"("employeeId");
+        
+        -- Only add foreign key if Employee table exists (it may not exist yet due to migration order)
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Employee') THEN
+            ALTER TABLE "LeaveBalance" ADD CONSTRAINT "LeaveBalance_employeeId_fkey" 
+            FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+        END IF;
+    END IF;
+END $$;
+
 -- CreateTable
 CREATE TABLE "LeaveBalance_new" (
     "id" TEXT NOT NULL,
@@ -102,6 +136,23 @@ CREATE INDEX "LeaveBalance_year_idx" ON "LeaveBalance"("year");
 -- CreateIndex
 CREATE UNIQUE INDEX "LeaveBalance_employeeId_leaveType_year_key" ON "LeaveBalance"("employeeId", "leaveType", "year");
 
--- AddForeignKey
-ALTER TABLE "LeaveBalance" ADD CONSTRAINT "LeaveBalance_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- AddForeignKey (only if Employee table exists - it will be added by later migration if not)
+DO $$
+BEGIN
+    -- Drop constraint if it exists (from earlier in this migration)
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'public'
+        AND constraint_name = 'LeaveBalance_employeeId_fkey' 
+        AND table_name = 'LeaveBalance'
+    ) THEN
+        ALTER TABLE "LeaveBalance" DROP CONSTRAINT "LeaveBalance_employeeId_fkey";
+    END IF;
+    
+    -- Add constraint only if Employee table exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Employee') THEN
+        ALTER TABLE "LeaveBalance" ADD CONSTRAINT "LeaveBalance_employeeId_fkey" 
+        FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END $$;
 

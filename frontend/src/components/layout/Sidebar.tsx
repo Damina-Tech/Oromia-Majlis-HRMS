@@ -135,9 +135,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   item.permission === '*' || hasPermission(item.permission)
   );
 
-  const filteredAdminItems = adminItems.filter((item) =>
-  item.permission === '*' || hasPermission(item.permission)
-  );
+  // Check if user is ADMIN
+  const isAdmin = user?.roles?.some(role => role.toUpperCase() === 'ADMIN') || false;
+  
+  const filteredAdminItems = adminItems.filter((item) => {
+    // Show admin items only for ADMIN users
+    if (item.permission === '*') {
+      return isAdmin;
+    }
+    return hasPermission(item.permission);
+  });
 
   // Check if user is ADMIN or MANAGER
   const isAdminOrManager = user?.roles?.some(role => 
@@ -149,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   
   // Only show Leave Management submenu items if user has leave.view permission
   if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
-    leaveSubmenuItems.push({ title: 'Leave Management', href: '/leave', permission: 'leave.view' });
+    leaveSubmenuItems.push({ title: 'Your Leave Mngt', href: '/leave', permission: 'leave.view' });
     
     // Only ADMIN and MANAGER can see Leave Requests and Leave Balance
     if (isAdminOrManager) {
@@ -163,11 +170,30 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   
   // Only show Attendance submenu items if user has attendance.view permission
   if (hasPermission('attendance.view') || hasPermission('attendance.read') || hasPermission('attendance.manage')) {
-    attendanceSubmenuItems.push({ title: 'Attendance', href: '/attendance', permission: 'attendance.view' });
+    attendanceSubmenuItems.push({ title: 'Your Attendance', href: '/attendance', permission: 'attendance.view' });
     
     // Only ADMIN and MANAGER can see Attendance Records
     if (isAdminOrManager) {
       attendanceSubmenuItems.push({ title: 'Attendance Records', href: '/attendance-records', permission: 'attendance.read' });
+    }
+  }
+
+  // Payroll submenu items
+  const payrollSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Payroll submenu items if user has payroll.view permission
+  if (hasPermission('payroll.view') || hasPermission('payroll.process')) {
+    // All users can see their own salary portal
+    payrollSubmenuItems.push({ title: 'My Salary', href: '/my-salary', permission: 'payroll.view' });
+    
+    // Only ADMIN and MANAGER can see payroll management pages
+    if (isAdminOrManager) {
+      payrollSubmenuItems.push({ title: 'Payroll Runs', href: '/payroll/runs', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Salary Grades', href: '/payroll/salary-grades', permission: 'payroll.process' });
+      payrollSubmenuItems.push({ title: 'Loans', href: '/payroll/loans', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Advances', href: '/payroll/advances', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Allowances', href: '/payroll/allowances', permission: 'payroll.process' });
+      payrollSubmenuItems.push({ title: 'Tax & Pension', href: '/payroll/tax-pension', permission: 'payroll.process' });
     }
   }
 
@@ -178,6 +204,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     }
     if (location.pathname.startsWith('/attendance')) {
       setExpandedItems(prev => new Set([...prev, 'Attendance']));
+    }
+    if (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary')) {
+      setExpandedItems(prev => new Set([...prev, 'Payroll']));
     }
   }, [location.pathname]);
 
@@ -309,6 +338,50 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
                       {attendanceSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isPayroll = item.title === 'Payroll';
+            const isPayrollPage = location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary');
+            
+            if (isPayroll && payrollSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isPayrollPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {payrollSubmenuItems.map((subItem) => (
                         <NavLink
                           key={subItem.href}
                           to={subItem.href}

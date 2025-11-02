@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle
+  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle, Upload, FileDown
 } from "lucide-react";
-import api, { uploadDocument } from "@/services/api"; // Axios instance with baseURL + auth
+import api, { uploadDocument, bulkImportEmployees, downloadSampleTemplate } from "@/services/api"; // Axios instance with baseURL + auth
 import { createUser, getRoles, type Role } from "@/services/users";
 
 // ---------- Types ----------
@@ -1165,6 +1165,10 @@ const EmployeesPage: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Dept[]>([]);
   const [loading, setLoading] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<{ total: number; successful: number; failed: number; errors: Array<{ row: number; email?: string; error: string }> } | null>(null);
 
   // Load deps & employees
   useEffect(() => {
@@ -1238,6 +1242,16 @@ const EmployeesPage: React.FC = () => {
         </div>
         
         <div className="flex gap-2">
+          {canWrite && (
+            <Button variant="outline" onClick={() => {
+              setImportDialog(true);
+              setImportFile(null);
+              setImportResults(null);
+            }}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import Bulk
+            </Button>
+          )}
           <Button variant="outline">
             <Download className="h-4 w-4 mr-2" />
               Export
@@ -1559,6 +1573,178 @@ const EmployeesPage: React.FC = () => {
               Delete
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={importDialog} onOpenChange={(open) => {
+        setImportDialog(open);
+        if (!open) {
+          setImportFile(null);
+          setImportResults(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Employees</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with employee data to import multiple employees at once
+            </DialogDescription>
+          </DialogHeader>
+
+          {!importResults ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Instructions:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+                    <li>Download the sample template to see the required format</li>
+                    <li>Required fields: firstName, lastName, email</li>
+                    <li>All employees will automatically get user accounts with EMPLOYEE role</li>
+                    <li>Default password format: {`{email}{employeeCode}`}</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={async () => {
+                    try {
+                      await downloadSampleTemplate();
+                      toast.success("Sample template downloaded successfully");
+                    } catch (err: any) {
+                      toast.error(err?.response?.data?.message || "Failed to download sample template");
+                    }
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Download Sample Template
+                </Button>
+              </div>
+
+              <div>
+                <Label htmlFor="import-file">Select CSV File *</Label>
+                <Input
+                  id="import-file"
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setImportFile(file);
+                    }
+                  }}
+                  className="mt-2"
+                />
+                {importFile && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(2)} KB)
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setImportDialog(false)} disabled={importing}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={async () => {
+                    if (!importFile) {
+                      toast.error("Please select a file to import");
+                      return;
+                    }
+
+                    try {
+                      setImporting(true);
+                      const result = await bulkImportEmployees(importFile);
+                      setImportResults(result.results);
+                      
+                      if (result.results.successful > 0) {
+                        toast.success(`Successfully imported ${result.results.successful} employee(s)`);
+                        // Reload employees list
+                        const [deps, empRes] = await Promise.all([
+                          apiListDepartments(),
+                          apiListEmployees({ page: 1, pageSize: 200 })
+                        ]);
+                        setDepartments(deps);
+                        setEmployees(empRes.items);
+                      }
+                      
+                      if (result.results.failed > 0) {
+                        toast.warning(`${result.results.failed} employee(s) failed to import. Check errors below.`);
+                      }
+                    } catch (err: any) {
+                      toast.error(err?.response?.data?.message || "Failed to import employees");
+                    } finally {
+                      setImporting(false);
+                    }
+                  }}
+                  disabled={!importFile || importing}
+                >
+                  {importing ? (
+                    <>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Alert variant={importResults.failed > 0 ? "destructive" : "default"}>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Import Results:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+                    <li>Total: {importResults.total}</li>
+                    <li>Successful: {importResults.successful}</li>
+                    <li>Failed: {importResults.failed}</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+
+              {importResults.errors.length > 0 && (
+                <div>
+                  <Label>Errors ({importResults.errors.length}):</Label>
+                  <div className="mt-2 max-h-60 overflow-y-auto border rounded-lg p-4 space-y-2">
+                    {importResults.errors.map((error, idx) => (
+                      <div key={idx} className="text-sm p-2 bg-red-50 rounded border border-red-200">
+                        <p className="font-medium">Row {error.row}</p>
+                        {error.email && <p className="text-xs text-gray-600">Email: {error.email}</p>}
+                        <p className="text-xs text-red-600 mt-1">{error.error}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => {
+                  setImportDialog(false);
+                  setImportFile(null);
+                  setImportResults(null);
+                }}>
+                  Close
+                </Button>
+                {importResults.successful > 0 && (
+                  <Button onClick={() => {
+                    setImportDialog(false);
+                    setImportFile(null);
+                    setImportResults(null);
+                  }}>
+                    Done
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -5,6 +5,10 @@ import { CreateEmployeeDto, UpdateEmployeeDto, ListEmployeesQuery } from "./empl
 import { paginate } from "../../lib/paginate.js";
 import { nextEmployeeCode } from "../../lib/employee-code.js";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const prisma = new PrismaClient();
 
@@ -292,5 +296,300 @@ export async function uploadDocument(req: MulterRequest, res: Response) {
   } catch (error: any) {
     console.error("File upload error:", error);
     res.status(500).json({ message: "Failed to upload document", error: error.message });
+  }
+}
+
+export async function downloadSampleTemplate(req: Request, res: Response) {
+  try {
+    // Create CSV sample template
+    const headers = [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "dateOfBirth",
+      "gender",
+      "address",
+      "emergencyContact",
+      "designation",
+      "employmentType",
+      "educationLevel",
+      "educationOther",
+      "marriageStatus",
+      "status",
+      "joiningDate",
+      "salary",
+      "departmentId",
+      "managerId"
+    ];
+    
+    const sampleRow = [
+      "John",
+      "Doe",
+      "john.doe@company.com",
+      "+1234567890",
+      "1990-01-15",
+      "MALE",
+      "123 Main St",
+      "+1234567891",
+      "Software Engineer",
+      "FULL_TIME",
+      "DEGREE",
+      "",
+      "SINGLE",
+      "ACTIVE",
+      "2024-01-01",
+      "50000",
+      "",
+      ""
+    ];
+
+    const csvContent = [
+      headers.join(","),
+      sampleRow.join(","),
+      "",
+      "Notes:",
+      "- Date format: YYYY-MM-DD",
+      "- Gender: MALE, FEMALE, or OTHER",
+      "- Employment Type: FULL_TIME, PART_TIME, CONTRACT, INTERN, or TEMPORARY",
+      "- Education Level: GRADE_8, GRADE_10, GRADE_12, DEGREE, MASTER, PHD, or OTHER",
+      "- Marriage Status: SINGLE, MARRIED, DIVORCED, or WIDOWED",
+      "- Status: ACTIVE, INACTIVE, or ON_LEAVE",
+      "- departmentId and managerId should be UUIDs from the system (leave empty if not applicable)"
+    ].join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=employee_import_template.csv");
+    res.send(csvContent);
+  } catch (error: any) {
+    console.error("Failed to generate sample template:", error);
+    res.status(500).json({ message: "Failed to generate sample template" });
+  }
+}
+
+export async function bulkImportEmployees(req: MulterRequest, res: Response) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const filePath = req.file.path;
+    const fileExtension = path.extname(req.file.originalname).toLowerCase();
+    
+    let employees: any[] = [];
+
+    // Parse CSV or Excel file
+    if (fileExtension === ".csv") {
+      // Simple CSV parser (can be enhanced with papaparse)
+      const fileContent = fs.readFileSync(filePath, "utf-8");
+      const lines = fileContent.split("\n").filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        return res.status(400).json({ message: "CSV file must have at least a header row and one data row" });
+      }
+
+      const headers = lines[0].split(",").map(h => h.trim());
+      const dataRows = lines.slice(1);
+
+      employees = dataRows.map((row, index) => {
+        const values = row.split(",").map(v => v.trim());
+        const employee: any = {};
+        
+        headers.forEach((header, i) => {
+          const value = values[i] || "";
+          if (value) {
+            employee[header] = value;
+          }
+        });
+        
+        return { row: index + 2, data: employee }; // row number for error reporting
+      }).filter(item => Object.keys(item.data).length > 0);
+    } else if (fileExtension === ".xlsx" || fileExtension === ".xls") {
+      // For Excel, we'll need xlsx library
+      // For now, return error asking user to convert to CSV
+      return res.status(400).json({ 
+        message: "Excel files are not yet supported. Please convert to CSV format." 
+      });
+    } else {
+      return res.status(400).json({ 
+        message: "Unsupported file format. Please upload a CSV file." 
+      });
+    }
+
+    if (employees.length === 0) {
+      return res.status(400).json({ message: "No employee data found in the file" });
+    }
+
+    // Validate and create employees
+    const results = {
+      total: employees.length,
+      successful: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; email?: string; error: string }>,
+    };
+
+    // Get all existing emails to check for duplicates
+    const existingEmails = new Set(
+      (await prisma.employee.findMany({ select: { email: true } })).map(e => e.email.toLowerCase())
+    );
+
+    // Get employee count for generating codes
+    const currentCount = await prisma.employee.count();
+
+    // Get EMPLOYEE role for auto-creating user accounts
+    const employeeRole = await prisma.role.findUnique({
+      where: { name: "EMPLOYEE" },
+    });
+
+    // Process employees in batches
+    for (let i = 0; i < employees.length; i++) {
+      const { row, data } = employees[i];
+      
+      try {
+        // Validate required fields
+        if (!data.firstName || !data.lastName || !data.email) {
+          results.failed++;
+          results.errors.push({
+            row,
+            email: data.email,
+            error: "Missing required fields: firstName, lastName, and email are required",
+          });
+          continue;
+        }
+
+        // Check for duplicate email
+        if (existingEmails.has(data.email.toLowerCase())) {
+          results.failed++;
+          results.errors.push({
+            row,
+            email: data.email,
+            error: "Email already exists in the system",
+          });
+          continue;
+        }
+
+        // Map CSV data to DTO format
+        const employeeCode = nextEmployeeCode(currentCount + results.successful + 1);
+        
+        const dto: any = {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone || undefined,
+          dateOfBirth: data.dateOfBirth || undefined,
+          gender: data.gender || undefined,
+          address: data.address || undefined,
+          emergencyContact: data.emergencyContact || undefined,
+          designation: data.designation || undefined,
+          employmentType: data.employmentType || undefined,
+          educationLevel: data.educationLevel || undefined,
+          educationOther: data.educationOther || undefined,
+          marriageStatus: data.marriageStatus || undefined,
+          status: data.status || "ACTIVE",
+          joiningDate: data.joiningDate || undefined,
+          salary: data.salary ? Number(data.salary) : undefined,
+          departmentId: data.departmentId || undefined,
+          managerId: data.managerId || undefined,
+        };
+
+        // Validate with DTO
+        const validatedDto = CreateEmployeeDto.parse(dto);
+
+        // Create employee with user account in transaction
+        await prisma.$transaction(async (tx) => {
+          const newEmp = await tx.employee.create({
+            data: {
+              employeeCode,
+              firstName: validatedDto.firstName,
+              lastName: validatedDto.lastName,
+              email: validatedDto.email,
+              phone: validatedDto.phone || null,
+              dateOfBirth: validatedDto.dateOfBirth ? new Date(validatedDto.dateOfBirth) : null,
+              gender: validatedDto.gender && validatedDto.gender.trim() !== "" ? validatedDto.gender : null,
+              address: validatedDto.address || null,
+              emergencyContact: validatedDto.emergencyContact || null,
+              designation: validatedDto.designation || null,
+              employmentType: validatedDto.employmentType || null,
+              educationLevel: validatedDto.educationLevel && validatedDto.educationLevel.trim() !== "" ? validatedDto.educationLevel : null,
+              educationOther: validatedDto.educationOther && validatedDto.educationOther.trim() !== "" ? validatedDto.educationOther : null,
+              marriageStatus: validatedDto.marriageStatus && validatedDto.marriageStatus.trim() !== "" ? validatedDto.marriageStatus : null,
+              status: validatedDto.status || "ACTIVE",
+              joiningDate: validatedDto.joiningDate ? new Date(validatedDto.joiningDate) : null,
+              salary: validatedDto.salary ?? null,
+              departmentId: validatedDto.departmentId && validatedDto.departmentId.trim() !== "" ? validatedDto.departmentId : null,
+              managerId: validatedDto.managerId && validatedDto.managerId.trim() !== "" ? validatedDto.managerId : null,
+            },
+          });
+
+          // Auto-create user account if EMPLOYEE role exists
+          if (employeeRole) {
+            try {
+              const existingUser = await tx.user.findUnique({
+                where: { email: validatedDto.email },
+              });
+
+              if (!existingUser) {
+                const defaultPassword = `${validatedDto.email}${employeeCode}`;
+                const passwordHash = await bcrypt.hash(defaultPassword, 10);
+
+                const user = await tx.user.create({
+                  data: {
+                    email: validatedDto.email,
+                    passwordHash,
+                    firstName: validatedDto.firstName,
+                    lastName: validatedDto.lastName,
+                    status: validatedDto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+                  },
+                });
+
+                await tx.userRole.create({
+                  data: {
+                    userId: user.id,
+                    roleId: employeeRole.id,
+                  },
+                });
+
+                await tx.employee.update({
+                  where: { id: newEmp.id },
+                  data: { userId: user.id },
+                });
+              }
+            } catch (userError) {
+              // Log but don't fail employee creation
+              console.error(`Failed to create user account for ${validatedDto.email}:`, userError);
+            }
+          }
+
+          existingEmails.add(validatedDto.email.toLowerCase());
+        });
+
+        results.successful++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push({
+          row,
+          email: data.email,
+          error: error.message || "Validation failed",
+        });
+      }
+    }
+
+    // Clean up uploaded file
+    try {
+      fs.unlinkSync(filePath);
+    } catch (cleanupError) {
+      console.error("Failed to cleanup uploaded file:", cleanupError);
+    }
+
+    res.json({
+      message: `Bulk import completed. ${results.successful} successful, ${results.failed} failed.`,
+      results,
+    });
+  } catch (error: any) {
+    console.error("Bulk import error:", error);
+    res.status(500).json({ 
+      message: "Failed to process bulk import", 
+      error: error.message 
+    });
   }
 }

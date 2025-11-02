@@ -46,6 +46,9 @@ export async function listLeaveRequests(params: {
   status?: LeaveStatus;
   employeeId?: string;
   search?: string;
+  startDate?: string;
+  endDate?: string;
+  type?: LeaveType;
   sortBy?: "createdAt" | "startDate" | "endDate" | "days" | "status";
   sortOrder?: "asc" | "desc";
   page?: number;

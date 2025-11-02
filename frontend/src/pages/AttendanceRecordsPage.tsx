@@ -17,6 +17,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -57,8 +63,10 @@ import {
   AlertTriangle,
   Building2,
   MapPinned,
+  Calendar as CalendarIcon,
+  X,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths } from 'date-fns';
 
 const AttendanceRecordsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -81,6 +89,13 @@ const AttendanceRecordsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  
+  // Date filter states
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom'>('all');
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+  const [customSingleDate, setCustomSingleDate] = useState<Date | undefined>(undefined);
+  const [customDateType, setCustomDateType] = useState<'range' | 'single'>('range');
 
   // Dialog states
   const [showViewDialog, setShowViewDialog] = useState(false);
@@ -121,7 +136,7 @@ const AttendanceRecordsPage: React.FC = () => {
     if (canCreate) {
       loadEmployees();
     }
-  }, [page, pageSize, statusFilter, sortBy, canManage, canCreate]);
+  }, [page, pageSize, statusFilter, sortBy, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, canManage, canCreate]);
 
   useEffect(() => {
     // Debounce search
@@ -144,13 +159,88 @@ const AttendanceRecordsPage: React.FC = () => {
     }
   };
 
+  // Calculate date range based on filter
+  const getDateRange = (): { startDate?: string; endDate?: string } => {
+    const now = new Date();
+    
+    switch (dateFilter) {
+      case 'today': {
+        const today = startOfDay(now);
+        return {
+          startDate: format(today, 'yyyy-MM-dd'),
+          endDate: format(today, 'yyyy-MM-dd'),
+        };
+      }
+      case 'yesterday': {
+        const yesterday = startOfDay(subDays(now, 1));
+        return {
+          startDate: format(yesterday, 'yyyy-MM-dd'),
+          endDate: format(yesterday, 'yyyy-MM-dd'),
+        };
+      }
+      case 'thisWeek': {
+        const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+        return {
+          startDate: format(weekStart, 'yyyy-MM-dd'),
+          endDate: format(weekEnd, 'yyyy-MM-dd'),
+        };
+      }
+      case 'lastWeek': {
+        const lastWeek = subWeeks(now, 1);
+        const weekStart = startOfWeek(lastWeek, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(lastWeek, { weekStartsOn: 1 });
+        return {
+          startDate: format(weekStart, 'yyyy-MM-dd'),
+          endDate: format(weekEnd, 'yyyy-MM-dd'),
+        };
+      }
+      case 'thisMonth': {
+        const monthStart = startOfMonth(now);
+        const monthEnd = endOfMonth(now);
+        return {
+          startDate: format(monthStart, 'yyyy-MM-dd'),
+          endDate: format(monthEnd, 'yyyy-MM-dd'),
+        };
+      }
+      case 'lastMonth': {
+        const lastMonth = subMonths(now, 1);
+        const monthStart = startOfMonth(lastMonth);
+        const monthEnd = endOfMonth(lastMonth);
+        return {
+          startDate: format(monthStart, 'yyyy-MM-dd'),
+          endDate: format(monthEnd, 'yyyy-MM-dd'),
+        };
+      }
+      case 'custom': {
+        if (customDateType === 'single' && customSingleDate) {
+          return {
+            startDate: format(customSingleDate, 'yyyy-MM-dd'),
+            endDate: format(customSingleDate, 'yyyy-MM-dd'),
+          };
+        } else if (customDateType === 'range' && customStartDate && customEndDate) {
+          return {
+            startDate: format(customStartDate, 'yyyy-MM-dd'),
+            endDate: format(customEndDate, 'yyyy-MM-dd'),
+          };
+        }
+        return {};
+      }
+      default:
+        return {};
+    }
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
+      const dateRange = getDateRange();
       const response = await listAttendance({
         allEmployees: canManage ? true : false, // Show all employees if user has permission
         status: statusFilter !== 'all' ? statusFilter as AttendanceStatus : undefined,
         search: searchTerm || undefined,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         sortBy,
         sortOrder: 'desc',
         page,
@@ -404,43 +494,201 @@ const AttendanceRecordsPage: React.FC = () => {
       {/* Filters and Search */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder={`Search ${total} records...`}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="PRESENT">Present</SelectItem>
-                <SelectItem value="LATE">Late</SelectItem>
-                <SelectItem value="ABSENT">Absent</SelectItem>
-                <SelectItem value="HALF_DAY">Half Day</SelectItem>
-                <SelectItem value="ON_LEAVE">On Leave</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-4">
+            {/* First row: Search and filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder={`Search ${total} records...`}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="PRESENT">Present</SelectItem>
+                  <SelectItem value="LATE">Late</SelectItem>
+                  <SelectItem value="ABSENT">Absent</SelectItem>
+                  <SelectItem value="HALF_DAY">Half Day</SelectItem>
+                  <SelectItem value="ON_LEAVE">On Leave</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="date">Date</SelectItem>
-                <SelectItem value="checkInTime">Check In</SelectItem>
-                <SelectItem value="checkOutTime">Check Out</SelectItem>
-                <SelectItem value="status">Status</SelectItem>
-                <SelectItem value="createdAt">Created At</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="checkInTime">Check In</SelectItem>
+                  <SelectItem value="checkOutTime">Check Out</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="createdAt">Created At</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Second row: Date filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Select 
+                value={dateFilter} 
+                onValueChange={(v) => {
+                  setDateFilter(v as any);
+                  setPage(1);
+                  if (v !== 'custom') {
+                    setCustomStartDate(undefined);
+                    setCustomEndDate(undefined);
+                    setCustomSingleDate(undefined);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Date Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dates</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="thisWeek">This Week</SelectItem>
+                  <SelectItem value="lastWeek">Last Week</SelectItem>
+                  <SelectItem value="thisMonth">This Month</SelectItem>
+                  <SelectItem value="lastMonth">Last Month</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {dateFilter === 'custom' && (
+                <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Select 
+                      value={customDateType} 
+                      onValueChange={(v) => {
+                        setCustomDateType(v as 'range' | 'single');
+                        setCustomStartDate(undefined);
+                        setCustomEndDate(undefined);
+                        setCustomSingleDate(undefined);
+                      }}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="range">Range</SelectItem>
+                        <SelectItem value="single">Single Date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {customDateType === 'single' ? (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={`w-full sm:w-[240px] justify-start text-left font-normal ${!customSingleDate && 'text-muted-foreground'}`}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {customSingleDate ? format(customSingleDate, 'PPP') : 'Pick a date'}
+                          {customSingleDate && (
+                            <X
+                              className="ml-auto h-4 w-4"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomSingleDate(undefined);
+                              }}
+                            />
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={customSingleDate}
+                          onSelect={(date) => {
+                            setCustomSingleDate(date);
+                            setPage(1);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={`w-full sm:w-[240px] justify-start text-left font-normal ${!customStartDate && 'text-muted-foreground'}`}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {customStartDate ? format(customStartDate, 'PPP') : 'Start date'}
+                            {customStartDate && (
+                              <X
+                                className="ml-auto h-4 w-4"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomStartDate(undefined);
+                                }}
+                              />
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={customStartDate}
+                            onSelect={(date) => {
+                              setCustomStartDate(date);
+                              setPage(1);
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={`w-full sm:w-[240px] justify-start text-left font-normal ${!customEndDate && 'text-muted-foreground'}`}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {customEndDate ? format(customEndDate, 'PPP') : 'End date'}
+                            {customEndDate && (
+                              <X
+                                className="ml-auto h-4 w-4"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomEndDate(undefined);
+                                }}
+                              />
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={customEndDate}
+                            onSelect={(date) => {
+                              setCustomEndDate(date);
+                              setPage(1);
+                            }}
+                            disabled={(date) => customStartDate ? date < customStartDate : false}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
