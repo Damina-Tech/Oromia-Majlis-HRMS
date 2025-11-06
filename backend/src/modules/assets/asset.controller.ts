@@ -4,15 +4,14 @@ import {
   CreateAssetDto,
   UpdateAssetDto,
   AssignAssetDto,
-  TransferAssetDto,
-  UpdateAssetStatusDto,
-  UpdateAssetConditionDto,
+  ReturnAssetDto,
   ListAssetsQuery,
   AssetStatsQuery,
   AssetHistoryQuery,
   BulkUpdateAssetsDto,
 } from "./asset.dto.js";
 import { paginate } from "../../utils/pagination.js";
+import { generateAssetCode } from "./asset-utils.js";
 
 const prisma = new PrismaClient();
 
@@ -41,6 +40,7 @@ export async function listAssets(req: Request, res: Response) {
     if (query.search) {
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" } },
+        { assetCode: { contains: query.search, mode: "insensitive" } },
         { serialNumber: { contains: query.search, mode: "insensitive" } },
         { model: { contains: query.search, mode: "insensitive" } },
         { brand: { contains: query.search, mode: "insensitive" } },
@@ -48,8 +48,8 @@ export async function listAssets(req: Request, res: Response) {
     }
 
     // Filter by category
-    if (query.category) {
-      where.category = query.category;
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
     }
 
     // Filter by status
@@ -63,18 +63,18 @@ export async function listAssets(req: Request, res: Response) {
     }
 
     // Filter by location
-    if (query.location) {
-      where.location = { contains: query.location, mode: "insensitive" };
+    if (query.locationId) {
+      where.locationId = query.locationId;
+    }
+
+    // Filter by department
+    if (query.departmentId) {
+      where.departmentId = query.departmentId;
     }
 
     // Filter by assigned employee
-    if (query.assignedTo) {
-      where.assignedTo = query.assignedTo;
-    }
-
-    // Filter by assigned by user
-    if (query.assignedBy) {
-      where.assignedBy = query.assignedBy;
+    if (query.assignedToEmployeeId) {
+      where.assignedToEmployeeId = query.assignedToEmployeeId;
     }
 
     const { skip, take } = paginate(query.page, query.pageSize);
@@ -87,6 +87,15 @@ export async function listAssets(req: Request, res: Response) {
       prisma.asset.findMany({
         where,
         include: {
+          category: true,
+          location: true,
+          vendor: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           assignedEmployee: {
             select: {
               id: true,
@@ -102,16 +111,11 @@ export async function listAssets(req: Request, res: Response) {
               },
             },
           },
-          assignedByUser: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
           _count: {
             select: {
               history: true,
+              assignments: true,
+              maintenance: true,
             },
           },
         },
@@ -131,7 +135,11 @@ export async function listAssets(req: Request, res: Response) {
     });
   } catch (error: any) {
     console.error("List assets error:", error);
-    return res.status(500).json({ message: "Failed to list assets" });
+    console.error("Error details:", error.message, error.stack);
+    return res.status(500).json({ 
+      message: "Failed to list assets",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 }
 
@@ -220,27 +228,58 @@ export async function createAsset(req: Request, res: Response) {
     const data = CreateAssetDto.parse(req.body);
     const currentUserId = getCurrentUserId(req);
 
-    // Check if serial number already exists
-    const existingAsset = await prisma.asset.findUnique({
-      where: { serialNumber: data.serialNumber },
-    });
-
-    if (existingAsset) {
-      return res.status(409).json({ message: "Asset with this serial number already exists" });
+    if (!currentUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
+
+    // Check if serial number already exists (if provided)
+    if (data.serialNumber) {
+      const existingAsset = await prisma.asset.findUnique({
+        where: { serialNumber: data.serialNumber },
+      });
+      if (existingAsset) {
+        return res.status(409).json({ message: "Asset with this serial number already exists" });
+      }
+    }
+
+    // Generate asset code
+    const assetCode = await generateAssetCode(data.categoryId);
 
     // Create asset with history entry
     const asset = await prisma.$transaction(async (tx) => {
       const newAsset = await tx.asset.create({
         data: {
-          ...data,
+          assetCode,
+          name: data.name,
+          categoryId: data.categoryId,
+          brand: data.brand,
+          model: data.model,
+          serialNumber: data.serialNumber || null,
           purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
           purchasePrice: data.purchasePrice ? new Prisma.Decimal(data.purchasePrice) : null,
-          currentValue: data.currentValue ? new Prisma.Decimal(data.currentValue) : null,
-          status: "AVAILABLE",
-          condition: data.condition || "EXCELLENT",
+          currency: data.currency || "USD",
+          vendorId: data.vendorId || null,
+          warrantyUntil: data.warrantyUntil ? new Date(data.warrantyUntil) : null,
+          locationId: data.locationId || null,
+          departmentId: data.departmentId || null,
+          condition: data.condition || "NEW",
+          status: "IN_STOCK",
+          depreciationMethod: data.depreciationMethod || null,
+          depreciationRate: data.depreciationRate ? new Prisma.Decimal(data.depreciationRate) : null,
+          lifeYears: data.lifeYears ? new Prisma.Decimal(data.lifeYears) : null,
+          notes: data.notes,
+          createdBy: currentUserId,
         },
         include: {
+          category: true,
+          location: true,
+          vendor: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           assignedEmployee: {
             select: {
               id: true,
@@ -263,6 +302,15 @@ export async function createAsset(req: Request, res: Response) {
         },
       });
 
+      // Create audit log
+      await tx.assetAuditLog.create({
+        data: {
+          assetId: newAsset.id,
+          changedBy: currentUserId,
+          changeSummary: `Asset created: ${newAsset.name} (${assetCode})`,
+        },
+      });
+
       return newAsset;
     });
 
@@ -271,7 +319,7 @@ export async function createAsset(req: Request, res: Response) {
     console.error("Create asset error:", error);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
-        return res.status(409).json({ message: "Asset with this serial number already exists" });
+        return res.status(409).json({ message: "Asset with this serial number or asset code already exists" });
       }
     }
     return res.status(500).json({ message: "Failed to create asset" });
@@ -308,16 +356,44 @@ export async function updateAsset(req: Request, res: Response) {
       changes.push(`Condition: ${existingAsset.condition} → ${data.condition}`);
     }
 
+    if (!currentUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const asset = await prisma.$transaction(async (tx) => {
+      const updateData: any = {};
+      if (data.name) updateData.name = data.name;
+      if (data.categoryId) updateData.categoryId = data.categoryId;
+      if (data.brand !== undefined) updateData.brand = data.brand;
+      if (data.model !== undefined) updateData.model = data.model;
+      if (data.serialNumber !== undefined) updateData.serialNumber = data.serialNumber;
+      if (data.purchaseDate) updateData.purchaseDate = new Date(data.purchaseDate);
+      if (data.purchasePrice !== undefined) updateData.purchasePrice = data.purchasePrice ? new Prisma.Decimal(data.purchasePrice) : null;
+      if (data.currency) updateData.currency = data.currency;
+      if (data.vendorId !== undefined) updateData.vendorId = data.vendorId || null;
+      if (data.warrantyUntil) updateData.warrantyUntil = new Date(data.warrantyUntil);
+      if (data.locationId !== undefined) updateData.locationId = data.locationId || null;
+      if (data.departmentId !== undefined) updateData.departmentId = data.departmentId || null;
+      if (data.condition) updateData.condition = data.condition;
+      if (data.status) updateData.status = data.status;
+      if (data.depreciationMethod !== undefined) updateData.depreciationMethod = data.depreciationMethod || null;
+      if (data.depreciationRate !== undefined) updateData.depreciationRate = data.depreciationRate ? new Prisma.Decimal(data.depreciationRate) : null;
+      if (data.lifeYears !== undefined) updateData.lifeYears = data.lifeYears ? new Prisma.Decimal(data.lifeYears) : null;
+      if (data.notes !== undefined) updateData.notes = data.notes;
+
       const updatedAsset = await tx.asset.update({
         where: { id },
-        data: {
-          ...data,
-          purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : undefined,
-          purchasePrice: data.purchasePrice ? new Prisma.Decimal(data.purchasePrice) : undefined,
-          currentValue: data.currentValue ? new Prisma.Decimal(data.currentValue) : undefined,
-        },
+        data: updateData,
         include: {
+          category: true,
+          location: true,
+          vendor: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           assignedEmployee: {
             select: {
               id: true,
@@ -325,13 +401,6 @@ export async function updateAsset(req: Request, res: Response) {
               lastName: true,
               employeeCode: true,
               designation: true,
-            },
-          },
-          assignedByUser: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
             },
           },
         },
@@ -349,6 +418,17 @@ export async function updateAsset(req: Request, res: Response) {
             previousCondition: existingAsset.condition,
             newCondition: data.condition || existingAsset.condition,
             performedBy: currentUserId,
+          },
+        });
+      }
+
+      // Create audit log if significant changes
+      if (changes.length > 0) {
+        await tx.assetAuditLog.create({
+          data: {
+            assetId: id,
+            changedBy: currentUserId,
+            changeSummary: `Asset updated: ${changes.join("; ")}`,
           },
         });
       }
@@ -377,6 +457,10 @@ export async function assignAsset(req: Request, res: Response) {
     const data = AssignAssetDto.parse(req.body);
     const currentUserId = getCurrentUserId(req);
 
+    if (!currentUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const asset = await prisma.asset.findUnique({
       where: { id },
       include: { assignedEmployee: true },
@@ -386,7 +470,7 @@ export async function assignAsset(req: Request, res: Response) {
       return res.status(404).json({ message: "Asset not found" });
     }
 
-    if (asset.status !== "AVAILABLE") {
+    if (asset.status !== "IN_STOCK") {
       return res.status(400).json({ message: "Asset is not available for assignment" });
     }
 
@@ -401,18 +485,28 @@ export async function assignAsset(req: Request, res: Response) {
     }
 
     // Check if employee already has this asset assigned
-    if (asset.assignedTo === data.employeeId) {
+    if (asset.assignedToEmployeeId === data.employeeId) {
       return res.status(400).json({ message: "Asset is already assigned to this employee" });
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Create assignment record
+      const assignment = await tx.assetAssignment.create({
+        data: {
+          assetId: id,
+          employeeId: data.employeeId,
+          assignedAt: new Date(),
+          assignedBy: currentUserId,
+          note: data.note,
+        },
+      });
+
+      // Update asset
       const updatedAsset = await tx.asset.update({
         where: { id },
         data: {
           status: "ASSIGNED",
-          assignedTo: data.employeeId,
-          assignedDate: new Date(),
-          assignedBy: currentUserId,
+          assignedToEmployeeId: data.employeeId,
         },
         include: {
           assignedEmployee: {
@@ -430,13 +524,8 @@ export async function assignAsset(req: Request, res: Response) {
               },
             },
           },
-          assignedByUser: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
+          category: true,
+          location: true,
         },
       });
 
@@ -445,8 +534,91 @@ export async function assignAsset(req: Request, res: Response) {
         data: {
           assetId: id,
           action: "ASSIGNED",
-          description: data.notes || `Asset assigned to ${employee.firstName} ${employee.lastName}`,
+          description: data.note || `Asset assigned to ${employee.firstName} ${employee.lastName}`,
           toEmployeeId: data.employeeId,
+          performedBy: currentUserId,
+        },
+      });
+
+      return { ...updatedAsset, assignment };
+    });
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error("Assign asset error:", error);
+    return res.status(500).json({ message: "Failed to assign asset" });
+  }
+}
+
+export async function returnAsset(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const data = ReturnAssetDto.parse(req.body);
+    const currentUserId = getCurrentUserId(req);
+
+    if (!currentUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const asset = await prisma.asset.findUnique({
+      where: { id },
+      include: {
+        assignedEmployee: true,
+        assignments: {
+          where: {
+            returnedAt: null,
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (!asset) {
+      return res.status(404).json({ message: "Asset not found" });
+    }
+
+    if (asset.status !== "ASSIGNED") {
+      return res.status(400).json({ message: "Asset is not currently assigned" });
+    }
+
+    if (asset.assignments.length === 0) {
+      return res.status(400).json({ message: "No active assignment found" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Mark assignment as returned
+      const assignment = asset.assignments[0];
+      await tx.assetAssignment.update({
+        where: { id: assignment.id },
+        data: {
+          returnedAt: new Date(),
+          note: data.note || assignment.note,
+        },
+      });
+
+      // Update asset
+      const updatedAsset = await tx.asset.update({
+        where: { id },
+        data: {
+          status: "IN_STOCK",
+          assignedToEmployeeId: null,
+        },
+        include: {
+          category: true,
+          location: true,
+        },
+      });
+
+      // Create history entry
+      await tx.assetHistory.create({
+        data: {
+          assetId: id,
+          action: "REVOKED",
+          description: data.note || `Asset returned from ${asset.assignedEmployee?.firstName} ${asset.assignedEmployee?.lastName}`,
+          fromEmployeeId: assignment.employeeId,
           performedBy: currentUserId,
         },
       });
@@ -456,8 +628,8 @@ export async function assignAsset(req: Request, res: Response) {
 
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("Assign asset error:", error);
-    return res.status(500).json({ message: "Failed to assign asset" });
+    console.error("Return asset error:", error);
+    return res.status(500).json({ message: "Failed to return asset" });
   }
 }
 
@@ -718,12 +890,16 @@ export async function getAssetStats(req: Request, res: Response) {
     // Build where clause
     const where: Prisma.AssetWhereInput = {};
 
-    if (query.category) {
-      where.category = query.category;
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
     }
 
-    if (query.location) {
-      where.location = { contains: query.location, mode: "insensitive" };
+    if (query.locationId) {
+      where.locationId = query.locationId;
+    }
+
+    if (query.departmentId) {
+      where.departmentId = query.departmentId;
     }
 
     if (query.dateFrom || query.dateTo) {
@@ -736,8 +912,12 @@ export async function getAssetStats(req: Request, res: Response) {
       totalAssets,
       statusCounts,
       conditionCounts,
-      categoryCounts,
+      categoryBreakdown,
+      locationBreakdown,
       totalValue,
+      assignedCount,
+      maintenanceCount,
+      disposedCount,
     ] = await Promise.all([
       prisma.asset.count({ where }),
       prisma.asset.groupBy({
@@ -751,21 +931,53 @@ export async function getAssetStats(req: Request, res: Response) {
         _count: { condition: true },
       }),
       prisma.asset.groupBy({
-        by: ["category"],
+        by: ["categoryId"],
         where,
-        _count: { category: true },
+        _count: { categoryId: true },
+      }),
+      prisma.asset.groupBy({
+        by: ["locationId"],
+        where,
+        _count: { locationId: true },
       }),
       prisma.asset.aggregate({
         where,
-        _sum: { currentValue: true },
-        _avg: { currentValue: true },
+        _sum: { purchasePrice: true },
+        _avg: { purchasePrice: true },
       }),
+      prisma.asset.count({ where: { ...where, status: "ASSIGNED" } }),
+      prisma.assetMaintenance.count({
+        where: {
+          asset: where,
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+        },
+      }),
+      prisma.asset.count({ where: { ...where, status: "DISPOSED" } }),
     ]);
+
+    // Get category names for breakdown
+    const categoryIds = categoryBreakdown.map((c) => c.categoryId).filter(Boolean) as string[];
+    const categories = await prisma.assetCategory.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true },
+    });
+    const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
+
+    // Get location names for breakdown
+    const locationIds = locationBreakdown.map((l) => l.locationId).filter(Boolean) as string[];
+    const locations = await prisma.assetLocation.findMany({
+      where: { id: { in: locationIds } },
+      select: { id: true, name: true },
+    });
+    const locationMap = new Map(locations.map((l) => [l.id, l.name]));
 
     const stats = {
       totalAssets,
-      totalValue: parseFloat(totalValue._sum.currentValue?.toString() || "0"),
-      averageValue: parseFloat(totalValue._avg.currentValue?.toString() || "0"),
+      totalValue: parseFloat(totalValue._sum.purchasePrice?.toString() || "0"),
+      averageValue: parseFloat(totalValue._avg.purchasePrice?.toString() || "0"),
+      assignedCount,
+      maintenanceCount,
+      disposedCount,
       statusBreakdown: statusCounts.reduce((acc, item) => {
         acc[item.status.toLowerCase()] = item._count.status;
         return acc;
@@ -774,8 +986,14 @@ export async function getAssetStats(req: Request, res: Response) {
         acc[item.condition.toLowerCase()] = item._count.condition;
         return acc;
       }, {} as Record<string, number>),
-      categoryBreakdown: categoryCounts.reduce((acc, item) => {
-        acc[item.category.toLowerCase()] = item._count.category;
+      categoryBreakdown: categoryBreakdown.reduce((acc, item) => {
+        const categoryName = categoryMap.get(item.categoryId) || "Unknown";
+        acc[categoryName] = item._count.categoryId;
+        return acc;
+      }, {} as Record<string, number>),
+      locationBreakdown: locationBreakdown.reduce((acc, item) => {
+        const locationName = locationMap.get(item.locationId) || "Unknown";
+        acc[locationName] = item._count.locationId;
         return acc;
       }, {} as Record<string, number>),
     };

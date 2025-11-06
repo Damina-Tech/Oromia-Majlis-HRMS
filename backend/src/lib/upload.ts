@@ -88,3 +88,55 @@ export const uploadImport = multer({
 
 export const uploadDir = uploadsDir;
 
+// Task attachments upload configuration
+const taskUploadsDir = path.join(__dirname, "../../uploads/tasks");
+if (!fs.existsSync(taskUploadsDir)) {
+  fs.mkdirSync(taskUploadsDir, { recursive: true });
+}
+
+const taskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, taskUploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext);
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadTaskAttachment = multer({
+  storage: taskStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter,
+});
+
+// Expense receipts upload configuration
+const expenseUploadsDir = path.join(__dirname, "../uploads/expenses");
+if (!fs.existsSync(expenseUploadsDir)) {
+  fs.mkdirSync(expenseUploadsDir, { recursive: true });
+}
+
+const expenseStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, expenseUploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext);
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadExpenseReceipt = multer({
+  storage: expenseStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter,
+});
+

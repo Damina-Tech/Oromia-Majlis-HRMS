@@ -542,14 +542,14 @@ const PayrollRunsPage: React.FC = () => {
               <div className="space-y-2">
                 <Label htmlFor="departmentId">Department (Optional)</Label>
                 <Select
-                  value={createForm.departmentId}
-                  onValueChange={(v) => setCreateForm({ ...createForm, departmentId: v })}
+                  value={createForm.departmentId || "__none__"}
+                  onValueChange={(v) => setCreateForm({ ...createForm, departmentId: v === "__none__" ? "" : v })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="All Departments" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Departments</SelectItem>
+                    <SelectItem value="__none__">All Departments</SelectItem>
                     {departments.map((dept) => (
                       <SelectItem key={dept.id} value={dept.id}>
                         {dept.name}
@@ -797,4 +797,3 @@ const PayrollRunsPage: React.FC = () => {
 };
 
 export default PayrollRunsPage;
-

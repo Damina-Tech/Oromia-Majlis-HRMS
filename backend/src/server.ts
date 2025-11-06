@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/index.js";
+import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/announcements/scheduler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,13 +22,40 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: "Too many requests from this IP, please try again later."
-});
-app.use(limiter);
+// Rate limiting - more lenient for development
+// In development, use much higher limits or disable entirely
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: "Too many requests from this IP, please try again later.",
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting for health check
+      return req.path === "/health";
+    }
+  });
+  
+  // Apply rate limiting to all routes except static files
+  app.use("/api", limiter);
+} else {
+  // In development, use a very lenient rate limit
+  const devLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 10000, // Very high limit for development
+    message: "Too many requests from this IP, please try again later.",
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting for health check
+      return req.path === "/health";
+    }
+  });
+  
+  app.use("/api", devLimiter);
+  console.log("⚠️  Development mode: Using lenient rate limiting (10000 requests/minute)");
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
@@ -39,6 +67,8 @@ app.use(morgan("combined"));
 
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/uploads/tasks", express.static(path.join(__dirname, "../uploads/tasks")));
+app.use("/uploads/expenses", express.static(path.join(__dirname, "../uploads/expenses")));
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -73,4 +103,19 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API base URL: http://localhost:${PORT}/api/v1`);
+  
+  // Start announcement scheduler
+  // Process scheduled announcements every minute
+  setInterval(async () => {
+    await processScheduledAnnouncements();
+  }, 60 * 1000); // 1 minute
+  
+  // Retry failed deliveries every 5 minutes
+  setInterval(async () => {
+    await retryFailedDeliveries();
+  }, 5 * 60 * 1000); // 5 minutes
+  
+  // Run immediately on startup
+  processScheduledAnnouncements().catch(console.error);
+  console.log("✅ Announcement scheduler started");
 });

@@ -10,6 +10,10 @@ import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import payrollRoutes from "../modules/payroll/payroll.routes.js";
 import timesheetRoutes from "../modules/timesheet/timesheet.routes.js";
 import assetRoutes from "../modules/assets/asset.routes.js";
+import documentRoutes from "../modules/documents/document.routes.js";
+import announcementRoutes from "../modules/announcements/announcement.routes.js";
+import taskRoutes from "../modules/tasks/task.routes.js";
+import expenseRoutes from "../modules/expenses/expense.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -52,5 +56,9 @@ router.use("/v1/attendance", requireAuth, hasAnyPermission("attendance.mark", "a
 router.use("/v1/payroll", requireAuth, hasAnyPermission("payroll.view", "payroll.process"), payrollRoutes);
 router.use("/v1/timesheets", requireAuth, hasAnyPermission("timesheet.create", "timesheet.view", "timesheet.approve"), timesheetRoutes);
 router.use("/v1/assets", requireAuth, hasAnyPermission("assets.view", "assets.manage"), assetRoutes);
+router.use("/v1/documents", requireAuth, hasAnyPermission("documents.view", "documents.manage"), documentRoutes);
+router.use("/v1/announcements", requireAuth, announcementRoutes);
+router.use("/v1/tasks", requireAuth, hasAnyPermission("tasks.view", "tasks.create", "tasks.edit"), taskRoutes);
+router.use("/v1/expenses", expenseRoutes);
 
 export default router;

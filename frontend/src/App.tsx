@@ -26,6 +26,19 @@ import EmployeeSalaryPortal from "./pages/EmployeeSalaryPortal";
 import OrganizationPage from "./pages/OrganizationPage";
 import TimesheetPage from "./pages/TimesheetPage";
 import AssetManagementPage from "./pages/AssetManagementPage";
+import AssetDashboardPage from "./pages/AssetDashboardPage";
+import AssetReportsPage from "./pages/AssetReportsPage";
+import DocumentTemplatesPage from "./pages/DocumentTemplatesPage";
+import DocumentGenerationPage from "./pages/DocumentGenerationPage";
+import DocumentSettingsPage from "./pages/DocumentSettingsPage";
+import DocumentRequestsPage from "./pages/DocumentRequestsPage";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
+import CreateAnnouncementPage from "./pages/CreateAnnouncementPage";
+import AnnouncementDetailPage from "./pages/AnnouncementDetailPage";
+import TasksKanbanPage from "./pages/TasksKanbanPage";
+import TasksListPage from "./pages/TasksListPage";
+import TaskDetailPage from "./pages/TaskDetailPage";
+import TasksDashboardPage from "./pages/TasksDashboardPage";
 import ExpenseManagementPage from "./pages/ExpenseManagementPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -249,6 +262,62 @@ function AppRoutes() {
           data-id="0m10trfeh"
           data-path="src/App.tsx"
         />
+        <Route
+          path="assets/dashboard"
+          element={<AssetDashboardPage />}
+        />
+        <Route
+          path="assets/reports"
+          element={<AssetReportsPage />}
+        />
+          <Route
+            path="documents/templates"
+            element={<DocumentTemplatesPage />}
+          />
+          <Route
+            path="documents/generate"
+            element={<DocumentGenerationPage />}
+          />
+          <Route
+            path="documents/settings"
+            element={<DocumentSettingsPage />}
+          />
+          <Route
+            path="documents/requests"
+            element={<DocumentRequestsPage />}
+          />
+          <Route
+            path="announcements"
+            element={<AnnouncementsPage />}
+          />
+          <Route
+            path="announcements/create"
+            element={<CreateAnnouncementPage />}
+          />
+          <Route
+            path="announcements/:id"
+            element={<AnnouncementDetailPage />}
+          />
+          <Route
+            path="announcements/edit/:id"
+            element={<CreateAnnouncementPage />}
+          />
+          <Route
+            path="tasks"
+            element={<TasksListPage />}
+          />
+          <Route
+            path="tasks/kanban"
+            element={<TasksKanbanPage />}
+          />
+          <Route
+            path="tasks/:id"
+            element={<TaskDetailPage />}
+          />
+          <Route
+            path="tasks/dashboard"
+            element={<TasksDashboardPage />}
+          />
         <Route
           path="expenses"
           element={

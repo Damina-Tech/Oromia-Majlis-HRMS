@@ -170,17 +170,17 @@ export async function createPayrollRun(req: Request, res: Response) {
         },
       });
 
-      // Create audit log
-      await createAuditLog(tx, {
-        action: "GENERATE",
-        entityType: "PayrollRun",
-        entityId: payrollRun.id,
-        payrollRunId: payrollRun.id,
-        performedBy: userId,
-        description: `Created payroll run for period ${dto.periodStart} to ${dto.periodEnd}`,
-      });
-
       return { payrollRun: updatedPayrollRun, items: payrollItems };
+    });
+
+    // Create audit log outside transaction to avoid breaking main operation
+    await createAuditLog(prisma, {
+      action: "CREATE",
+      entityType: "PayrollRun",
+      entityId: result.payrollRun.id,
+      payrollRunId: result.payrollRun.id,
+      performedBy: userId,
+      description: `Created payroll run for period ${dto.periodStart} to ${dto.periodEnd}`,
     });
 
     return res.status(201).json(result);
@@ -1006,7 +1006,7 @@ export async function generatePayslip(req: Request, res: Response) {
 
     // Create audit log
     await createAuditLog(prisma, {
-      action: "GENERATE",
+      action: "CREATE",
       entityType: "PayrollItem",
       entityId: itemId,
       payrollRunId: payrollItem.payrollRunId,

@@ -61,12 +61,19 @@ import {
   type CreateTimesheetSessionData,
   type ManualTimeEntryData,
 } from "@/services/timesheet";
+import {
+  listTasks,
+  getRemainingDays,
+  isOverdue,
+  type Task,
+} from "@/services/tasks";
 
 export default function TimesheetPage() {
   const { user } = useAuth();
   
   // State
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,10 +122,11 @@ export default function TimesheetPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load timesheets
+  // Load timesheets and tasks
   useEffect(() => {
     if (employeeId && canView) {
       loadTimesheets();
+      loadTasks();
     } else {
       setLoading(false);
     }
@@ -140,6 +148,18 @@ export default function TimesheetPage() {
       toast.error("Failed to load timesheets");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTasks = async () => {
+    try {
+      const response = await listTasks({
+        pageSize: 50,
+        assigneeId: employeeId || undefined,
+      });
+      setTasks(response.items || []);
+    } catch (err: any) {
+      console.error("Failed to load tasks:", err);
     }
   };
 
@@ -204,7 +224,7 @@ export default function TimesheetPage() {
         const updatedTimesheet = {
           ...existingTimesheet,
           sessions: updatedSessions,
-          totalHours: existingTimesheet.totalHours + duration / 60,
+          totalHours: Number(existingTimesheet.totalHours) + duration / 60,
         };
         
         await createTimesheet({
@@ -673,11 +693,87 @@ export default function TimesheetPage() {
                 const endOfWeek = new Date(now.setDate(now.getDate() - now.getDay() + 6));
                 return timesheetDate >= startOfWeek && timesheetDate <= endOfWeek;
               })
-              .reduce((total, t) => total + Number(t.totalHours), 0)
+              .reduce((total: number, t) => total + Number(t.totalHours), 0)
               .toFixed(1)} hours
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {/* Tasks with Countdown */}
+      {tasks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              My Tasks
+            </CardTitle>
+            <CardDescription>
+              Tasks assigned to you with remaining days to complete
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {tasks
+                .filter((t) => t.status !== "DONE" && t.status !== "CANCELLED")
+                .slice(0, 10)
+                .map((task) => {
+                  const days = task.dueDate ? getRemainingDays(task.dueDate) : null;
+                  const overdue = isOverdue(task);
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 ${
+                        overdue ? "border-l-4 border-l-red-500" : ""
+                      } ${task.isUnread ? "bg-blue-50" : ""}`}
+                      onClick={() => window.location.href = `/tasks/${task.id}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-sm">{task.title}</h4>
+                          <Badge variant="outline" className={overdue ? "bg-red-100 text-red-800" : ""}>
+                            {task.status}
+                          </Badge>
+                        </div>
+                        {task.dueDate && (
+                          <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+                            <Calendar className="h-3 w-3" />
+                            <span>Due: {format(new Date(task.dueDate), "MMM dd, yyyy")}</span>
+                            {days !== null && (
+                              <span className={`font-semibold ${overdue ? "text-red-600" : days <= 3 ? "text-orange-600" : "text-gray-600"}`}>
+                                {overdue
+                                  ? `${Math.abs(days)} days overdue`
+                                  : days === 0
+                                  ? "Due today"
+                                  : `${days} days remaining`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        {days !== null && (
+                          <div className={`text-2xl font-bold ${overdue ? "text-red-600" : days <= 3 ? "text-orange-600" : "text-blue-600"}`}>
+                            {overdue ? `-${Math.abs(days)}` : days}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500">days</div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            {tasks.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED").length > 10 && (
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => window.location.href = "/tasks"}
+              >
+                View All Tasks
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Timesheet Entries */}
       <Card>

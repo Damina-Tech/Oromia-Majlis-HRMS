@@ -117,7 +117,18 @@ router.post("/refresh", async (req, res) => {
     const permissions = Array.from(permissionsSet);
     
     const accessToken = signAccess(user.id, roles, permissions, employeeId);
-    res.json({ accessToken });
+    res.json({ 
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles,
+        permissions,
+        employeeId
+      }
+    });
   } catch {
     return res.status(401).json({ message: "Invalid refresh" });
   }

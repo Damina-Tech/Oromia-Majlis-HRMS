@@ -97,20 +97,46 @@ enum AuditAction {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  passwordHash String
-  firstName    String
-  lastName     String
-  status       UserStatus  @default(ACTIVE)
-  userRoles    UserRole[]
-  employee     Employee?
-  managedDepartments Department[] @relation("DepartmentManager")
-  approvedTimesheets Timesheet[] @relation("TimesheetApprover")
-  assignedAssetsBy Asset[] @relation("AssetAssignedBy")
-  assetHistoryPerformedBy AssetHistory[] @relation("AssetHistoryPerformedBy")
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id                              String                   @id @default(cuid())
+  email                           String                   @unique
+  passwordHash                    String
+  firstName                       String
+  lastName                        String
+  status                          UserStatus               @default(ACTIVE)
+  userRoles                       UserRole[]
+  employee                        Employee?
+  managedDepartments              Department[]             @relation("DepartmentManager")
+  approvedTimesheets              Timesheet[]              @relation("TimesheetApprover")
+  assetHistoryPerformedBy         AssetHistory[]           @relation("AssetHistoryPerformedBy")
+  createdAssets                   Asset[]                  @relation("AssetCreatedBy")
+  assetAssignmentsBy              AssetAssignment[]        @relation("AssetAssignmentBy")
+  assetDisposalsApprovedBy        AssetDisposal[]          @relation("AssetDisposalApprovedBy")
+  assetAuditLogsChangedBy         AssetAuditLog[]          @relation("AssetAuditLogChangedBy")
+  documentTemplatesCreated        DocumentTemplate[]       @relation("DocumentTemplateCreatedBy")
+  documentTemplatesUpdated        DocumentTemplate[]       @relation("DocumentTemplateUpdatedBy")
+  generatedDocumentsCreated       GeneratedDocument[]      @relation("GeneratedDocumentBy")
+  documentAuditLogs               DocumentAuditLog[]       @relation("DocumentAuditActor")
+  documentSettingsCreated         DocumentSettings[]       @relation("DocumentSettingsCreatedBy")
+  documentSettingsUpdated         DocumentSettings[]       @relation("DocumentSettingsUpdatedBy")
+  documentRequestsCreated         DocumentRequest[]        @relation("DocumentRequestBy")
+  documentRequestsApproved        DocumentRequest[]        @relation("DocumentRequestApprovedBy")
+  documentRequestsRejected        DocumentRequest[]        @relation("DocumentRequestRejectedBy")
+  announcementsCreated            Announcement[]           @relation("AnnouncementCreatedBy")
+  announcementsUpdated            Announcement[]           @relation("AnnouncementUpdatedBy")
+  announcementAttachmentsUploaded AnnouncementAttachment[] @relation("AnnouncementAttachmentUploadedBy")
+  announcementReads               AnnouncementRead[]       @relation("AnnouncementReadBy")
+  // Task Management relations
+  tasksCreated                    Task[]                   @relation("TaskCreatedBy")
+  tasksUpdated                    Task[]                   @relation("TaskUpdatedBy")
+  tasksCompleted                  Task[]                   @relation("TaskCompletedBy")
+  taskAssignmentsCreated          TaskAssignment[]         @relation("TaskAssignedBy")
+  taskWatchers                    TaskWatcher[]            @relation("TaskWatchers")
+  taskCommentsCreated             TaskComment[]            @relation("TaskCommentCreatedBy")
+  taskAttachmentsUploaded         TaskAttachment[]         @relation("TaskAttachmentUploadedBy")
+  taskActivities                  TaskActivity[]           @relation("TaskActivityActor")
+  taskTimeLogsLogged              TaskTimeLog[]            @relation("TaskTimeLogLoggedBy")
+  createdAt                       DateTime                 @default(now())
+  updatedAt                       DateTime                 @updatedAt
 }
 
 model Role {
@@ -127,8 +153,8 @@ model Permission {
   id          String           @id @default(cuid())
   name        String           @unique // e.g., "employees.read", "employees.write"
   description String?
-  module      String           // e.g., "employees", "attendance", "leave"
-  action      String           // e.g., "read", "write", "delete", "approve"
+  module      String // e.g., "employees", "attendance", "leave"
+  action      String // e.g., "read", "write", "delete", "approve"
   roles       RolePermission[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -140,7 +166,7 @@ model RolePermission {
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
-  
+
   @@id([roleId, permissionId])
   @@index([roleId])
   @@index([permissionId])
@@ -149,9 +175,9 @@ model RolePermission {
 model UserRole {
   userId String
   roleId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
   @@id([userId, roleId])
   @@index([userId])
   @@index([roleId])
@@ -160,66 +186,81 @@ model UserRole {
 model Department {
   id        String     @id @default(cuid())
   name      String     @unique
-  managerId String?    // Department manager (User ID)
-  manager   User?       @relation("DepartmentManager", fields: [managerId], references: [id])
+  managerId String? // Department manager (User ID)
+  manager   User?      @relation("DepartmentManager", fields: [managerId], references: [id])
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   employees Employee[]
+  assets    Asset[]
+  expenses  Expense[]
 }
 
 model Employee {
-  id               String       @id @default(cuid())
-  employeeCode     String       @unique // e.g. EMP-000123 (human ID)
+  id               String    @id @default(cuid())
+  employeeCode     String    @unique // e.g. EMP-000123 (human ID)
   firstName        String
   lastName         String
-  email            String       @unique
+  email            String    @unique
   phone            String?
-  dateOfBirth      DateTime?    @db.Date
-  gender           String?       // MALE, FEMALE, OTHER
+  dateOfBirth      DateTime? @db.Date
+  gender           String? // MALE, FEMALE, OTHER
   address          String?
   emergencyContact String?
   designation      String?
-  employmentType   String?       // e.g., "FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"
-  educationLevel   String?       // GRADE_8, GRADE_10, GRADE_12, DEGREE, MASTER, PHD, OTHER
-  educationOther   String?       // Custom education level if "OTHER" is selected
-  marriageStatus   String?       // SINGLE, MARRIED, DIVORCED, WIDOWED
-  document         String?       // URL or path to document file
-  status           EmpStatus    @default(ACTIVE)
+  employmentType   String? // e.g., "FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"
+  educationLevel   String? // GRADE_8, GRADE_10, GRADE_12, DEGREE, MASTER, PHD, OTHER
+  educationOther   String? // Custom education level if "OTHER" is selected
+  marriageStatus   String? // SINGLE, MARRIED, DIVORCED, WIDOWED
+  document         String? // URL or path to document file
+  status           EmpStatus @default(ACTIVE)
   joiningDate      DateTime?
-  salary           Decimal?     @db.Decimal(12, 2)
-  
+  salary           Decimal?  @db.Decimal(12, 2)
+
   // Salary Grade & Step
-  salaryGradeId    String?
-  salaryGrade      SalaryGrade? @relation(fields: [salaryGradeId], references: [id])
-  salaryStepId     String?
-  salaryStep       SalaryStep?  @relation(fields: [salaryStepId], references: [id])
+  salaryGradeId     String?
+  salaryGrade       SalaryGrade? @relation(fields: [salaryGradeId], references: [id])
+  salaryStepId      String?
+  salaryStep        SalaryStep?  @relation(fields: [salaryStepId], references: [id])
   lastIncrementDate DateTime?
-  
+
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
 
   managerId String? // Employee's manager (optional)
-  manager   Employee? @relation("EmployeeManager", fields: [managerId], references: [id])
+  manager   Employee?  @relation("EmployeeManager", fields: [managerId], references: [id])
   reports   Employee[] @relation("EmployeeManager")
 
-  userId    String?  @unique // link to auth user (optional)
-  user      User?    @relation(fields: [userId], references: [id])
-  
-  leaveRequests    LeaveRequest[] @relation("EmployeeLeaves")
-  approvedLeaves   LeaveRequest[] @relation("ApproverLeaves")
-  leaveBalances    LeaveBalance[]
-  attendanceRecords Attendance[]
-  payrollRecords   Payroll[]
-  payrollItems    PayrollItem[]
-  timesheets       Timesheet[]
-  assignedAssets   Asset[] @relation("AssetAssignment")
-  assetHistoryFrom AssetHistory[] @relation("AssetHistoryFrom")
-  assetHistoryTo   AssetHistory[] @relation("AssetHistoryTo")
-  loans            Loan[]
-  advances         Advance[]
-  salaryIncrements SalaryIncrement[]
+  userId String? @unique // link to auth user (optional)
+  user   User?   @relation(fields: [userId], references: [id])
+
+  leaveRequests      LeaveRequest[]      @relation("EmployeeLeaves")
+  approvedLeaves     LeaveRequest[]      @relation("ApproverLeaves")
+  leaveBalances      LeaveBalance[]
+  attendanceRecords  Attendance[]
+  payrollRecords     Payroll[]
+  payrollItems       PayrollItem[]
+  timesheets         Timesheet[]
+  assignedAssets     Asset[]             @relation("AssetAssignment")
+  assetAssignments   AssetAssignment[]
+  assetHistoryFrom   AssetHistory[]      @relation("AssetHistoryFrom")
+  assetHistoryTo     AssetHistory[]      @relation("AssetHistoryTo")
+  assetMaintenance   AssetMaintenance[]
+  loans              Loan[]
+  advances           Advance[]
+  salaryIncrements   SalaryIncrement[]
   employeeAllowances EmployeeAllowance[]
-  
+  generatedDocuments GeneratedDocument[] @relation("GeneratedDocumentEmployee")
+  documentRequests   DocumentRequest[]   @relation("DocumentRequestEmployee")
+  // Task Management relations
+  taskAssignments    TaskAssignment[]
+  taskTimeLogs       TaskTimeLog[]
+  // Expense Management relations
+  expensesSubmitted  Expense[] @relation("ExpenseSubmittedBy")
+  expensesApproved   Expense[] @relation("ExpenseApprovedBy")
+  expensesPaid        Expense[] @relation("ExpensePaidBy")
+  expenseApprovals   ExpenseApproval[] @relation("ExpenseApprovalApprover")
+  expensePayments     ExpensePayment[] @relation("ExpensePaymentPaidBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -232,49 +273,49 @@ model Employee {
 
 // Salary Grade System
 model SalaryGrade {
-  id          String        @id @default(cuid())
-  name        String        @unique // e.g., "Grade 1", "Grade 2"
-  code        String        @unique // e.g., "G1", "G2"
+  id          String       @id @default(cuid())
+  name        String       @unique // e.g., "Grade 1", "Grade 2"
+  code        String       @unique // e.g., "G1", "G2"
   description String?
-  minSalary   Decimal       @db.Decimal(12, 2)
-  maxSalary   Decimal       @db.Decimal(12, 2)
+  minSalary   Decimal      @db.Decimal(12, 2)
+  maxSalary   Decimal      @db.Decimal(12, 2)
   steps       SalaryStep[]
   employees   Employee[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
   @@index([code])
 }
 
 model SalaryStep {
-  id          String        @id @default(cuid())
-  gradeId     String
-  grade       SalaryGrade   @relation(fields: [gradeId], references: [id], onDelete: Cascade)
-  step        Int           @map("step") // e.g., 1, 2, 3 within the grade
-  salary      Decimal       @db.Decimal(12, 2)
-  employees   Employee[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  
+  id        String      @id @default(cuid())
+  gradeId   String
+  grade     SalaryGrade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  step      Int         @map("step") // e.g., 1, 2, 3 within the grade
+  salary    Decimal     @db.Decimal(12, 2)
+  employees Employee[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
   @@unique([gradeId, step])
   @@index([gradeId])
 }
 
 // Salary Increment History
 model SalaryIncrement {
-  id          String    @id @default(cuid())
-  employeeId  String
-  employee    Employee  @relation(fields: [employeeId], references: [id])
-  previousSalary Decimal @db.Decimal(12, 2)
-  newSalary   Decimal   @db.Decimal(12, 2)
-  incrementAmount Decimal @db.Decimal(12, 2)
-  incrementPercentage Decimal @db.Decimal(5, 2)
-  incrementDate DateTime @db.Date
-  reason      String?
-  approvedBy  String?   // User ID
-  notes       String?
-  createdAt   DateTime  @default(now())
-  
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  previousSalary      Decimal  @db.Decimal(12, 2)
+  newSalary           Decimal  @db.Decimal(12, 2)
+  incrementAmount     Decimal  @db.Decimal(12, 2)
+  incrementPercentage Decimal  @db.Decimal(5, 2)
+  incrementDate       DateTime @db.Date
+  reason              String?
+  approvedBy          String? // User ID
+  notes               String?
+  createdAt           DateTime @default(now())
+
   @@index([employeeId])
   @@index([incrementDate])
 }
@@ -286,33 +327,33 @@ model PayrollRun {
   periodStart DateTime          @db.Date
   periodEnd   DateTime          @db.Date
   paymentDate DateTime?         @db.Date
-  
-  status      PayrollStatus     @default(DRAFT)
-  
+
+  status PayrollStatus @default(DRAFT)
+
   // Totals
-  totalGross  Decimal           @default(0) @db.Decimal(15, 2)
-  totalDeductions Decimal       @default(0) @db.Decimal(15, 2)
-  totalNet    Decimal           @default(0) @db.Decimal(15, 2)
-  employeeCount Int            @default(0)
-  
+  totalGross      Decimal @default(0) @db.Decimal(15, 2)
+  totalDeductions Decimal @default(0) @db.Decimal(15, 2)
+  totalNet        Decimal @default(0) @db.Decimal(15, 2)
+  employeeCount   Int     @default(0)
+
   // Approval workflow
-  reviewedBy  String?           // User ID
+  reviewedBy  String? // User ID
   reviewedAt  DateTime?
-  approvedBy  String?           // User ID
+  approvedBy  String? // User ID
   approvedAt  DateTime?
-  processedBy String?           // User ID
+  processedBy String? // User ID
   processedAt DateTime?
-  
-  comments    String?
-  notes       String?
-  
+
+  comments String?
+  notes    String?
+
   // Relations
-  items       PayrollItem[]
-  auditLogs   PayrollAuditLog[]
-  
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  
+  items     PayrollItem[]
+  auditLogs PayrollAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([periodType, periodStart, periodEnd])
   @@index([periodStart, periodEnd])
   @@index([status])
@@ -321,53 +362,53 @@ model PayrollRun {
 
 // Individual Payroll Item (per employee in a run)
 model PayrollItem {
-  id          String        @id @default(cuid())
+  id           String     @id @default(cuid())
   payrollRunId String
-  payrollRun  PayrollRun    @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
-  employeeId  String
-  employee    Employee      @relation(fields: [employeeId], references: [id])
-  
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [id])
+
   // Earnings
-  basicSalary    Decimal    @db.Decimal(12, 2)
-  allowances     Decimal    @default(0) @db.Decimal(12, 2)
-  overtime       Decimal    @default(0) @db.Decimal(12, 2)
-  bonus          Decimal    @default(0) @db.Decimal(12, 2)
-  grossSalary    Decimal    @db.Decimal(12, 2)
-  
+  basicSalary Decimal @db.Decimal(12, 2)
+  allowances  Decimal @default(0) @db.Decimal(12, 2)
+  overtime    Decimal @default(0) @db.Decimal(12, 2)
+  bonus       Decimal @default(0) @db.Decimal(12, 2)
+  grossSalary Decimal @db.Decimal(12, 2)
+
   // Deductions
-  incomeTax      Decimal    @default(0) @db.Decimal(12, 2)
-  pension        Decimal    @default(0) @db.Decimal(12, 2)
-  healthInsurance Decimal   @default(0) @db.Decimal(12, 2)
-  providentFund  Decimal    @default(0) @db.Decimal(12, 2)
-  loanDeductions Decimal    @default(0) @db.Decimal(12, 2) // Total from all active loans
+  incomeTax         Decimal @default(0) @db.Decimal(12, 2)
+  pension           Decimal @default(0) @db.Decimal(12, 2)
+  healthInsurance   Decimal @default(0) @db.Decimal(12, 2)
+  providentFund     Decimal @default(0) @db.Decimal(12, 2)
+  loanDeductions    Decimal @default(0) @db.Decimal(12, 2) // Total from all active loans
   advanceDeductions Decimal @default(0) @db.Decimal(12, 2) // Total from all advances
   absenceDeductions Decimal @default(0) @db.Decimal(12, 2) // Deductions for absences
-  otherDeductions Decimal   @default(0) @db.Decimal(12, 2)
-  totalDeductions Decimal   @db.Decimal(12, 2)
-  
+  otherDeductions   Decimal @default(0) @db.Decimal(12, 2)
+  totalDeductions   Decimal @db.Decimal(12, 2)
+
   // Net Salary
-  netSalary      Decimal    @db.Decimal(12, 2)
-  
+  netSalary Decimal @db.Decimal(12, 2)
+
   // Attendance Summary
-  workingDays    Int        @default(0)
-  presentDays    Int        @default(0)
-  absentDays     Int        @default(0)
-  leaveDays      Int        @default(0)
-  
+  workingDays Int @default(0)
+  presentDays Int @default(0)
+  absentDays  Int @default(0)
+  leaveDays   Int @default(0)
+
   // Payslip generation
-  payslipGenerated Boolean  @default(false)
-  payslipUrl      String?
-  generatedAt     DateTime?
-  
+  payslipGenerated Boolean   @default(false)
+  payslipUrl       String?
+  generatedAt      DateTime?
+
   // Bank payment info
   bankAccountNumber String?
-  bankName         String?
-  
-  notes          String?
-  
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  
+  bankName          String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([payrollRunId, employeeId])
   @@index([payrollRunId])
   @@index([employeeId])
@@ -377,38 +418,38 @@ model PayrollItem {
 
 // Allowance Configuration
 model Allowance {
-  id          String        @id @default(cuid())
-  name        String        @unique
-  type        AllowanceType
-  description String?
-  amount      Decimal       @db.Decimal(12, 2) // Can be fixed or used as base
-  isPercentage Boolean      @default(false)
-  percentage  Decimal?      @db.Decimal(5, 2) // If percentage, % of basic salary
-  isActive    Boolean       @default(true)
-  
+  id           String        @id @default(cuid())
+  name         String        @unique
+  type         AllowanceType
+  description  String?
+  amount       Decimal       @db.Decimal(12, 2) // Can be fixed or used as base
+  isPercentage Boolean       @default(false)
+  percentage   Decimal?      @db.Decimal(5, 2) // If percentage, % of basic salary
+  isActive     Boolean       @default(true)
+
   // Relations
   employeeAllowances EmployeeAllowance[]
-  
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([type])
   @@index([isActive])
 }
 
 // Allowance Assignment to Employee (monthly)
 model EmployeeAllowance {
-  id          String      @id @default(cuid())
-  employeeId String
-  employee    Employee    @relation(fields: [employeeId], references: [id])
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
   allowanceId String
-  allowance   Allowance   @relation(fields: [allowanceId], references: [id])
-  month       String      // Format: "YYYY-MM"
-  amount      Decimal     @db.Decimal(12, 2)
+  allowance   Allowance @relation(fields: [allowanceId], references: [id])
+  month       String // Format: "YYYY-MM"
+  amount      Decimal   @db.Decimal(12, 2)
   notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@unique([employeeId, allowanceId, month])
   @@index([employeeId])
   @@index([month])
@@ -416,46 +457,46 @@ model EmployeeAllowance {
 
 // Deduction Configuration
 model Deduction {
-  id          String        @id @default(cuid())
-  name        String        @unique
-  type        DeductionType
-  description String?
-  amount      Decimal?      @db.Decimal(12, 2) // If fixed amount
-  isPercentage Boolean      @default(false)
-  percentage  Decimal?      @db.Decimal(5, 2) // If percentage
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
+  id           String        @id @default(cuid())
+  name         String        @unique
+  type         DeductionType
+  description  String?
+  amount       Decimal?      @db.Decimal(12, 2) // If fixed amount
+  isPercentage Boolean       @default(false)
+  percentage   Decimal?      @db.Decimal(5, 2) // If percentage
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
   @@index([type])
   @@index([isActive])
 }
 
 // Loan Management
 model Loan {
-  id              String      @id @default(cuid())
-  employeeId      String
-  employee        Employee     @relation(fields: [employeeId], references: [id])
-  
-  loanAmount      Decimal      @db.Decimal(12, 2)
-  interestRate    Decimal      @default(0) @db.Decimal(5, 2) // Annual interest rate %
-  totalAmount     Decimal      @db.Decimal(12, 2) // Total to repay (principal + interest)
-  remainingAmount Decimal      @db.Decimal(12, 2)
-  monthlyPayment  Decimal      @db.Decimal(12, 2)
-  
-  startDate       DateTime     @db.Date
-  endDate         DateTime?    @db.Date
-  status          LoanStatus   @default(ACTIVE)
-  
-  description     String?
-  approvedBy      String?      // User ID
-  approvedAt      DateTime?
-  
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  loanAmount      Decimal @db.Decimal(12, 2)
+  interestRate    Decimal @default(0) @db.Decimal(5, 2) // Annual interest rate %
+  totalAmount     Decimal @db.Decimal(12, 2) // Total to repay (principal + interest)
+  remainingAmount Decimal @db.Decimal(12, 2)
+  monthlyPayment  Decimal @db.Decimal(12, 2)
+
+  startDate DateTime   @db.Date
+  endDate   DateTime?  @db.Date
+  status    LoanStatus @default(ACTIVE)
+
+  description String?
+  approvedBy  String? // User ID
+  approvedAt  DateTime?
+
   repaymentHistory LoanRepayment[]
-  
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([employeeId])
   @@index([status])
   @@index([startDate])
@@ -463,15 +504,15 @@ model Loan {
 
 // Loan Repayment History
 model LoanRepayment {
-  id          String      @id @default(cuid())
-  loanId      String
-  loan        Loan        @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  payrollRunId String?    // If paid via payroll
-  amount      Decimal     @db.Decimal(12, 2)
-  paymentDate DateTime    @db.Date
-  notes       String?
-  createdAt   DateTime    @default(now())
-  
+  id           String   @id @default(cuid())
+  loanId       String
+  loan         Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payrollRunId String? // If paid via payroll
+  amount       Decimal  @db.Decimal(12, 2)
+  paymentDate  DateTime @db.Date
+  notes        String?
+  createdAt    DateTime @default(now())
+
   @@index([loanId])
   @@index([payrollRunId])
   @@index([paymentDate])
@@ -479,28 +520,28 @@ model LoanRepayment {
 
 // Advance Management
 model Advance {
-  id              String        @id @default(cuid())
-  employeeId      String
-  employee        Employee      @relation(fields: [employeeId], references: [id])
-  
-  requestedAmount Decimal       @db.Decimal(12, 2)
-  approvedAmount Decimal       @db.Decimal(12, 2)
-  remainingAmount Decimal       @db.Decimal(12, 2)
-  monthlyDeduction Decimal      @db.Decimal(12, 2)
-  
-  requestDate     DateTime      @db.Date
-  status          AdvanceStatus @default(PENDING)
-  
-  description     String?
-  approvedBy      String?       // User ID
-  approvedAt      DateTime?
-  notes           String?
-  
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  requestedAmount  Decimal @db.Decimal(12, 2)
+  approvedAmount   Decimal @db.Decimal(12, 2)
+  remainingAmount  Decimal @db.Decimal(12, 2)
+  monthlyDeduction Decimal @db.Decimal(12, 2)
+
+  requestDate DateTime      @db.Date
+  status      AdvanceStatus @default(PENDING)
+
+  description String?
+  approvedBy  String? // User ID
+  approvedAt  DateTime?
+  notes       String?
+
   repaymentHistory AdvanceRepayment[]
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([employeeId])
   @@index([status])
   @@index([requestDate])
@@ -508,15 +549,15 @@ model Advance {
 
 // Advance Repayment History
 model AdvanceRepayment {
-  id          String      @id @default(cuid())
-  advanceId   String
-  advance     Advance     @relation(fields: [advanceId], references: [id], onDelete: Cascade)
-  payrollRunId String?    // If paid via payroll
-  amount      Decimal     @db.Decimal(12, 2)
-  paymentDate DateTime    @db.Date
-  notes       String?
-  createdAt   DateTime    @default(now())
-  
+  id           String   @id @default(cuid())
+  advanceId    String
+  advance      Advance  @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  payrollRunId String? // If paid via payroll
+  amount       Decimal  @db.Decimal(12, 2)
+  paymentDate  DateTime @db.Date
+  notes        String?
+  createdAt    DateTime @default(now())
+
   @@index([advanceId])
   @@index([payrollRunId])
   @@index([paymentDate])
@@ -524,17 +565,17 @@ model AdvanceRepayment {
 
 // Tax Rate Configuration
 model TaxRate {
-  id          String      @id @default(cuid())
-  minIncome   Decimal     @db.Decimal(12, 2)
-  maxIncome   Decimal?    @db.Decimal(12, 2) // null for highest bracket
-  rate        Decimal     @db.Decimal(5, 2) // Percentage
-  fixedAmount Decimal?    @db.Decimal(12, 2) // Fixed tax amount for this bracket
-  year        Int         // Tax year
-  isActive    Boolean     @default(true)
+  id          String   @id @default(cuid())
+  minIncome   Decimal  @db.Decimal(12, 2)
+  maxIncome   Decimal? @db.Decimal(12, 2) // null for highest bracket
+  rate        Decimal  @db.Decimal(5, 2) // Percentage
+  fixedAmount Decimal? @db.Decimal(12, 2) // Fixed tax amount for this bracket
+  year        Int // Tax year
+  isActive    Boolean  @default(true)
   description String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   @@unique([year, minIncome])
   @@index([year])
   @@index([isActive])
@@ -542,40 +583,40 @@ model TaxRate {
 
 // Pension Rate Configuration
 model PensionRate {
-  id          String      @id @default(cuid())
-  employeeRate Decimal    @db.Decimal(5, 2) // Employee contribution %
-  employerRate Decimal    @db.Decimal(5, 2) // Employer contribution %
-  year        Int         // Year this rate applies
-  isActive    Boolean     @default(true)
-  description String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
+  id           String   @id @default(cuid())
+  employeeRate Decimal  @db.Decimal(5, 2) // Employee contribution %
+  employerRate Decimal  @db.Decimal(5, 2) // Employer contribution %
+  year         Int // Year this rate applies
+  isActive     Boolean  @default(true)
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   @@unique([year])
   @@index([isActive])
 }
 
 // Payroll Audit Log
 model PayrollAuditLog {
-  id          String      @id @default(cuid())
-  action      AuditAction
-  entityType  String      // e.g., "PayrollRun", "Loan", "Advance"
-  entityId    String      // ID of the affected entity
-  payrollRunId String?    // Related payroll run if applicable
-  payrollRun  PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
-  
+  id           String      @id @default(cuid())
+  action       AuditAction
+  entityType   String // e.g., "PayrollRun", "Loan", "Advance"
+  entityId     String // ID of the affected entity
+  payrollRunId String? // Related payroll run if applicable
+  payrollRun   PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+
   // User info
-  performedBy String      // User ID
+  performedBy String // User ID
   userEmail   String?
   userName    String?
-  
+
   // Change details
-  oldValue    String?     // JSON string of old state
-  newValue    String?     // JSON string of new state
+  oldValue    String? // JSON string of old state
+  newValue    String? // JSON string of new state
   description String?
-  
-  createdAt   DateTime    @default(now())
-  
+
+  createdAt DateTime @default(now())
+
   @@index([action])
   @@index([entityType])
   @@index([payrollRunId])
@@ -584,24 +625,24 @@ model PayrollAuditLog {
 }
 
 model LeaveRequest {
-  id          String      @id @default(cuid())
-  employeeId  String
-  employee    Employee    @relation("EmployeeLeaves", fields: [employeeId], references: [id])
-  
-  type        LeaveType
-  startDate   DateTime
-  endDate     DateTime
-  days        Int
-  reason      String
-  status      LeaveStatus @default(PENDING)
-  
-  approverId  String?
-  approver    Employee?   @relation("ApproverLeaves", fields: [approverId], references: [id])
-  approvedAt  DateTime?
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation("EmployeeLeaves", fields: [employeeId], references: [id])
+
+  type      LeaveType
+  startDate DateTime
+  endDate   DateTime
+  days      Int
+  reason    String
+  status    LeaveStatus @default(PENDING)
+
+  approverId      String?
+  approver        Employee? @relation("ApproverLeaves", fields: [approverId], references: [id])
+  approvedAt      DateTime?
   rejectionReason String?
-  
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
   @@index([status])
@@ -609,44 +650,44 @@ model LeaveRequest {
 }
 
 model LeaveBalance {
-  id            String       @id @default(cuid())
+  id            String    @id @default(cuid())
   employeeId    String
-  employee      Employee     @relation(fields: [employeeId], references: [id])
+  employee      Employee  @relation(fields: [employeeId], references: [id])
   leaveType     LeaveType
-  year          Int          // Year for this balance (e.g., 2025)
-  allocatedDays Decimal      @db.Decimal(10, 2) // Total days allocated for this leave type in this year
-  usedDays      Decimal      @default(0) @db.Decimal(10, 2) // Days used
-  carriedOver   Decimal      @default(0) @db.Decimal(10, 2) // Days carried over from previous year
-  availableDays Decimal      @db.Decimal(10, 2) // Available = allocated - used + carriedOver
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  
+  year          Int // Year for this balance (e.g., 2025)
+  allocatedDays Decimal   @db.Decimal(10, 2) // Total days allocated for this leave type in this year
+  usedDays      Decimal   @default(0) @db.Decimal(10, 2) // Days used
+  carriedOver   Decimal   @default(0) @db.Decimal(10, 2) // Days carried over from previous year
+  availableDays Decimal   @db.Decimal(10, 2) // Available = allocated - used + carriedOver
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   @@unique([employeeId, leaveType, year])
   @@index([employeeId])
   @@index([year])
 }
 
 model Attendance {
-  id          String            @id @default(cuid())
-  employeeId  String
-  employee    Employee          @relation(fields: [employeeId], references: [id])
-  
-  date        DateTime          @db.Date
-  checkInTime DateTime?
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  date         DateTime  @db.Date
+  checkInTime  DateTime?
   checkOutTime DateTime?
-  
+
   checkInLocation  String?
   checkOutLocation String?
-  
-  status      AttendanceStatus  @default(PRESENT)
-  workHours   Decimal?          @db.Decimal(5, 2)
+
+  status       AttendanceStatus @default(PRESENT)
+  workHours    Decimal?         @db.Decimal(5, 2)
   breakMinutes Int              @default(0)
-  
-  notes       String?
-  
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([employeeId, date])
   @@index([employeeId])
   @@index([date])
@@ -654,49 +695,49 @@ model Attendance {
 }
 
 model Payroll {
-  id          String            @id @default(cuid())
-  employeeId  String
-  employee    Employee          @relation(fields: [employeeId], references: [id])
-  
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
   // Period Information
   periodType  PayrollPeriodType @default(MONTHLY)
   periodStart DateTime          @db.Date
   periodEnd   DateTime          @db.Date
   paymentDate DateTime?         @db.Date
-  
+
   // Earnings
-  basicSalary    Decimal        @db.Decimal(12, 2)
-  allowances     Decimal        @default(0) @db.Decimal(12, 2)
-  overtime       Decimal        @default(0) @db.Decimal(12, 2)
-  bonus          Decimal        @default(0) @db.Decimal(12, 2)
-  grossSalary    Decimal        @db.Decimal(12, 2)
-  
+  basicSalary Decimal @db.Decimal(12, 2)
+  allowances  Decimal @default(0) @db.Decimal(12, 2)
+  overtime    Decimal @default(0) @db.Decimal(12, 2)
+  bonus       Decimal @default(0) @db.Decimal(12, 2)
+  grossSalary Decimal @db.Decimal(12, 2)
+
   // Deductions
-  incomeTax      Decimal        @default(0) @db.Decimal(12, 2)
-  healthInsurance Decimal       @default(0) @db.Decimal(12, 2)
-  providentFund  Decimal        @default(0) @db.Decimal(12, 2)
-  otherDeductions Decimal       @default(0) @db.Decimal(12, 2)
-  totalDeductions Decimal       @db.Decimal(12, 2)
-  
+  incomeTax       Decimal @default(0) @db.Decimal(12, 2)
+  healthInsurance Decimal @default(0) @db.Decimal(12, 2)
+  providentFund   Decimal @default(0) @db.Decimal(12, 2)
+  otherDeductions Decimal @default(0) @db.Decimal(12, 2)
+  totalDeductions Decimal @db.Decimal(12, 2)
+
   // Net Salary
-  netSalary      Decimal        @db.Decimal(12, 2)
-  
+  netSalary Decimal @db.Decimal(12, 2)
+
   // Status and Processing
-  status         PayrollStatus  @default(DRAFT)
-  processedBy    String?
-  processedAt    DateTime?
-  
+  status      PayrollStatus @default(DRAFT)
+  processedBy String?
+  processedAt DateTime?
+
   // Additional Info
-  workingDays    Int            @default(0)
-  presentDays    Int            @default(0)
-  absentDays     Int            @default(0)
-  leaveDays      Int            @default(0)
-  
-  notes          String?
-  
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  
+  workingDays Int @default(0)
+  presentDays Int @default(0)
+  absentDays  Int @default(0)
+  leaveDays   Int @default(0)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([employeeId, periodStart, periodEnd])
   @@index([employeeId])
   @@index([periodStart, periodEnd])
@@ -714,23 +755,23 @@ enum TimesheetStatus {
 
 // Timesheet Entry
 model Timesheet {
-  id          String          @id @default(cuid())
-  employeeId  String
-  employee    Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date        DateTime        @db.Date
-  totalHours  Decimal         @db.Decimal(5, 2) // Max 999.99 hours
-  status      TimesheetStatus @default(DRAFT)
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  approvedBy  String? // User ID who approved
-  approver    User?           @relation("TimesheetApprover", fields: [approvedBy], references: [id])
+  id              String          @id @default(cuid())
+  employeeId      String
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime        @db.Date
+  totalHours      Decimal         @db.Decimal(5, 2) // Max 999.99 hours
+  status          TimesheetStatus @default(DRAFT)
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  approvedBy      String? // User ID who approved
+  approver        User?           @relation("TimesheetApprover", fields: [approvedBy], references: [id])
   rejectionReason String?
-  notes       String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   // Relations
-  sessions    TimesheetSession[]
+  sessions TimesheetSession[]
 
   @@unique([employeeId, date])
   @@index([employeeId])
@@ -749,7 +790,7 @@ model TimesheetSession {
   description String?
   startTime   DateTime
   endTime     DateTime
-  duration    Int       // Duration in minutes
+  duration    Int // Duration in minutes
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -760,36 +801,54 @@ model TimesheetSession {
 
 // Asset Status
 enum AssetStatus {
-  AVAILABLE
+  IN_STOCK
   ASSIGNED
-  MAINTENANCE
-  RETIRED
-  LOST
-  DAMAGED
+  IN_MAINTENANCE
+  DISPOSED
 }
 
 // Asset Condition
 enum AssetCondition {
-  EXCELLENT
+  NEW
   GOOD
-  FAIR
-  POOR
-  DAMAGED
+  NEEDS_REPAIR
+  RETIRED
 }
 
-// Asset Category
-enum AssetCategory {
-  LAPTOP
-  DESKTOP
-  MONITOR
-  KEYBOARD
-  MOUSE
-  PHONE
-  TABLET
-  HEADSET
-  PRINTER
-  NETWORK_EQUIPMENT
+// Asset Location Type
+enum AssetLocationType {
+  STORE
+  BRANCH
+  OFFICE
+}
+
+// Asset Maintenance Type
+enum AssetMaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+}
+
+// Asset Maintenance Status
+enum AssetMaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Asset Disposal Method
+enum AssetDisposalMethod {
+  SALE
+  DONATION
+  SCRAP
+  TRANSFER
   OTHER
+}
+
+// Asset Depreciation Method
+enum AssetDepreciationMethod {
+  STRAIGHT_LINE
+  DECLINING_BALANCE
 }
 
 // Asset Assignment History Action
@@ -803,75 +862,959 @@ enum AssetHistoryAction {
   STATUS_CHANGED
   CONDITION_UPDATED
   RETIRED
-  LOST
-  FOUND
+  DISPOSED
+}
+
+// Asset Category
+model AssetCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  assets      Asset[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Asset Location
+model AssetLocation {
+  id        String            @id @default(cuid())
+  name      String
+  address   String?
+  type      AssetLocationType
+  assets    Asset[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([type])
+}
+
+// Asset Vendor
+model AssetVendor {
+  id          String             @id @default(cuid())
+  name        String
+  contact     String?
+  phone       String?
+  email       String?
+  assets      Asset[]
+  maintenance AssetMaintenance[]
+  expenses    Expense[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 }
 
 // Asset Management
 model Asset {
-  id            String        @id @default(cuid())
-  name          String        // e.g., "MacBook Pro 16\""
-  category      AssetCategory
-  serialNumber  String        @unique // Unique serial number
-  model         String?
-  brand         String?
-  purchaseDate  DateTime?
-  purchasePrice Decimal?      @db.Decimal(12, 2)
-  currentValue  Decimal?      @db.Decimal(12, 2)
-  condition     AssetCondition @default(EXCELLENT)
-  status        AssetStatus   @default(AVAILABLE)
-  location      String?       // Office location or storage
-  notes         String?
-  
-  // Assignment details
-  assignedTo    String?       // Employee ID
-  assignedDate  DateTime?
-  assignedBy    String?       // User ID who assigned
-  
-  // Relations
-  assignedEmployee Employee? @relation("AssetAssignment", fields: [assignedTo], references: [id])
-  assignedByUser   User?     @relation("AssetAssignedBy", fields: [assignedBy], references: [id])
-  history          AssetHistory[]
-  
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                   String                   @id @default(cuid())
+  assetCode            String                   @unique // Auto-generated: CHIRO-YYYY-CAT-XXXX
+  name                 String
+  categoryId           String
+  category             AssetCategory            @relation(fields: [categoryId], references: [id])
+  brand                String?
+  model                String?
+  serialNumber         String?                  @unique
+  purchaseDate         DateTime?                @db.Date
+  purchasePrice        Decimal?                 @db.Decimal(12, 2)
+  currency             String                   @default("USD")
+  vendorId             String?
+  vendor               AssetVendor?             @relation(fields: [vendorId], references: [id])
+  warrantyUntil        DateTime?                @db.Date
+  locationId           String?
+  location             AssetLocation?           @relation(fields: [locationId], references: [id])
+  assignedToEmployeeId String? // Employee ID
+  departmentId         String?
+  department           Department?              @relation(fields: [departmentId], references: [id])
+  condition            AssetCondition           @default(NEW)
+  status               AssetStatus              @default(IN_STOCK)
+  depreciationMethod   AssetDepreciationMethod?
+  depreciationRate     Decimal?                 @db.Decimal(5, 2) // Percentage
+  lifeYears            Decimal?                 @db.Decimal(5, 2)
+  notes                String?
+  createdBy            String // User ID
+  createdByUser        User                     @relation("AssetCreatedBy", fields: [createdBy], references: [id])
 
-  @@index([category])
+  // Relations
+  assignedEmployee Employee?           @relation("AssetAssignment", fields: [assignedToEmployeeId], references: [id])
+  assignments      AssetAssignment[]
+  maintenance      AssetMaintenance[]
+  disposals        AssetDisposal[]
+  depreciation     AssetDepreciation[]
+  auditLogs        AssetAuditLog[]
+  history          AssetHistory[]
+  expenses         Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
   @@index([status])
   @@index([condition])
-  @@index([assignedTo])
+  @@index([assignedToEmployeeId])
+  @@index([departmentId])
+  @@index([locationId])
+  @@index([vendorId])
+  @@index([assetCode])
   @@index([serialNumber])
-  @@index([location])
+  @@index([createdBy])
 }
 
-// Asset Assignment History
+// Asset Assignment
+model AssetAssignment {
+  id             String    @id @default(cuid())
+  assetId        String
+  asset          Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  assignedAt     DateTime  @default(now()) @db.Date
+  assignedBy     String // User ID
+  assignedByUser User      @relation("AssetAssignmentBy", fields: [assignedBy], references: [id])
+  returnedAt     DateTime? @db.Date
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([employeeId])
+  @@index([assignedAt])
+}
+
+// Asset Maintenance
+model AssetMaintenance {
+  id                  String                 @id @default(cuid())
+  assetId             String
+  asset               Asset                  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  date                DateTime               @db.Date
+  type                AssetMaintenanceType
+  vendorId            String?
+  vendor              AssetVendor?           @relation(fields: [vendorId], references: [id])
+  cost                Decimal?               @db.Decimal(12, 2)
+  performedBy         String? // Employee ID who performed maintenance
+  performedByEmployee Employee?              @relation(fields: [performedBy], references: [id])
+  nextDueDate         DateTime?              @db.Date
+  status              AssetMaintenanceStatus @default(SCHEDULED)
+  notes               String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([date])
+  @@index([status])
+  @@index([nextDueDate])
+  @@index([performedBy])
+}
+
+// Asset Disposal
+model AssetDisposal {
+  id             String              @id @default(cuid())
+  assetId        String
+  asset          Asset               @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  disposalDate   DateTime            @db.Date
+  method         AssetDisposalMethod
+  saleAmount     Decimal?            @db.Decimal(12, 2)
+  notes          String?
+  approvedBy     String? // User ID
+  approvedByUser User?               @relation("AssetDisposalApprovedBy", fields: [approvedBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([disposalDate])
+  @@index([method])
+}
+
+// Asset Depreciation
+model AssetDepreciation {
+  id                 String  @id @default(cuid())
+  assetId            String
+  asset              Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  year               Int
+  month              Int? // If null, yearly depreciation
+  depreciationAmount Decimal @db.Decimal(12, 2)
+  accumulatedDepr    Decimal @db.Decimal(12, 2)
+  bookValue          Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@unique([assetId, year, month])
+  @@index([assetId])
+  @@index([year])
+  @@index([year, month])
+}
+
+// Asset Audit Log
+model AssetAuditLog {
+  id            String   @id @default(cuid())
+  assetId       String
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  changedBy     String // User ID
+  changedByUser User     @relation("AssetAuditLogChangedBy", fields: [changedBy], references: [id])
+  changeSummary String
+  timestamp     DateTime @default(now())
+
+  @@index([assetId])
+  @@index([changedBy])
+  @@index([timestamp])
+}
+
+// Asset Assignment History (for backward compatibility and detailed tracking)
 model AssetHistory {
-  id          String            @id @default(cuid())
+  id          String             @id @default(cuid())
   assetId     String
-  asset       Asset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  asset       Asset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
   action      AssetHistoryAction
   description String?
-  
+
   // Assignment details
   fromEmployeeId String? // Previous employee
   toEmployeeId   String? // New employee
   fromEmployee   Employee? @relation("AssetHistoryFrom", fields: [fromEmployeeId], references: [id])
   toEmployee     Employee? @relation("AssetHistoryTo", fields: [toEmployeeId], references: [id])
-  
+
   // Additional data
   previousStatus    AssetStatus?
   newStatus         AssetStatus?
   previousCondition AssetCondition?
   newCondition      AssetCondition?
-  
+
   // Audit trail
-  performedBy   String // User ID who performed the action
-  performedByUser User @relation("AssetHistoryPerformedBy", fields: [performedBy], references: [id])
-  
-  createdAt     DateTime        @default(now())
+  performedBy     String // User ID who performed the action
+  performedByUser User   @relation("AssetHistoryPerformedBy", fields: [performedBy], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@index([assetId])
   @@index([action])
   @@index([performedBy])
   @@index([createdAt])
+}
+
+// ========== DOCUMENTS & LETTERS MODULE ==========
+
+enum DocumentCategory {
+  HR
+  PAYROLL
+  LEGAL
+  CERTIFICATE
+  WARNING
+  CONTRACT
+  OTHER
+}
+
+enum DocumentLanguage {
+  EN
+  AM
+  OR
+}
+
+enum DocumentTemplateStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Document Template
+model DocumentTemplate {
+  id           String                 @id @default(cuid())
+  code         String                 @unique // e.g., "OFFER_LETTER", "APPOINTMENT_LETTER"
+  name         String
+  category     DocumentCategory
+  description  String?
+  content      String                 @db.Text // HTML or rich text content
+  contentPlain String?                @db.Text // Plain text version
+  version      Int                    @default(1)
+  status       DocumentTemplateStatus @default(DRAFT)
+  language     DocumentLanguage       @default(EN)
+  tags         String[] // Array of tags
+  active       Boolean                @default(true)
+
+  // Template metadata
+  mergeFields Json? // Available merge fields and descriptions
+
+  // Relations
+  createdBy     String
+  createdByUser User    @relation("DocumentTemplateCreatedBy", fields: [createdBy], references: [id])
+  updatedBy     String?
+  updatedByUser User?   @relation("DocumentTemplateUpdatedBy", fields: [updatedBy], references: [id])
+
+  // Related data
+  generatedDocuments GeneratedDocument[]
+  auditLogs          DocumentAuditLog[]
+  permissions        DocumentTemplatePermission[]
+  documentRequests   DocumentRequest[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  DocumentRetention DocumentRetention[]
+
+  @@index([code])
+  @@index([category])
+  @@index([status])
+  @@index([active])
+  @@index([createdBy])
+}
+
+// Generated Document (actual PDF/file generated from template)
+model GeneratedDocument {
+  id         String           @id @default(cuid())
+  templateId String
+  template   DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Target employee(s) - nullable for bulk documents
+  employeeId String?
+  employee   Employee? @relation("GeneratedDocumentEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  // Document requests
+  documentRequests DocumentRequest[] @relation("DocumentRequestGenerated")
+
+  // Generation metadata
+  generatedBy     String // User ID
+  generatedByUser User    @relation("GeneratedDocumentBy", fields: [generatedBy], references: [id])
+  generatedFor    String? // Could be employee_id, department_id, or batch_id
+
+  // File information
+  fileUrl  String // Path/URL to generated file
+  fileName String
+  format   String @default("pdf")
+  fileSize Int? // Size in bytes
+
+  // Metadata
+  meta Json? // Additional metadata (merge fields used, etc.)
+
+  createdAt DateTime @default(now())
+
+  @@index([templateId])
+  @@index([employeeId])
+  @@index([generatedBy])
+  @@index([createdAt])
+  @@index([generatedFor])
+}
+
+// Document Audit Log
+model DocumentAuditLog {
+  id String @id @default(cuid())
+
+  // What was acted upon
+  templateId String?
+  template   DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  documentId String? // GeneratedDocument ID
+
+  // Action details
+  action   String // create_template, update_template, generate, email_sent, delete, etc.
+  actorId  String // User ID
+  actor    User    @relation("DocumentAuditActor", fields: [actorId], references: [id])
+  targetId String? // Template or document ID
+  details  Json? // Additional details about the action
+
+  timestamp DateTime @default(now())
+
+  @@index([templateId])
+  @@index([documentId])
+  @@index([actorId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+// Template Permissions (optional - for fine-grained access control)
+model DocumentTemplatePermission {
+  id             String           @id @default(cuid())
+  templateId     String
+  template       DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  roleId         String? // If set, applies to all users with this role
+  userId         String? // If set, applies to specific user
+  permissionType String // view, edit, generate, manage
+
+  createdAt DateTime @default(now())
+
+  @@unique([templateId, roleId, userId, permissionType])
+  @@index([templateId])
+  @@index([roleId])
+  @@index([userId])
+}
+
+// Document Retention Policy (optional)
+model DocumentRetention {
+  id            String            @id @default(cuid())
+  templateId    String? // If null, applies to all templates
+  template      DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  retentionDays Int // Number of days to retain
+  autoArchive   Boolean           @default(false)
+  autoDelete    Boolean           @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateId])
+}
+
+// Document Settings (Company branding, stamp, signature, etc.)
+model DocumentSettings {
+  id String @id @default(cuid())
+
+  // Company branding
+  companyName String
+  companyLogo String? // URL or file path to logo
+  headerText  String? // Custom header text
+  footerText  String? // Custom footer text
+
+  // Stamp and signature
+  stampImage     String? // URL or file path to stamp image
+  signatureImage String? // URL or file path to signature image
+  signatureName  String? // Name of signatory
+  signatureTitle String? // Title of signatory
+
+  // Localization
+  defaultLanguage DocumentLanguage @default(EN)
+  dateFormat      String           @default("DD/MM/YYYY")
+  currency        String           @default("ETB")
+  currencySymbol  String           @default("ETB")
+  timezone        String           @default("Africa/Addis_Ababa")
+
+  // Contact information
+  companyAddress String?
+  companyPhone   String?
+  companyEmail   String?
+  companyWebsite String?
+
+  // Metadata
+  isActive      Boolean @default(true)
+  createdBy     String
+  createdByUser User    @relation("DocumentSettingsCreatedBy", fields: [createdBy], references: [id])
+  updatedBy     String?
+  updatedByUser User?   @relation("DocumentSettingsUpdatedBy", fields: [updatedBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([isActive])
+  @@index([isActive])
+}
+
+// Document Request (Employees can request documents)
+model DocumentRequest {
+  id String @id @default(cuid())
+
+  // Request details
+  employeeId String
+  employee   Employee         @relation("DocumentRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  templateId String
+  template   DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Request metadata
+  purpose  String? @db.Text // Reason for request
+  priority String  @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  status   String  @default("PENDING") // PENDING, APPROVED, REJECTED, GENERATED, CANCELLED
+
+  // Processing
+  requestedBy     String // User ID who made the request
+  requestedByUser User      @relation("DocumentRequestBy", fields: [requestedBy], references: [id])
+  approvedBy      String?
+  approvedByUser  User?     @relation("DocumentRequestApprovedBy", fields: [approvedBy], references: [id])
+  approvedAt      DateTime?
+  rejectedBy      String?
+  rejectedByUser  User?     @relation("DocumentRequestRejectedBy", fields: [rejectedBy], references: [id])
+  rejectedAt      DateTime?
+  rejectionReason String?   @db.Text
+
+  // Generated document (if approved and generated)
+  generatedDocumentId String?
+  generatedDocument   GeneratedDocument? @relation("DocumentRequestGenerated", fields: [generatedDocumentId], references: [id], onDelete: SetNull)
+
+  // Metadata
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([templateId])
+  @@index([status])
+  @@index([requestedBy])
+  @@index([createdAt])
+}
+
+// ========== ANNOUNCEMENTS MODULE ==========
+
+enum AnnouncementType {
+  GENERAL
+  HR
+  FINANCE
+  MEETING
+  SYSTEM
+}
+
+enum AnnouncementUrgency {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  EXPIRED
+  CANCELLED
+}
+
+enum DeliveryChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  FAILED
+  RETRYING
+}
+
+// Announcement
+model Announcement {
+  id      String              @id @default(cuid())
+  title   String
+  body    String              @db.Text // HTML content
+  type    AnnouncementType
+  urgency AnnouncementUrgency @default(NORMAL)
+
+  // Scheduling
+  publishAt DateTime? // When to publish (null = immediate)
+  expireAt  DateTime? // When to expire (null = never)
+  status    AnnouncementStatus @default(DRAFT)
+
+  // Targeting (stored as JSON for flexibility)
+  target Json // { type: "all" | "role" | "department" | "employees" | "group", ids: string[] }
+
+  // Delivery channels
+  channels DeliveryChannel[] // Selected delivery channels
+
+  // RSVP / Acknowledgement
+  requiresAck  Boolean @default(false) // Require acknowledgement for meetings
+  requiresRSVP Boolean @default(false) // Require RSVP for meetings
+
+  // Metadata
+  createdBy     String
+  createdByUser User    @relation("AnnouncementCreatedBy", fields: [createdBy], references: [id])
+  updatedBy     String?
+  updatedByUser User?   @relation("AnnouncementUpdatedBy", fields: [updatedBy], references: [id])
+
+  // Relations
+  attachments AnnouncementAttachment[]
+  deliveries  AnnouncementDelivery[]
+  reads       AnnouncementRead[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime? // Actual publish time
+
+  @@index([status])
+  @@index([type])
+  @@index([urgency])
+  @@index([publishAt])
+  @@index([expireAt])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+// Announcement Attachment
+model AnnouncementAttachment {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  fileUrl     String // Path/URL to file
+  fileName    String
+  contentType String
+  fileSize    Int // Size in bytes
+
+  uploadedBy     String
+  uploadedByUser User   @relation("AnnouncementAttachmentUploadedBy", fields: [uploadedBy], references: [id])
+
+  uploadedAt DateTime @default(now())
+
+  @@index([announcementId])
+  @@index([uploadedBy])
+}
+
+// Announcement Delivery (tracks delivery across channels)
+model AnnouncementDelivery {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  channel DeliveryChannel
+  status  DeliveryStatus  @default(QUEUED)
+
+  // Target user/recipient
+  userId     String? // For in-app, this is the user
+  employeeId String? // For email/SMS/WhatsApp, this is the employee
+  recipient  String? // Email/phone number for external channels
+
+  // Delivery tracking
+  providerRef   String? // External provider reference ID
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  errorMessage  String?   @db.Text
+  deliveredAt   DateTime?
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([announcementId])
+  @@index([channel])
+  @@index([status])
+  @@index([userId])
+  @@index([employeeId])
+  @@index([createdAt])
+}
+
+// Announcement Read / Acknowledgment
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("AnnouncementReadBy", fields: [userId], references: [id])
+
+  readAt       DateTime @default(now())
+  acknowledged Boolean  @default(false) // For RSVP/acknowledgement
+  deviceInfo   Json? // Device/browser info
+
+  createdAt DateTime @default(now())
+
+  @@unique([announcementId, userId])
+  @@index([announcementId])
+  @@index([userId])
+  @@index([readAt])
+}
+
+// ============================================
+// Task Management Module
+// ============================================
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskRecurrenceType {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum TaskActivityType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  ASSIGNED
+  COMMENTED
+  ATTACHMENT_ADDED
+  DUE_DATE_CHANGED
+  PRIORITY_CHANGED
+  COMPLETED
+  REOPENED
+}
+
+// Main Task model
+model Task {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?      @db.Text
+  project        String? // Project name (optional)
+  priority       TaskPriority @default(MEDIUM)
+  status         TaskStatus   @default(TODO)
+  startDate      DateTime?    @db.Date
+  dueDate        DateTime?    @db.Date
+  estimatedHours Decimal?     @db.Decimal(10, 2)
+  actualHours    Decimal?     @default(0) @db.Decimal(10, 2)
+  
+  // Recurrence
+  recurrenceType TaskRecurrenceType @default(NONE)
+  recurrenceRule Json? // Store recurrence configuration (days, interval, etc.)
+  
+  // Parent task for subtasks
+  parentTaskId String?
+  parentTask   Task?   @relation("TaskSubtasks", fields: [parentTaskId], references: [id])
+  subtasks     Task[]  @relation("TaskSubtasks")
+  
+  // Metadata
+  tags          String[] // Array of tags
+  createdBy     String
+  createdByUser User     @relation("TaskCreatedBy", fields: [createdBy], references: [id])
+  updatedBy     String?
+  updatedByUser User?    @relation("TaskUpdatedBy", fields: [updatedBy], references: [id])
+  completedBy   String?
+  completedByUser User?  @relation("TaskCompletedBy", fields: [completedBy], references: [id])
+  completedAt   DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  assignments TaskAssignment[]
+  watchers    TaskWatcher[]
+  comments    TaskComment[]
+  attachments TaskAttachment[]
+  activities  TaskActivity[]
+  dependencies TaskDependency[] @relation("TaskDependencies")
+  dependents  TaskDependency[] @relation("TaskDependents")
+  timeLogs    TaskTimeLog[]
+  
+  @@index([createdBy])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([project])
+  @@index([parentTaskId])
+  @@index([createdAt])
+}
+
+// Task Assignment (many-to-many: tasks can have multiple assignees)
+model TaskAssignment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  assignedBy String
+  assignedByUser User @relation("TaskAssignedBy", fields: [assignedBy], references: [id])
+  assignedAt DateTime @default(now())
+  
+  // Read/unread tracking
+  lastReadAt DateTime?
+  isUnread   Boolean  @default(true)
+  
+  @@unique([taskId, employeeId])
+  @@index([taskId])
+  @@index([employeeId])
+  @@index([isUnread])
+}
+
+// Task Watcher (observers who get notifications)
+model TaskWatcher {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("TaskWatchers", fields: [userId], references: [id], onDelete: Cascade)
+  addedAt   DateTime @default(now())
+  
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+}
+
+// Task Comment (with mention support)
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  content   String   @db.Text
+  mentions  String[] // Array of user IDs mentioned in comment
+  createdBy String
+  createdByUser User @relation("TaskCommentCreatedBy", fields: [createdBy], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([taskId])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+// Task Attachment
+model TaskAttachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileUrl     String
+  fileName    String
+  contentType String
+  fileSize    Int // Size in bytes
+  uploadedBy  String
+  uploadedByUser User   @relation("TaskAttachmentUploadedBy", fields: [uploadedBy], references: [id])
+  uploadedAt  DateTime @default(now())
+  
+  @@index([taskId])
+  @@index([uploadedBy])
+}
+
+// Task Activity Log (audit trail)
+model TaskActivity {
+  id        String          @id @default(cuid())
+  taskId    String
+  task      Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type      TaskActivityType
+  actorId   String
+  actor     User            @relation("TaskActivityActor", fields: [actorId], references: [id])
+  details   Json? // Store additional activity details (old value, new value, etc.)
+  createdAt DateTime        @default(now())
+  
+  @@index([taskId])
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// Task Dependency (task A must complete before task B)
+model TaskDependency {
+  id             String @id @default(cuid())
+  taskId         String // Task that depends on another
+  task           Task   @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTaskId String // Task that must be completed first
+  dependsOnTask  Task   @relation("TaskDependents", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+}
+
+// Task Time Log (work logs for billing/effort tracking)
+model TaskTimeLog {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  hours       Decimal  @db.Decimal(10, 2)
+  description String?  @db.Text
+  loggedBy    String
+  loggedByUser User    @relation("TaskTimeLogLoggedBy", fields: [loggedBy], references: [id])
+  loggedAt    DateTime @default(now())
+  
+  @@index([taskId])
+  @@index([employeeId])
+  @@index([date])
+  @@index([loggedAt])
+}
+
+// ============================================
+// Expense Management Module
+// ============================================
+
+enum ExpenseType {
+  OPERATIONAL
+  TRAVEL
+  REIMBURSEMENT
+  MAINTENANCE
+  RENT
+  UTILITIES
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  E_BIRR
+  TELEBIRR
+  OTHER
+}
+
+enum ExpenseApprovalAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// Main Expense model
+model Expense {
+  id            String        @id @default(cuid())
+  referenceNo   String        @unique // Auto-generated: EXP-YYYY-0001
+  title         String
+  description   String?       @db.Text
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @default("ETB")
+  expenseType   ExpenseType
+  status        ExpenseStatus @default(DRAFT)
+  incurredDate DateTime      @db.Date
+  submittedBy   String
+  submittedByEmployee Employee @relation("ExpenseSubmittedBy", fields: [submittedBy], references: [id])
+  departmentId  String
+  department    Department    @relation(fields: [departmentId], references: [id])
+  assetId       String?
+  asset         Asset?        @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  vendorId      String?
+  vendor        AssetVendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  paymentMethod PaymentMethod?
+  receiptUrl    String?
+  approvedBy    String?
+  approvedByEmployee Employee? @relation("ExpenseApprovedBy", fields: [approvedBy], references: [id])
+  approvedAt    DateTime?
+  paidBy        String?
+  paidByEmployee Employee?    @relation("ExpensePaidBy", fields: [paidBy], references: [id])
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // Relations
+  approvals     ExpenseApproval[]
+  payments      ExpensePayment[]
+  
+  @@index([submittedBy])
+  @@index([departmentId])
+  @@index([status])
+  @@index([expenseType])
+  @@index([incurredDate])
+  @@index([createdAt])
+}
+
+// Expense Approval History
+model ExpenseApproval {
+  id        String                @id @default(cuid())
+  expenseId String
+  expense   Expense               @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  approverId String
+  approver  Employee              @relation("ExpenseApprovalApprover", fields: [approverId], references: [id])
+  action    ExpenseApprovalAction
+  comment   String?               @db.Text
+  createdAt DateTime              @default(now())
+  
+  @@index([expenseId])
+  @@index([approverId])
+  @@index([createdAt])
+}
+
+// Expense Payment Record
+model ExpensePayment {
+  id              String   @id @default(cuid())
+  expenseId       String
+  expense         Expense   @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  paidAmount      Decimal   @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  paymentReference String?
+  paidBy          String
+  paidByEmployee  Employee  @relation("ExpensePaymentPaidBy", fields: [paidBy], references: [id])
+  paidAt          DateTime  @default(now())
+  notes           String?   @db.Text
+  
+  @@index([expenseId])
+  @@index([paidBy])
+  @@index([paidAt])
 }

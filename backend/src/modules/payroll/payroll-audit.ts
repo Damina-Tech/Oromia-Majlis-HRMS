@@ -44,6 +44,12 @@ export async function createAuditLog(
       }
     }
 
+    // Skip audit log creation if performedBy is not provided
+    if (!data.performedBy) {
+      console.warn("Skipping audit log creation: performedBy is required but not provided");
+      return null;
+    }
+
     const auditLog = await prisma.payrollAuditLog.create({
       data: {
         action: data.action,

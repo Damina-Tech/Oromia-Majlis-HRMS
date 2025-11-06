@@ -43,10 +43,27 @@ async function seedPermissions() {
     { name: "expenses.approve", module: "expenses", action: "approve", description: "Approve expenses" },
     { name: "documents.view", module: "documents", action: "view", description: "View documents" },
     { name: "documents.manage", module: "documents", action: "manage", description: "Manage documents" },
+    { name: "announcements.view", module: "announcements", action: "view", description: "View announcements" },
+    { name: "announcements.create", module: "announcements", action: "create", description: "Create announcements" },
+    { name: "announcements.edit", module: "announcements", action: "edit", description: "Edit announcements" },
+    { name: "announcements.delete", module: "announcements", action: "delete", description: "Delete announcements" },
+    { name: "announcements.publish", module: "announcements", action: "publish", description: "Publish announcements" },
     { name: "onboarding.view", module: "onboarding", action: "view", description: "View onboarding" },
     { name: "onboarding.manage", module: "onboarding", action: "manage", description: "Manage onboarding" },
     { name: "notifications.view", module: "notifications", action: "view", description: "View notifications" },
     { name: "organization.view", module: "organization", action: "view", description: "View organization structure" },
+    { name: "tasks.view", module: "tasks", action: "view", description: "View tasks" },
+    { name: "tasks.create", module: "tasks", action: "create", description: "Create tasks" },
+    { name: "tasks.edit", module: "tasks", action: "edit", description: "Edit tasks" },
+    { name: "tasks.delete", module: "tasks", action: "delete", description: "Delete tasks" },
+    { name: "tasks.manage", module: "tasks", action: "manage", description: "Manage all tasks" },
+    { name: "expense.create", module: "expenses", action: "create", description: "Create expenses" },
+    { name: "expense.submit", module: "expenses", action: "submit", description: "Submit expenses" },
+    { name: "expense.view", module: "expenses", action: "view", description: "View own expenses" },
+    { name: "expense.view_all", module: "expenses", action: "view_all", description: "View all expenses" },
+    { name: "expense.edit", module: "expenses", action: "edit", description: "Edit expenses" },
+    { name: "expense.approve", module: "expenses", action: "approve", description: "Approve/Reject expenses" },
+    { name: "expense.pay", module: "expenses", action: "pay", description: "Mark expenses as paid" },
   ];
 
   // Create all permissions
@@ -77,9 +94,9 @@ async function seedPermissions() {
 
   // Assign permissions to other roles
   const rolePermissions = {
-    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "onboarding.view", "notifications.view", "organization.view"],
-    MANAGER: ["dashboard.view", "employees.read", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "onboarding.view", "notifications.view", "organization.view"],
-    EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "notifications.view"],
+    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay"],
+    MANAGER: ["dashboard.view", "employees.read", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve"],
+    EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
   };
 
   for (const role of roles) {
@@ -117,6 +134,15 @@ async function main() {
 
   // Seed permissions and assign to roles
   await seedPermissions();
+
+  // Seed asset management data
+  await seedAssets();
+
+  // Seed document templates
+  await seedDocumentTemplates();
+
+  // Seed tasks
+  await seedTasks();
 
   // Create departments
   const deptNames = ["Mayor Office", "HR", "Finance", "IT", "Infrastructure"];
@@ -756,6 +782,1005 @@ async function main() {
   console.log("   Password: HrUser123!");
   console.log("   Access: HR management features");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+}
+
+async function seedAssets() {
+  console.log("📦 Seeding asset management data...");
+  
+  // Create Asset Categories
+  const categories = [
+    { name: "Laptop", description: "Portable computers" },
+    { name: "Desktop", description: "Desktop computers" },
+    { name: "Monitor", description: "Computer monitors" },
+    { name: "Printer", description: "Printing equipment" },
+    { name: "Phone", description: "Mobile phones and smartphones" },
+    { name: "Network Equipment", description: "Routers, switches, and networking devices" },
+    { name: "Other", description: "Other equipment and assets" },
+  ];
+  
+  const createdCategories = [];
+  for (const cat of categories) {
+    const category = await prisma.assetCategory.upsert({
+      where: { name: cat.name },
+      update: {},
+      create: cat,
+    });
+    createdCategories.push(category);
+  }
+  console.log(`✅ Created ${createdCategories.length} asset categories`);
+
+  // Create Asset Locations
+  const locations = [
+    { name: "Main Office", address: "123 Main Street", type: "OFFICE" },
+    { name: "Warehouse", address: "456 Storage Ave", type: "STORE" },
+    { name: "Branch Office", address: "789 Branch Road", type: "BRANCH" },
+  ];
+  
+  const createdLocations = [];
+  for (const loc of locations) {
+    // Check if location already exists by name
+    const existing = await prisma.assetLocation.findFirst({
+      where: { name: loc.name },
+    });
+    if (!existing) {
+      const location = await prisma.assetLocation.create({
+        data: loc,
+      });
+      createdLocations.push(location);
+    } else {
+      createdLocations.push(existing);
+    }
+  }
+  console.log(`✅ Created/found ${createdLocations.length} asset locations`);
+
+  // Create Asset Vendors
+  const vendors = [
+    { name: "Tech Supplies Inc.", contact: "John Doe", phone: "+1234567890", email: "sales@techsupplies.com" },
+    { name: "Office Equipment Co.", contact: "Jane Smith", phone: "+0987654321", email: "info@officeequip.com" },
+    { name: "Electronics Direct", contact: "Mike Johnson", phone: "+1122334455", email: "contact@electronics.com" },
+  ];
+  
+  const createdVendors = [];
+  for (const vendor of vendors) {
+    const vendorRecord = await prisma.assetVendor.create({
+      data: vendor,
+    });
+    createdVendors.push(vendorRecord);
+  }
+  console.log(`✅ Created ${createdVendors.length} asset vendors`);
+
+  // Create sample assets (only if admin user exists)
+  const adminUser = await prisma.user.findFirst({
+    where: { email: "admin@ciro.gov.et" },
+  });
+
+  if (adminUser && createdCategories.length > 0 && createdLocations.length > 0) {
+    const employees = await prisma.employee.findMany({ take: 5 });
+    const laptopCategory = createdCategories.find((c) => c.name === "Laptop");
+    const desktopCategory = createdCategories.find((c) => c.name === "Desktop");
+    const monitorCategory = createdCategories.find((c) => c.name === "Monitor");
+    
+    if (laptopCategory && desktopCategory && monitorCategory) {
+      // Get more categories
+      const printerCategory = createdCategories.find((c) => c.name === "Printer");
+      const phoneCategory = createdCategories.find((c) => c.name === "Phone");
+      const networkCategory = createdCategories.find((c) => c.name === "Network Equipment");
+      const otherCategory = createdCategories.find((c) => c.name === "Other");
+      
+      // Get departments
+      const departments = await prisma.department.findMany({ take: 3 });
+      
+      const sampleAssets = [
+        {
+          name: "MacBook Pro 16-inch",
+          categoryId: laptopCategory.id,
+          brand: "Apple",
+          model: "MacBook Pro 16",
+          serialNumber: `MBP16-${Date.now()}-001`,
+          purchaseDate: new Date("2024-01-15"),
+          purchasePrice: new Prisma.Decimal("2499.00"),
+          currency: "USD",
+          vendorId: createdVendors[0]?.id,
+          warrantyUntil: new Date("2027-01-15"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[0]?.id,
+          condition: "NEW",
+          status: "ASSIGNED",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("20.00"),
+          lifeYears: new Prisma.Decimal("4.00"),
+          notes: "High-performance laptop for development team",
+          createdBy: adminUser.id,
+          assignedToEmployeeId: employees[0]?.id,
+        },
+        {
+          name: "Dell OptiPlex Desktop",
+          categoryId: desktopCategory.id,
+          brand: "Dell",
+          model: "OptiPlex 7090",
+          serialNumber: `DELL-${Date.now()}-002`,
+          purchaseDate: new Date("2024-02-20"),
+          purchasePrice: new Prisma.Decimal("899.00"),
+          currency: "USD",
+          vendorId: createdVendors[1]?.id,
+          warrantyUntil: new Date("2027-02-20"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[0]?.id,
+          condition: "GOOD",
+          status: "ASSIGNED",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("25.00"),
+          lifeYears: new Prisma.Decimal("4.00"),
+          notes: "Standard office desktop",
+          createdBy: adminUser.id,
+          assignedToEmployeeId: employees[1]?.id,
+        },
+        {
+          name: "LG 27-inch Monitor",
+          categoryId: monitorCategory.id,
+          brand: "LG",
+          model: "27UP850-W",
+          serialNumber: `LG-MON-${Date.now()}-003`,
+          purchaseDate: new Date("2024-03-10"),
+          purchasePrice: new Prisma.Decimal("399.00"),
+          currency: "USD",
+          vendorId: createdVendors[0]?.id,
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[1]?.id,
+          condition: "NEW",
+          status: "IN_STOCK",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("33.33"),
+          lifeYears: new Prisma.Decimal("3.00"),
+          notes: "4K monitor for design team",
+          createdBy: adminUser.id,
+        },
+        {
+          name: "HP LaserJet Printer",
+          categoryId: printerCategory?.id,
+          brand: "HP",
+          model: "LaserJet Pro M404dn",
+          serialNumber: `HP-PRT-${Date.now()}-004`,
+          purchaseDate: new Date("2024-04-05"),
+          purchasePrice: new Prisma.Decimal("299.00"),
+          currency: "USD",
+          vendorId: createdVendors[1]?.id,
+          warrantyUntil: new Date("2026-04-05"),
+          locationId: createdLocations[1]?.id,
+          departmentId: departments[1]?.id,
+          condition: "NEW",
+          status: "IN_STOCK",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("33.33"),
+          lifeYears: new Prisma.Decimal("3.00"),
+          notes: "Network printer for office use",
+          createdBy: adminUser.id,
+        },
+        {
+          name: "iPhone 15 Pro",
+          categoryId: phoneCategory?.id,
+          brand: "Apple",
+          model: "iPhone 15 Pro",
+          serialNumber: `IPH15-${Date.now()}-005`,
+          purchaseDate: new Date("2024-05-12"),
+          purchasePrice: new Prisma.Decimal("999.00"),
+          currency: "USD",
+          vendorId: createdVendors[0]?.id,
+          warrantyUntil: new Date("2027-05-12"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[0]?.id,
+          condition: "NEW",
+          status: "ASSIGNED",
+          depreciationMethod: "DECLINING_BALANCE",
+          depreciationRate: new Prisma.Decimal("40.00"),
+          lifeYears: new Prisma.Decimal("3.00"),
+          notes: "Company phone for sales manager",
+          createdBy: adminUser.id,
+          assignedToEmployeeId: employees[2]?.id,
+        },
+        {
+          name: "Cisco Network Switch",
+          categoryId: networkCategory?.id,
+          brand: "Cisco",
+          model: "Catalyst 2960",
+          serialNumber: `CISCO-${Date.now()}-006`,
+          purchaseDate: new Date("2024-01-30"),
+          purchasePrice: new Prisma.Decimal("1200.00"),
+          currency: "USD",
+          vendorId: createdVendors[2]?.id,
+          warrantyUntil: new Date("2027-01-30"),
+          locationId: createdLocations[2]?.id,
+          departmentId: departments[2]?.id,
+          condition: "GOOD",
+          status: "IN_STOCK",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("20.00"),
+          lifeYears: new Prisma.Decimal("5.00"),
+          notes: "24-port network switch for branch office",
+          createdBy: adminUser.id,
+        },
+        {
+          name: "ThinkPad X1 Carbon",
+          categoryId: laptopCategory.id,
+          brand: "Lenovo",
+          model: "ThinkPad X1 Carbon Gen 11",
+          serialNumber: `LEN-${Date.now()}-007`,
+          purchaseDate: new Date("2024-06-01"),
+          purchasePrice: new Prisma.Decimal("1599.00"),
+          currency: "USD",
+          vendorId: createdVendors[1]?.id,
+          warrantyUntil: new Date("2027-06-01"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[1]?.id,
+          condition: "NEW",
+          status: "ASSIGNED",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("20.00"),
+          lifeYears: new Prisma.Decimal("4.00"),
+          notes: "Lightweight business laptop",
+          createdBy: adminUser.id,
+          assignedToEmployeeId: employees[3]?.id,
+        },
+        {
+          name: "Dell UltraSharp Monitor",
+          categoryId: monitorCategory.id,
+          brand: "Dell",
+          model: "U2723DE",
+          serialNumber: `DELL-MON-${Date.now()}-008`,
+          purchaseDate: new Date("2024-07-15"),
+          purchasePrice: new Prisma.Decimal("449.00"),
+          currency: "USD",
+          vendorId: createdVendors[1]?.id,
+          warrantyUntil: new Date("2027-07-15"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[0]?.id,
+          condition: "NEW",
+          status: "IN_STOCK",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("33.33"),
+          lifeYears: new Prisma.Decimal("3.00"),
+          notes: "27-inch QHD monitor for office",
+          createdBy: adminUser.id,
+        },
+        {
+          name: "Samsung Galaxy Tab S9",
+          categoryId: phoneCategory?.id || otherCategory?.id,
+          brand: "Samsung",
+          model: "Galaxy Tab S9",
+          serialNumber: `SAM-TAB-${Date.now()}-009`,
+          purchaseDate: new Date("2024-08-20"),
+          purchasePrice: new Prisma.Decimal("799.00"),
+          currency: "USD",
+          vendorId: createdVendors[0]?.id,
+          warrantyUntil: new Date("2027-08-20"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[1]?.id,
+          condition: "NEW",
+          status: "ASSIGNED",
+          depreciationMethod: "DECLINING_BALANCE",
+          depreciationRate: new Prisma.Decimal("35.00"),
+          lifeYears: new Prisma.Decimal("3.00"),
+          notes: "Tablet for field work and presentations",
+          createdBy: adminUser.id,
+          assignedToEmployeeId: employees[4]?.id || employees[0]?.id,
+        },
+        {
+          name: "Logitech MX Master 3 Mouse",
+          categoryId: otherCategory?.id || createdCategories[0]?.id,
+          brand: "Logitech",
+          model: "MX Master 3",
+          serialNumber: `LOG-MOU-${Date.now()}-010`,
+          purchaseDate: new Date("2024-09-10"),
+          purchasePrice: new Prisma.Decimal("99.00"),
+          currency: "USD",
+          vendorId: createdVendors[1]?.id,
+          warrantyUntil: new Date("2026-09-10"),
+          locationId: createdLocations[0]?.id,
+          departmentId: departments[2]?.id,
+          condition: "NEW",
+          status: "IN_STOCK",
+          depreciationMethod: "STRAIGHT_LINE",
+          depreciationRate: new Prisma.Decimal("40.00"),
+          lifeYears: new Prisma.Decimal("2.50"),
+          notes: "Premium wireless mouse for productivity",
+          createdBy: adminUser.id,
+        },
+      ];
+
+      // Generate asset codes and create assets
+      for (let i = 0; i < sampleAssets.length; i++) {
+        const assetData = sampleAssets[i];
+        const year = new Date().getFullYear();
+        // Get category name for code generation
+        const category = createdCategories.find(c => c.id === assetData.categoryId);
+        const categoryCode = category ? category.name.substring(0, 3).toUpperCase().padEnd(3, 'X') : 'OTH';
+        const existingCount = await prisma.asset.count({
+          where: {
+            assetCode: { startsWith: `CHIRO-${year}-${categoryCode}-` },
+          },
+        });
+        const sequence = (existingCount + 1).toString().padStart(4, "0");
+        const assetCode = `CHIRO-${year}-${categoryCode}-${sequence}`;
+
+        const createdAsset = await prisma.asset.create({
+          data: {
+            ...assetData,
+            assetCode,
+          },
+        });
+
+        // Create assignment record if assigned
+        if (assetData.assignedToEmployeeId) {
+          await prisma.assetAssignment.create({
+            data: {
+              assetId: createdAsset.id,
+              employeeId: assetData.assignedToEmployeeId,
+              assignedAt: new Date(),
+              assignedBy: adminUser.id,
+              note: "Initial assignment",
+            },
+          });
+
+          // Create history entry
+          await prisma.assetHistory.create({
+            data: {
+              assetId: createdAsset.id,
+              action: "ASSIGNED",
+              description: `Asset assigned during seeding`,
+              toEmployeeId: assetData.assignedToEmployeeId,
+              performedBy: adminUser.id,
+            },
+          });
+        }
+
+        // Create history entry for asset creation
+        await prisma.assetHistory.create({
+          data: {
+            assetId: createdAsset.id,
+            action: "CREATED",
+            description: `Asset ${createdAsset.name} created`,
+            performedBy: adminUser.id,
+          },
+        });
+      }
+      
+      console.log(`✅ Created ${sampleAssets.length} sample assets`);
+    }
+  }
+
+  console.log("✅ Asset management seeding completed");
+}
+
+async function seedDocumentTemplates() {
+  console.log("📄 Seeding document templates...");
+
+  // Get admin user for createdBy
+  const adminUser = await prisma.user.findFirst({
+    where: { email: "admin@ciro.gov.et" },
+  });
+
+  if (!adminUser) {
+    console.log("⚠️  Admin user not found, skipping document templates seeding");
+    return;
+  }
+
+  // Template 1: Offer Letter
+  const offerLetterTemplate = await prisma.documentTemplate.upsert({
+    where: { code: "OFFER_LETTER" },
+    update: {},
+    create: {
+      code: "OFFER_LETTER",
+      name: "Job Offer Letter",
+      category: "HR",
+      description: "Standard job offer letter template",
+      content: `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #1e40af; margin-bottom: 10px;">CHIRO HRMS</h1>
+            <p style="color: #6b7280;">Official Offer Letter</p>
+          </div>
+          
+          <p style="margin-bottom: 10px;"><strong>Date:</strong> {{date.today}}</p>
+          
+          <p style="margin-bottom: 20px;">
+            <strong>{{employee.fullName}}</strong><br>
+            {{employee.address}}<br>
+            Email: {{employee.email}}<br>
+            Phone: {{employee.phone}}
+          </p>
+          
+          <p style="margin-bottom: 20px;">Dear {{employee.firstName}},</p>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            We are pleased to offer you the position of <strong>{{employee.designation}}</strong> at {{company.name}}.
+          </p>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            <strong>Position Details:</strong><br>
+            - Designation: {{employee.designation}}<br>
+            - Department: {{employee.department}}<br>
+            - Employee Code: {{employee.employeeCode}}<br>
+            - Joining Date: {{employee.joiningDate}}<br>
+            - Reporting Manager: {{employee.manager}}
+          </p>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            <strong>Compensation:</strong><br>
+            - Basic Salary: {{payroll.basicSalary}} ETB<br>
+            - Gross Salary: {{payroll.grossSalary}} ETB<br>
+            - Net Salary: {{payroll.netSalary}} ETB
+          </p>
+          
+          <p style="margin-bottom: 20px; line-height: 1.6;">
+            We are excited to have you join our team and look forward to your positive response.
+          </p>
+          
+          <p style="margin-bottom: 5px;">Sincerely,</p>
+          <p style="margin-bottom: 5px;"><strong>HR Department</strong></p>
+          <p><strong>{{company.name}}</strong></p>
+          
+          <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #6b7280;">
+              {{company.name}}<br>
+              {{company.address}}<br>
+              Phone: {{company.phone}} | Email: {{company.email}}
+            </p>
+          </div>
+        </div>
+      `,
+      language: "EN",
+      tags: ["offer", "letter", "hr", "recruitment"],
+      status: "ACTIVE",
+      active: true,
+      createdBy: adminUser.id,
+      mergeFields: {
+        fields: [
+          "employee.fullName",
+          "employee.firstName",
+          "employee.designation",
+          "employee.department",
+          "employee.employeeCode",
+          "employee.joiningDate",
+          "employee.manager",
+          "payroll.basicSalary",
+          "payroll.grossSalary",
+          "payroll.netSalary",
+          "company.name",
+          "company.address",
+          "company.phone",
+          "company.email",
+          "date.today",
+        ],
+      },
+    },
+  });
+
+  // Template 2: Appointment Letter
+  const appointmentLetterTemplate = await prisma.documentTemplate.upsert({
+    where: { code: "APPOINTMENT_LETTER" },
+    update: {},
+    create: {
+      code: "APPOINTMENT_LETTER",
+      name: "Appointment Letter",
+      category: "HR",
+      description: "Official appointment confirmation letter",
+      content: `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #1e40af; margin-bottom: 10px;">APPOINTMENT LETTER</h1>
+            <p style="color: #6b7280;">{{company.name}}</p>
+          </div>
+          
+          <p style="margin-bottom: 10px;"><strong>Ref No:</strong> APT-{{date.year}}-{{employee.employeeCode}}</p>
+          <p style="margin-bottom: 10px;"><strong>Date:</strong> {{date.today}}</p>
+          
+          <p style="margin-bottom: 20px;">
+            <strong>To:</strong><br>
+            {{employee.fullName}}<br>
+            {{employee.address}}
+          </p>
+          
+          <p style="margin-bottom: 20px;">Dear {{employee.firstName}},</p>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            Following your successful interview and acceptance of our offer, we are pleased to confirm your appointment as <strong>{{employee.designation}}</strong> in the <strong>{{employee.department}}</strong> department, effective from <strong>{{employee.joiningDate}}</strong>.
+          </p>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            <strong>Terms of Appointment:</strong>
+          </p>
+          
+          <ul style="margin-bottom: 20px; line-height: 1.8; padding-left: 20px;">
+            <li>Employee Code: <strong>{{employee.employeeCode}}</strong></li>
+            <li>Designation: <strong>{{employee.designation}}</strong></li>
+            <li>Department: <strong>{{employee.department}}</strong></li>
+            <li>Reporting Manager: <strong>{{employee.manager}}</strong></li>
+            <li>Salary: <strong>{{payroll.grossSalary}} ETB</strong> (Gross)</li>
+            <li>Monthly Net Salary: <strong>{{payroll.netSalary}} ETB</strong></li>
+          </ul>
+          
+          <p style="margin-bottom: 15px; line-height: 1.6;">
+            This appointment is subject to the terms and conditions outlined in the employee handbook and your employment contract.
+          </p>
+          
+          <p style="margin-bottom: 20px; line-height: 1.6;">
+            We welcome you to {{company.name}} and look forward to a successful and productive association.
+          </p>
+          
+          <p style="margin-bottom: 5px;">Yours sincerely,</p>
+          <p style="margin-bottom: 5px;"><strong>Human Resources Department</strong></p>
+          <p><strong>{{company.name}}</strong></p>
+          
+          <div style="margin-top: 40px; text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #6b7280;">
+              {{company.address}} | {{company.phone}} | {{company.email}}
+            </p>
+          </div>
+        </div>
+      `,
+      language: "EN",
+      tags: ["appointment", "letter", "hr", "confirmation"],
+      status: "ACTIVE",
+      active: true,
+      createdBy: adminUser.id,
+      mergeFields: {
+        fields: [
+          "employee.fullName",
+          "employee.firstName",
+          "employee.employeeCode",
+          "employee.designation",
+          "employee.department",
+          "employee.manager",
+          "employee.joiningDate",
+          "employee.address",
+          "payroll.grossSalary",
+          "payroll.netSalary",
+          "company.name",
+          "company.address",
+          "company.phone",
+          "company.email",
+          "date.today",
+          "date.year",
+        ],
+      },
+    },
+  });
+
+  // Template 3: Experience Certificate
+  const experienceCertificateTemplate = await prisma.documentTemplate.upsert({
+    where: { code: "EXPERIENCE_CERTIFICATE" },
+    update: {},
+    create: {
+      code: "EXPERIENCE_CERTIFICATE",
+      name: "Experience Certificate",
+      category: "CERTIFICATE",
+      description: "Work experience certificate for employees",
+      content: `
+        <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 40px; border: 2px solid #1e40af;">
+          <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="color: #1e40af; margin-bottom: 10px; font-size: 28px;">CERTIFICATE OF EXPERIENCE</h1>
+            <div style="width: 100px; height: 2px; background: #1e40af; margin: 0 auto;"></div>
+          </div>
+          
+          <p style="margin-bottom: 20px; text-align: center; font-size: 14px;">
+            <strong>Certificate No:</strong> EXP-{{date.year}}-{{employee.employeeCode}}
+          </p>
+          
+          <p style="margin-bottom: 30px; line-height: 1.8; text-align: justify; font-size: 16px;">
+            This is to certify that <strong>{{employee.fullName}}</strong> (Employee Code: {{employee.employeeCode}}) 
+            was employed with <strong>{{company.name}}</strong> as <strong>{{employee.designation}}</strong> 
+            in the <strong>{{employee.department}}</strong> department from <strong>{{employee.joiningDate}}</strong> 
+            until <strong>{{date.today}}</strong>.
+          </p>
+          
+          <p style="margin-bottom: 20px; line-height: 1.8; text-align: justify; font-size: 16px;">
+            During the period of employment, {{employee.firstName}} demonstrated professionalism, dedication, 
+            and commitment to their duties. {{employee.firstName}}'s performance was consistently satisfactory, 
+            and they maintained good conduct throughout their tenure.
+          </p>
+          
+          <p style="margin-bottom: 20px; line-height: 1.8; text-align: justify; font-size: 16px;">
+            This certificate is issued upon request and confirms that {{employee.firstName}} left the organization 
+            on good terms. We wish {{employee.firstName}} success in all future endeavors.
+          </p>
+          
+          <div style="margin-top: 60px;">
+            <p style="margin-bottom: 40px; text-align: right;">
+              <strong>Authorized Signatory</strong><br>
+              <strong>Human Resources Department</strong><br>
+              <strong>{{company.name}}</strong>
+            </p>
+            
+            <p style="text-align: right; margin-top: 30px;">
+              <strong>Date:</strong> {{date.today}}
+            </p>
+          </div>
+          
+          <div style="margin-top: 40px; text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #6b7280;">
+              {{company.name}}<br>
+              {{company.address}}<br>
+              Phone: {{company.phone}} | Email: {{company.email}}
+            </p>
+          </div>
+        </div>
+      `,
+      language: "EN",
+      tags: ["certificate", "experience", "hr", "verification"],
+      status: "ACTIVE",
+      active: true,
+      createdBy: adminUser.id,
+      mergeFields: {
+        fields: [
+          "employee.fullName",
+          "employee.firstName",
+          "employee.employeeCode",
+          "employee.designation",
+          "employee.department",
+          "employee.joiningDate",
+          "company.name",
+          "company.address",
+          "company.phone",
+          "company.email",
+          "date.today",
+          "date.year",
+        ],
+      },
+    },
+  });
+
+  console.log("✅ Created 3 document templates");
+
+  // Generate sample documents for some employees
+  if (adminUser) {
+    const employees = await prisma.employee.findMany({
+      where: { status: "ACTIVE" },
+      take: 3,
+    });
+
+    if (employees.length > 0) {
+      console.log("📝 Generating sample documents...");
+
+      // Import template engine and PDF generator
+      const { processTemplate } = await import("../src/modules/documents/template-engine.js");
+      const { generatePDFFromHTML, generateDocumentFileName } = await import(
+        "../src/modules/documents/pdf-generator.js"
+      );
+
+      for (let i = 0; i < Math.min(employees.length, 3); i++) {
+        const employee = employees[i];
+        const template = i === 0 ? offerLetterTemplate : i === 1 ? appointmentLetterTemplate : experienceCertificateTemplate;
+
+        try {
+          // Process template
+          const processedContent = await processTemplate(
+            template.content,
+            employee.id,
+            undefined,
+            false
+          );
+
+          // Generate PDF
+          const fileName = generateDocumentFileName(template.code, employee.employeeCode);
+          const pdfResult = await generatePDFFromHTML(processedContent, fileName);
+
+          // Save generated document
+          await prisma.generatedDocument.create({
+            data: {
+              templateId: template.id,
+              employeeId: employee.id,
+              generatedBy: adminUser.id,
+              generatedFor: employee.id,
+              fileUrl: pdfResult.filePath,
+              fileName: pdfResult.fileName,
+              format: "pdf",
+              fileSize: pdfResult.fileSize,
+              meta: {
+                templateCode: template.code,
+                templateName: template.name,
+                employeeCode: employee.employeeCode,
+              },
+            },
+          });
+
+          console.log(`✅ Generated ${template.name} for ${employee.firstName} ${employee.lastName}`);
+        } catch (error) {
+          console.error(`❌ Failed to generate document for ${employee.firstName}:`, error);
+        }
+      }
+
+      console.log("✅ Document generation completed");
+    }
+  }
+}
+
+async function seedTasks() {
+  console.log("📋 Seeding tasks...");
+
+  // Get users and employees for task assignment
+  const adminUser = await prisma.user.findFirst({
+    where: { email: "admin@ciro.gov.et" },
+  });
+  
+  const employees = await prisma.employee.findMany({
+    where: { status: "ACTIVE" },
+    take: 10,
+  });
+
+  if (!adminUser || employees.length === 0) {
+    console.log("⚠️  Skipping task seeding - no admin user or employees found");
+    return;
+  }
+
+  // Get employee user IDs
+  const employeeUsers = await prisma.user.findMany({
+    where: {
+      email: { in: employees.map((e) => e.email).filter(Boolean) },
+    },
+  });
+
+  const employeeUserMap = new Map(
+    employeeUsers.map((u) => [u.email, u.id])
+  );
+
+  // Sample tasks data
+  const tasksData = [
+    {
+      title: "Complete Q4 Performance Reviews",
+      description: "Review and complete performance evaluations for all team members for Q4 2024. Ensure all feedback is documented and submitted to HR.",
+      project: "HR Management",
+      priority: "HIGH" as const,
+      status: "IN_PROGRESS" as const,
+      estimatedHours: 16,
+      tags: ["performance", "reviews", "hr"],
+    },
+    {
+      title: "Update Employee Handbook",
+      description: "Review and update the employee handbook with latest policies and procedures. Include new remote work guidelines.",
+      project: "HR Management",
+      priority: "MEDIUM" as const,
+      status: "TODO" as const,
+      estimatedHours: 8,
+      tags: ["documentation", "policies"],
+    },
+    {
+      title: "Implement New Payroll System",
+      description: "Migrate from legacy payroll system to new cloud-based solution. Coordinate with IT and Finance teams.",
+      project: "Payroll System",
+      priority: "URGENT" as const,
+      status: "IN_PROGRESS" as const,
+      estimatedHours: 40,
+      tags: ["payroll", "migration", "system"],
+    },
+    {
+      title: "Conduct Training Session on New HRMS Features",
+      description: "Organize and conduct training sessions for all employees on new HRMS features including task management and announcements.",
+      project: "Training",
+      priority: "MEDIUM" as const,
+      status: "REVIEW" as const,
+      estimatedHours: 4,
+      tags: ["training", "hrms"],
+    },
+    {
+      title: "Review and Approve Leave Requests",
+      description: "Review pending leave requests for December and January. Ensure proper coverage and approve/reject accordingly.",
+      project: "Leave Management",
+      priority: "HIGH" as const,
+      status: "TODO" as const,
+      estimatedHours: 2,
+      tags: ["leave", "approval"],
+    },
+    {
+      title: "Prepare Monthly Attendance Report",
+      description: "Generate and analyze monthly attendance report. Identify patterns and address any attendance issues.",
+      project: "Reports",
+      priority: "MEDIUM" as const,
+      status: "DONE" as const,
+      estimatedHours: 3,
+      actualHours: 2.5,
+      tags: ["attendance", "reports"],
+    },
+    {
+      title: "Update Employee Database",
+      description: "Verify and update employee contact information, emergency contacts, and personal details in the system.",
+      project: "Data Management",
+      priority: "LOW" as const,
+      status: "TODO" as const,
+      estimatedHours: 6,
+      tags: ["data", "maintenance"],
+    },
+    {
+      title: "Plan Annual Company Event",
+      description: "Coordinate with various departments to plan the annual company event. Book venue, arrange catering, and send invitations.",
+      project: "Events",
+      priority: "MEDIUM" as const,
+      status: "IN_PROGRESS" as const,
+      estimatedHours: 20,
+      tags: ["events", "planning"],
+    },
+    {
+      title: "Audit Asset Inventory",
+      description: "Conduct quarterly audit of all company assets. Verify physical assets match database records.",
+      project: "Asset Management",
+      priority: "HIGH" as const,
+      status: "TODO" as const,
+      estimatedHours: 12,
+      tags: ["assets", "audit"],
+    },
+    {
+      title: "Create Employee Onboarding Checklist",
+      description: "Develop comprehensive onboarding checklist for new hires. Include all necessary steps and documentation.",
+      project: "Onboarding",
+      priority: "MEDIUM" as const,
+      status: "DONE" as const,
+      estimatedHours: 5,
+      actualHours: 4.5,
+      tags: ["onboarding", "checklist"],
+    },
+    {
+      title: "Review and Update Job Descriptions",
+      description: "Review all job descriptions and update them to reflect current responsibilities and requirements.",
+      project: "HR Management",
+      priority: "LOW" as const,
+      status: "TODO" as const,
+      estimatedHours: 10,
+      tags: ["job-descriptions", "hr"],
+    },
+    {
+      title: "Implement Employee Recognition Program",
+      description: "Design and launch a new employee recognition program to boost morale and engagement.",
+      project: "Employee Engagement",
+      priority: "MEDIUM" as const,
+      status: "REVIEW" as const,
+      estimatedHours: 15,
+      tags: ["recognition", "engagement"],
+    },
+  ];
+
+  // Create tasks
+  const createdTasks = [];
+  const now = new Date();
+
+  for (let i = 0; i < tasksData.length; i++) {
+    const taskData = tasksData[i];
+    const employee = employees[i % employees.length];
+    const employeeUserId = employee.email ? employeeUserMap.get(employee.email) : null;
+
+    // Set due dates (some in past, some in future)
+    const daysOffset = i < 3 ? -i * 2 : i * 3; // First 3 are overdue/past due
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + daysOffset);
+
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - (i % 5));
+
+    const task = await prisma.task.create({
+      data: {
+        title: taskData.title,
+        description: taskData.description,
+        project: taskData.project,
+        priority: taskData.priority,
+        status: taskData.status,
+        startDate: startDate,
+        dueDate: dueDate,
+        estimatedHours: taskData.estimatedHours,
+        actualHours: taskData.actualHours || null,
+        tags: taskData.tags,
+        createdBy: adminUser.id,
+        completedBy: taskData.status === "DONE" ? adminUser.id : null,
+        completedAt: taskData.status === "DONE" ? new Date(now.getTime() - (i * 24 * 60 * 60 * 1000)) : null,
+      },
+    });
+
+    // Assign task to employee
+    if (employee && employeeUserId) {
+      await prisma.taskAssignment.create({
+        data: {
+          taskId: task.id,
+          employeeId: employee.id,
+          assignedBy: adminUser.id,
+          isUnread: i < 5, // First 5 tasks are unread
+        },
+      });
+    }
+
+    // Add watchers (admin and sometimes another employee)
+    await prisma.taskWatcher.create({
+      data: {
+        taskId: task.id,
+        userId: adminUser.id,
+      },
+    });
+
+    if (i % 3 === 0 && employeeUserId && employeeUserId !== adminUser.id) {
+      await prisma.taskWatcher.create({
+        data: {
+          taskId: task.id,
+          userId: employeeUserId,
+        },
+      });
+    }
+
+    // Add activity log
+    await prisma.taskActivity.create({
+      data: {
+        taskId: task.id,
+        type: "CREATED",
+        actorId: adminUser.id,
+        details: {
+          title: task.title,
+        },
+      },
+    });
+
+    // Add comment to some tasks
+    if (i % 2 === 0) {
+      await prisma.taskComment.create({
+        data: {
+          taskId: task.id,
+          content: `Initial comment on ${task.title}. This task requires attention.`,
+          createdBy: adminUser.id,
+          mentions: [],
+        },
+      });
+
+      await prisma.taskActivity.create({
+        data: {
+          taskId: task.id,
+          type: "COMMENTED",
+          actorId: adminUser.id,
+          details: {
+            comment: "Initial comment added",
+          },
+        },
+      });
+    }
+
+    // Add time logs for completed tasks
+    if (taskData.status === "DONE" && taskData.actualHours) {
+      await prisma.taskTimeLog.create({
+        data: {
+          taskId: task.id,
+          employeeId: employee.id,
+          date: new Date(now.getTime() - (i * 24 * 60 * 60 * 1000)),
+          hours: taskData.actualHours,
+          description: `Time logged for completing ${task.title}`,
+          loggedBy: adminUser.id,
+        },
+      });
+    }
+
+    createdTasks.push(task);
+  }
+
+  // Create some subtasks
+  if (createdTasks.length >= 2) {
+    const parentTask = createdTasks[0];
+    const subtask = await prisma.task.create({
+      data: {
+        title: "Review performance review templates",
+        description: "Check existing templates and update if needed",
+        project: parentTask.project,
+        priority: "MEDIUM" as const,
+        status: "TODO" as const,
+        parentTaskId: parentTask.id,
+        createdBy: adminUser.id,
+        tags: ["subtask"],
+      },
+    });
+
+    if (employees[0]) {
+      await prisma.taskAssignment.create({
+        data: {
+          taskId: subtask.id,
+          employeeId: employees[0].id,
+          assignedBy: adminUser.id,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Created ${createdTasks.length} tasks with assignments, watchers, comments, and time logs`);
 }
 
 main()
