@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle, Upload, FileDown
+  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle, Upload, FileDown, User
 } from "lucide-react";
 import api, { uploadDocument, bulkImportEmployees, downloadSampleTemplate } from "@/services/api"; // Axios instance with baseURL + auth
 import { createUser, getRoles, type Role } from "@/services/users";
@@ -57,7 +57,9 @@ type Employee = {
     firstName: string;
     lastName: string;
     status: string;
+    avatarUrl?: string | null;
   } | null;
+  avatarUrl?: string | null;
 };
 
 // ---------- Helpers ----------
@@ -76,6 +78,20 @@ const getStatusColor = (status: string) => {
   }
 };
 const initials = (first = "", last = "") => (first[0] ?? "").toUpperCase() + (last[0] ?? "").toUpperCase();
+
+const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+const resolveAvatarUrl = (value?: string | null) => {
+  if (!value) return undefined;
+  if (value.startsWith("http")) return value;
+  return `${apiBaseUrl}${value}`;
+};
+
+const formatStatusLabel = (status: Employee["status"]) =>
+  status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatEmploymentType = (value?: string | null) =>
+  value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
 
 // ---------- API calls ----------
 async function apiListEmployees(params: {
@@ -1379,11 +1395,16 @@ const EmployeesPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEmployees.map((e) => (
-                  <TableRow key={e.id}>
+                {filteredEmployees.map((e) => {
+                  const avatarSrc = resolveAvatarUrl(e.avatarUrl ?? e.user?.avatarUrl ?? null);
+                  return (
+                    <TableRow key={e.id}>
                     <TableCell>
                       <div className="flex items-center space-x-3">
                         <Avatar>
+                          {avatarSrc && (
+                            <AvatarImage src={avatarSrc} alt={`${e.firstName} ${e.lastName}`} />
+                          )}
                           <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                             {initials(e.firstName, e.lastName)}
                           </AvatarFallback>
@@ -1405,7 +1426,7 @@ const EmployeesPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(toUiStatus(e.status))}>
-                        {toUiStatus(e.status)}
+                        {formatStatusLabel(e.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -1444,67 +1465,105 @@ const EmployeesPage: React.FC = () => {
                                 Complete information for {e.firstName} {e.lastName}
                               </DialogDescription>
                             </DialogHeader>
-                            <div className="grid grid-cols-2 gap-6 py-4">
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="font-medium text-gray-900">Personal Information</h4>
-                                  <div className="mt-2 space-y-2 text-sm">
-                                    <p><span className="font-medium">Name:</span> {e.firstName} {e.lastName}</p>
-                                    <p><span className="font-medium">Email:</span> {e.email}</p>
-                                    <p><span className="font-medium">Phone:</span> {e.phone ?? "—"}</p>
-                                    <p><span className="font-medium">Date of Birth:</span> {e.dateOfBirth ? new Date(e.dateOfBirth).toLocaleDateString() : "—"}</p>
-                                    <p><span className="font-medium">Gender:</span> {e.gender ? e.gender.charAt(0) + e.gender.slice(1).toLowerCase() : "—"}</p>
-                                    <p><span className="font-medium">Marriage Status:</span> {e.marriageStatus ? e.marriageStatus.charAt(0) + e.marriageStatus.slice(1).toLowerCase().replace('_', ' ') : "—"}</p>
-                                    <p><span className="font-medium">Address:</span> {e.address ?? "—"}</p>
-                                    <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact || "—"}</p>
+                            <div className="space-y-6 py-4">
+                              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-4">
+                                  <Avatar className="h-16 w-16">
+                                    {avatarSrc && (
+                                      <AvatarImage src={avatarSrc} alt={`${e.firstName} ${e.lastName}`} />
+                                    )}
+                                    <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                                      {initials(e.firstName, e.lastName)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="text-lg font-semibold text-foreground">
+                                      {e.firstName} {e.lastName}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {e.designation ?? "—"}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <Badge variant="outline">{e.department?.name ?? "—"}</Badge>
+                                      <Badge className={getStatusColor(toUiStatus(e.status))}>
+                                        {formatStatusLabel(e.status)}
+                                      </Badge>
                                     </div>
                                   </div>
                                 </div>
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="font-medium text-gray-900">Professional Information</h4>
-                                  <div className="mt-2 space-y-2 text-sm">
-                                    <p><span className="font-medium">Employee ID:</span> {e.employeeCode}</p>
-                                    <p><span className="font-medium">Department:</span> {e.department?.name ?? "—"}</p>
-                                    <p><span className="font-medium">Designation:</span> {e.designation ?? "—"}</p>
-                                    <p><span className="font-medium">Employment Type:</span> {e.employmentType ? e.employmentType.replace('_', ' ') : "—"}</p>
-                                    <p><span className="font-medium">Education Level:</span> {
-                                      e.educationLevel === "OTHER" && e.educationOther 
-                                        ? e.educationOther 
-                                        : e.educationLevel 
-                                          ? e.educationLevel.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-                                          : "—"
-                                    }</p>
-                                    <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
-                                    <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
-                                    <p><span className="font-medium">Salary:</span> {e.salary != null && typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
-                                    {e.userId && e.user?.status === "ACTIVE" && (
-                                      <p><span className="font-medium">User Account:</span> <Badge className="bg-green-100 text-green-800">Active</Badge></p>
-                                    )}
-                                    {e.userId && e.user?.status === "INACTIVE" && (
-                                      <p><span className="font-medium">User Account:</span> <Badge className="bg-red-100 text-red-800">Inactive</Badge></p>
-                                    )}
-                                    </div>
+                                <div className="space-y-2 text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="h-4 w-4" />
+                                    <span>
+                                      Joined {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}
+                                    </span>
                                   </div>
-                                {e.document && (
-                                  <div>
-                                    <h4 className="font-medium text-gray-900 mb-2">Document</h4>
-                                    <div className="p-3 bg-gray-50 rounded-md">
-                                      <p className="text-sm text-gray-700 mb-2">
-                                        <span className="font-medium">Document Name:</span> {e.document.split('/').pop()}
-                                      </p>
-                                      <a
-                                        href={`${import.meta.env.VITE_API_URL || "http://localhost:4000"}${e.document}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                                      >
-                                        <Download className="h-3 w-3" />
-                                        View/Download Document
-                                      </a>
+                                  {e.manager && (
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4" />
+                                      <span>
+                                        Manager: {e.manager.firstName} {e.manager.lastName}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                                )}
+                              <div className="grid gap-4 sm:grid-cols-2 bg-muted/40 rounded-lg p-4">
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Employee ID</span>
+                                  <span className="font-medium text-foreground">{e.employeeCode}</span>
+                                </div>
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Employment Type</span>
+                                  <span className="font-medium text-foreground">{formatEmploymentType(e.employmentType)}</span>
+                                </div>
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Email</span>
+                                  <span className="font-medium text-foreground break-all">{e.email}</span>
+                                </div>
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Phone</span>
+                                  <span className="font-medium text-foreground">{e.phone ?? "—"}</span>
+                                </div>
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Emergency Contact</span>
+                                  <span className="font-medium text-foreground">{e.emergencyContact ?? "—"}</span>
+                                </div>
+                                <div className="flex flex-col text-sm">
+                                  <span className="text-xs uppercase text-muted-foreground">Education</span>
+                                  <span className="font-medium text-foreground">
+                                    {e.educationLevel === "OTHER"
+                                      ? e.educationOther ?? "—"
+                                      : formatEmploymentType(e.educationLevel)}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="grid gap-6 sm:grid-cols-2 text-sm text-muted-foreground">
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-foreground">Personal</h4>
+                                  <p><span className="font-medium text-foreground">Address:</span> {e.address ?? "—"}</p>
+                                  <p><span className="font-medium text-foreground">Date of Birth:</span> {e.dateOfBirth ? new Date(e.dateOfBirth).toLocaleDateString() : "—"}</p>
+                                  <p><span className="font-medium text-foreground">Gender:</span> {e.gender ? formatEmploymentType(e.gender) : "—"}</p>
+                                  <p><span className="font-medium text-foreground">Marital Status:</span> {e.marriageStatus ? formatEmploymentType(e.marriageStatus) : "—"}</p>
+                                </div>
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-foreground">Professional</h4>
+                                  <p><span className="font-medium text-foreground">Status:</span> {formatStatusLabel(e.status)}</p>
+                                  <p><span className="font-medium text-foreground">Salary:</span> {e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
+                                  {e.document && (
+                                    <p className="flex items-center gap-2">
+                                      <Download className="h-3 w-3" />
+                                      <a
+                                        href={`${apiBaseUrl}${e.document}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline"
+                                      >
+                                        View document
+                                      </a>
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </DialogContent>
@@ -1531,8 +1590,9 @@ const EmployeesPage: React.FC = () => {
                         )}
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

@@ -91,7 +91,8 @@ const menuItems = [
   title: 'Expenses',
   icon: CreditCard,
   href: '/expenses',
-  permission: 'expenses.view'
+  permission: 'expense.view',
+  submenu: true,
 },
 {
   title: 'Documents',
@@ -177,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   
   // Only show Leave Management submenu items if user has leave.view permission
   if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
-    leaveSubmenuItems.push({ title: 'Your Leave Mngt', href: '/leave', permission: 'leave.view' });
+    leaveSubmenuItems.push({ title: 'My Leave Mngt', href: '/leave', permission: 'leave.view' });
     
     // Only ADMIN and MANAGER can see Leave Requests and Leave Balance
     if (isAdminOrManager) {
@@ -191,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   
   // Only show Attendance submenu items if user has attendance.view permission
   if (hasPermission('attendance.view') || hasPermission('attendance.read') || hasPermission('attendance.manage')) {
-    attendanceSubmenuItems.push({ title: 'Your Attendance', href: '/attendance', permission: 'attendance.view' });
+    attendanceSubmenuItems.push({ title: 'My Attendance', href: '/attendance', permission: 'attendance.view' });
     
     // Only ADMIN and MANAGER can see Attendance Records
     if (isAdminOrManager) {
@@ -260,39 +261,76 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     taskSubmenuItems.push({ title: 'Kanban Board', href: '/tasks/kanban', permission: 'tasks.view' });
     taskSubmenuItems.push({ title: 'Dashboard', href: '/tasks/dashboard', permission: 'tasks.view' });
   }
+
+  // Expenses submenu items
+  const expenseSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  if (hasPermission('expense.view')) {
+    expenseSubmenuItems.push({ title: 'My Expenses', href: '/expenses', permission: 'expense.view' });
+  }
+  if (hasPermission('expense.approve')) {
+    expenseSubmenuItems.push({ title: 'Approval Queue', href: '/expenses/approval-queue', permission: 'expense.approve' });
+  }
+  if (hasPermission('expense.view_all')) {
+    expenseSubmenuItems.push({ title: 'All Expenses', href: '/expenses/all', permission: 'expense.view_all' });
+  }
   
   // Create Task is handled via dialog on the tasks list page, no separate route needed
 
-  // Auto-expand Leave Management when on leave-related pages
+  // Auto-expand and auto-close submenus based on current route
   React.useEffect(() => {
+    const newExpandedItems = new Set<string>();
+    
+    // Determine which submenu should be active based on current route
     if (location.pathname.startsWith('/leave')) {
-      setExpandedItems(prev => new Set([...prev, 'Leave Management']));
+      newExpandedItems.add('Leave Management');
+    } else if (location.pathname.startsWith('/attendance')) {
+      newExpandedItems.add('Attendance');
+    } else if (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary')) {
+      newExpandedItems.add('Payroll');
+    } else if (location.pathname.startsWith('/assets')) {
+      newExpandedItems.add('Assets');
+    } else if (location.pathname.startsWith('/expenses')) {
+      newExpandedItems.add('Expenses');
+    } else if (location.pathname.startsWith('/documents')) {
+      newExpandedItems.add('Documents');
+    } else if (location.pathname.startsWith('/announcements')) {
+      newExpandedItems.add('Announcements');
+    } else if (location.pathname.startsWith('/tasks')) {
+      newExpandedItems.add('Tasks');
     }
-    if (location.pathname.startsWith('/attendance')) {
-      setExpandedItems(prev => new Set([...prev, 'Attendance']));
-    }
-    if (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary')) {
-      setExpandedItems(prev => new Set([...prev, 'Payroll']));
-    }
-    if (location.pathname.startsWith('/assets')) {
-      setExpandedItems(prev => new Set([...prev, 'Assets']));
-    }
-    if (location.pathname.startsWith('/documents')) {
-      setExpandedItems(prev => new Set([...prev, 'Documents']));
-    }
-    if (location.pathname.startsWith('/announcements')) {
-      setExpandedItems(prev => new Set([...prev, 'Announcements']));
-    }
+    
+    // Only update if the active submenu has changed
+    setExpandedItems(newExpandedItems);
   }, [location.pathname]);
 
   const toggleExpand = (item: string) => {
     setExpandedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(item)) {
-        next.delete(item);
-      } else {
+      const next = new Set<string>();
+      
+      // Check if the clicked item is the currently active submenu based on route
+      const isActiveSubmenu = (
+        (item === 'Leave Management' && location.pathname.startsWith('/leave')) ||
+        (item === 'Attendance' && location.pathname.startsWith('/attendance')) ||
+        (item === 'Payroll' && (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary'))) ||
+        (item === 'Assets' && location.pathname.startsWith('/assets')) ||
+        (item === 'Expenses' && location.pathname.startsWith('/expenses')) ||
+        (item === 'Documents' && location.pathname.startsWith('/documents')) ||
+        (item === 'Announcements' && location.pathname.startsWith('/announcements')) ||
+        (item === 'Tasks' && location.pathname.startsWith('/tasks'))
+      );
+      
+      // If clicking on the currently active submenu, keep it open (don't allow closing)
+      if (isActiveSubmenu) {
         next.add(item);
+      } else if (!prev.has(item)) {
+        // Open the clicked submenu (this will close others since we're creating a new Set)
+        next.add(item);
+      } else {
+        // It's expanded but not active - allow closing it
+        // Don't add it to next, so it closes
       }
+      
       return next;
     });
   };
@@ -586,6 +624,50 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
                       {taskSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isExpenses = item.title === 'Expenses';
+            const isExpensesPage = location.pathname.startsWith('/expenses');
+            
+            if (isExpenses && expenseSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isExpensesPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {expenseSubmenuItems.map((subItem) => (
                         <NavLink
                           key={subItem.href}
                           to={subItem.href}

@@ -39,13 +39,19 @@ import TasksKanbanPage from "./pages/TasksKanbanPage";
 import TasksListPage from "./pages/TasksListPage";
 import TaskDetailPage from "./pages/TaskDetailPage";
 import TasksDashboardPage from "./pages/TasksDashboardPage";
-import ExpenseManagementPage from "./pages/ExpenseManagementPage";
+import MyExpensesPage from "./pages/MyExpensesPage";
+import ExpenseApprovalQueuePage from "./pages/ExpenseApprovalQueuePage";
+import AllExpensesPage from "./pages/AllExpensesPage";
+import ExpenseDetailPage from "./pages/ExpenseDetailPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ReportsPage from "./pages/ReportsPage";
+import ReportBuilder from "./components/reports/ReportBuilder";
+import ReportViewer from "./components/reports/ReportViewer";
 import OnboardingPage from "./pages/OnboardingPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
+import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -318,17 +324,22 @@ function AppRoutes() {
             path="tasks/dashboard"
             element={<TasksDashboardPage />}
           />
-        <Route
-          path="expenses"
-          element={
-            <ExpenseManagementPage
-              data-id="68y9x1ab7"
-              data-path="src/App.tsx"
-            />
-          }
-          data-id="0qx63g042"
-          data-path="src/App.tsx"
-        />
+          <Route
+            path="expenses"
+            element={<MyExpensesPage />}
+          />
+          <Route
+            path="expenses/approval-queue"
+            element={<ExpenseApprovalQueuePage />}
+          />
+          <Route
+            path="expenses/all"
+            element={<AllExpensesPage />}
+          />
+          <Route
+            path="expenses/:id"
+            element={<ExpenseDetailPage />}
+          />
         <Route
           path="documents"
           element={
@@ -342,6 +353,14 @@ function AppRoutes() {
           element={<ReportsPage data-id="x47on150h" data-path="src/App.tsx" />}
           data-id="qrsrojv6u"
           data-path="src/App.tsx"
+        />
+        <Route
+          path="reports/builder"
+          element={<ReportBuilder />}
+        />
+        <Route
+          path="reports/view"
+          element={<ReportViewer />}
         />
         <Route
           path="onboarding"
@@ -369,6 +388,18 @@ function AppRoutes() {
           path="admin/settings"
           element={<SettingsPage data-id="k4rvnag8a" data-path="src/App.tsx" />}
           data-id="az0ylb3qd"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="profile"
+          element={<ProfilePage data-id="profile-page" data-path="src/App.tsx" />}
+          data-id="profile-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="settings"
+          element={<SettingsPage data-id="settings-page" data-path="src/App.tsx" />}
+          data-id="settings-route"
           data-path="src/App.tsx"
         />
       </Route>

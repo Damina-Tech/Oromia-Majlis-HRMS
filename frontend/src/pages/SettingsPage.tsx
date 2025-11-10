@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,7 +9,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -20,1020 +19,552 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { useUsers, useNotifications } from "@/store";
 import {
-  Building,
-  Clock,
-  Calendar,
-  DollarSign,
-  Shield,
-  Mail,
   Bell,
-  Save,
-  Upload,
   Globe,
-  Database,
-  Key,
+  Palette,
+  ShieldCheck,
+  SunMedium,
+  Smartphone,
+  Mail,
+  UserCog,
+  RefreshCw,
+  MoonStar,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from "@/services/notifications";
+import { updateCurrentUser } from "@/services/users";
 
-// 🧪 Mock initial settings
-const mockSettings = {
-  company: {
-    name: "Acme Inc.",
-    description: "Leading global solutions provider",
-  },
-  workingHours: {
-    start: "09:00",
-    end: "17:00",
-  },
-  leaves: {
-    annual: 20,
-    sick: 10,
-  },
-  payroll: {
-    cycle: "monthly",
-  },
-  authentication: {
-    twoFA: true,
-  },
-  notifications: {
-    email: true,
+type ThemePreference = "system" | "light" | "dark";
+
+const THEME_STORAGE_KEY = "chiro_hrms_theme";
+
+const AVAILABLE_LANGUAGES = [
+  { label: "English (United States)", value: "en-US" },
+  { label: "Amharic", value: "am-ET" },
+  { label: "French", value: "fr-FR" },
+  { label: "Arabic", value: "ar" },
+];
+
+const AVAILABLE_TIMEZONES = [
+  { label: "UTC", value: "UTC" },
+  { label: "East Africa Time (UTC+3)", value: "Africa/Addis_Ababa" },
+  { label: "Eastern Time (UTC-5)", value: "America/New_York" },
+  { label: "Central European Time (UTC+1)", value: "Europe/Berlin" },
+];
+
+const SettingsPage: React.FC = () => {
+  const { user, refreshUserData } = useAuth();
+  const [activeTab, setActiveTab] = useState("account");
+  const [accountForm, setAccountForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [notificationChannels, setNotificationChannels] = useState({
+    inApp: true,
+    email: false,
+    push: false,
     sms: false,
-  },
-};
-
-export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("company");
-  const [isDirty, setIsDirty] = useState(false);
-
-  const [companySettings, setCompanySettings] = useState({
-    name: "Acme Corporation",
-    address: "123 Business Ave, Suite 100, New York, NY 10001",
-    phone: "+1 (555) 123-4567",
-    email: "info@acmecorp.com",
-    website: "https://acmecorp.com",
-    taxId: "12-3456789",
+    whatsapp: false,
   });
-
-  const [workingHours, setWorkingHours] = useState({
-    monday: { enabled: true, start: "09:00", end: "17:00" },
-    tuesday: { enabled: true, start: "09:00", end: "17:00" },
-    wednesday: { enabled: true, start: "09:00", end: "17:00" },
-    thursday: { enabled: true, start: "09:00", end: "17:00" },
-    friday: { enabled: true, start: "09:00", end: "17:00" },
-    saturday: { enabled: false, start: "09:00", end: "17:00" },
-    sunday: { enabled: false, start: "09:00", end: "17:00" },
-  });
-
-  const [leaveSettings, setLeaveSettings] = useState({
-    annualLeaveDays: 20,
-    sickLeaveDays: 10,
-    maternityLeaveDays: 90,
-    paternityLeaveDays: 14,
-    carryForwardDays: 5,
-    maxCarryForward: 25,
-    probationPeriodDays: 90,
-  });
-
-  const [payrollSettings, setPayrollSettings] = useState({
-    currency: "USD",
-    payFrequency: "monthly",
-    taxSettings: {
-      federalTaxRate: 22,
-      stateTaxRate: 6.5,
-      socialSecurityRate: 6.2,
-      medicareRate: 1.45,
-    },
-  });
-
-  const [authSettings, setAuthSettings] = useState({
-    passwordPolicy: {
-      minLength: 8,
-      requireUppercase: true,
-      requireLowercase: true,
-      requireNumbers: true,
-      requireSpecialChars: false,
-      maxAge: 90,
-    },
-    sessionTimeout: 480,
-    twoFactorEnabled: false,
-    ssoEnabled: false,
-    ssoProvider: "",
-  });
-
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailEnabled: true,
-    smtpSettings: {
-      host: "",
-      port: 587,
-      username: "",
-      password: "",
-      encryption: "tls", // 'none' | 'tls' | 'ssl'
-    },
-    slackEnabled: false,
-    slackWebhookUrl: "",
-  });
-
-  const handleSaveSettings = () => {
-    const newSettings = {
-      company: companySettings,
-      workingHours,
-      leaves: leaveSettings,
-      payroll: payrollSettings,
-      authentication: authSettings,
-      notifications: notificationSettings,
-    };
-
-    console.log("✅ Saved settings:", newSettings);
-    setIsDirty(false);
-    alert("Settings saved successfully!");
+  const [loadingNotifications, setLoadingNotifications] = useState(true);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [language, setLanguage] = useState("en-US");
+  const [timezone, setTimezone] = useState("Africa/Addis_Ababa");
+  const [compactMode, setCompactMode] = useState(false);
+  const applyTheme = useCallback((value: ThemePreference) => {
+    if (value === "system") {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.removeAttribute("data-theme");
+    } else if (value === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    setAccountForm({
+      firstName: user.firstName ?? "",
+      lastName: user.lastName ?? "",
+      email: user.email ?? "",
+    });
+    const storedTheme = (localStorage.getItem(THEME_STORAGE_KEY) ??
+      "system") as ThemePreference;
+    setThemePreference(storedTheme);
+    applyTheme(storedTheme);
+    const storedLanguage = localStorage.getItem("hrms_language");
+    if (storedLanguage) setLanguage(storedLanguage);
+    const storedTimezone = localStorage.getItem("hrms_timezone");
+    if (storedTimezone) setTimezone(storedTimezone);
+    const storedCompact = localStorage.getItem("hrms_compact_mode");
+    if (storedCompact) setCompactMode(storedCompact === "true");
+  }, [user, applyTheme]);
+  const loadNotificationPrefs = useCallback(async () => {
+    if (!user) return;
+    setLoadingNotifications(true);
+    try {
+      const prefs = await getNotificationPreferences();
+      const channels =
+        (prefs.channels as Record<string, boolean>) ?? notificationChannels;
+      setNotificationChannels({
+        inApp: channels.inApp ?? true,
+        email: channels.email ?? false,
+        push: channels.push ?? false,
+        sms: channels.sms ?? false,
+        whatsapp: channels.whatsapp ?? false,
+      });
+    } catch (error: any) {
+      console.error("Failed to load notification preferences", error);
+      toast.error(
+        error?.response?.data?.message ??
+          "Unable to load your notification preferences."
+      );
+    } finally {
+      setLoadingNotifications(false);
+    }
+  }, [user]);
+  useEffect(() => {
+    loadNotificationPrefs();
+  }, [loadNotificationPrefs]);
+  const handleAccountSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user) return;
+    setSavingAccount(true);
+    try {
+      await updateCurrentUser({
+        firstName: accountForm.firstName,
+        lastName: accountForm.lastName,
+      });
+      await refreshUserData();
+      toast.success("Account information updated");
+    } catch (error: any) {
+      console.error("Failed to update account", error);
+      toast.error(
+        error?.response?.data?.message ?? "Unable to update your account details."
+      );
+    } finally {
+      setSavingAccount(false);
+    }
   };
-
-  const handleFormChange = () => {
-    setIsDirty(true);
+  const handlePasswordSubmit = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+    if (!user) return;
+    if (passwordForm.newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      await updateCurrentUser({ password: passwordForm.newPassword });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success("Password updated successfully");
+    } catch (error: any) {
+      console.error("Failed to change password", error);
+      toast.error(
+        error?.response?.data?.message ?? "Unable to update your password."
+      );
+    } finally {
+      setSavingPassword(false);
+    }
   };
-  const days = [
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-  ];
-
+  const handleNotificationToggle = async (
+    key: keyof typeof notificationChannels,
+    value: boolean
+  ) => {
+    setNotificationChannels((prev) => ({ ...prev, [key]: value }));
+    try {
+      await updateNotificationPreferences({
+        channels: {
+          ...notificationChannels,
+          [key]: value,
+        },
+      });
+      toast.success("Notification preferences updated");
+      loadNotificationPrefs();
+    } catch (error: any) {
+      console.error("Failed to update notification settings", error);
+      toast.error(
+        error?.response?.data?.message ??
+          "Unable to update notification preferences."
+      );
+    }
+  };
+  const handleThemeChange = (value: ThemePreference) => {
+    setThemePreference(value);
+    localStorage.setItem(THEME_STORAGE_KEY, value);
+    applyTheme(value);
+    toast.success("Theme preference updated");
+  };
+  const handleLanguageChange = (value: string) => {
+    setLanguage(value);
+    localStorage.setItem("hrms_language", value);
+    toast.success("Language preference updated");
+  };
+  const handleTimezoneChange = (value: string) => {
+    setTimezone(value);
+    localStorage.setItem("hrms_timezone", value);
+    toast.success("Timezone updated");
+  };
+  const handleCompactToggle = (value: boolean) => {
+    setCompactMode(value);
+    localStorage.setItem("hrms_compact_mode", value ? "true" : "false");
+  };
+  const notificationSummary = useMemo(() => {
+    const enabled = Object.entries(notificationChannels)
+      .filter(([, value]) => value)
+      .map(([key]) => key.toUpperCase());
+    return enabled.length ? enabled.join(", ") : "In-app only";
+  }, [notificationChannels]);
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">System Settings</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
           <p className="text-muted-foreground">
-            Configure system-wide settings and preferences
+            Manage how Chiro HRMS works for your account.
           </p>
         </div>
-        {isDirty && (
-          <Button onClick={handleSaveSettings}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Changes
-          </Button>
-        )}
       </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 w-full">
-          <TabsTrigger value="company">Company</TabsTrigger>
-          <TabsTrigger value="working-hours">Working Hours</TabsTrigger>
-          <TabsTrigger value="leaves">Leave Policies</TabsTrigger>
-          <TabsTrigger value="payroll">Payroll</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="flex w-full flex-wrap justify-start gap-2">
+          <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="appearance">Appearance</TabsTrigger>
+          <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="company" className="space-y-6">
+        <TabsContent value="account" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                Company Information
+                <UserCog className="h-5 w-5" />
+                Account details
               </CardTitle>
               <CardDescription>
-                Basic company details and branding
+                Update how your name appears to your colleagues.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="company-name">Company Name</Label>
-                <Input
-                  id="company-name"
-                  value={companySettings.name}
-                  onChange={(e) => {
-                    setCompanySettings((prev) => ({
-                      ...prev,
-                      name: e.target.value,
-                    }));
-                    handleFormChange();
-                  }}
-                  placeholder="Acme Corporation"
-                />
-              </div>
-              <div>
-                <Label htmlFor="company-address">Address</Label>
-                <Textarea
-                  id="company-address"
-                  value={companySettings.address}
-                  onChange={(e) => {
-                    setCompanySettings((prev) => ({
-                      ...prev,
-                      address: e.target.value,
-                    }));
-                    handleFormChange();
-                  }}
-                  placeholder="123 Business Ave, Suite 100, New York, NY 10001"
-                  rows={3}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="company-phone">Phone</Label>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={handleAccountSubmit}>
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First name</Label>
                   <Input
-                    id="company-phone"
-                    value={companySettings.phone}
-                    onChange={(e) => {
-                      setCompanySettings((prev) => ({
+                    id="firstName"
+                    value={accountForm.firstName}
+                    onChange={(event) =>
+                      setAccountForm((prev) => ({
                         ...prev,
-                        phone: e.target.value,
-                      }));
-                      handleFormChange();
-                    }}
-                    placeholder="+1 (555) 123-4567"
+                        firstName: event.target.value,
+                      }))
+                    }
                   />
                 </div>
-                <div>
-                  <Label htmlFor="company-email">Email</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last name</Label>
                   <Input
-                    id="company-email"
-                    type="email"
-                    value={companySettings.email}
-                    onChange={(e) => {
-                      setCompanySettings((prev) => ({
+                    id="lastName"
+                    value={accountForm.lastName}
+                    onChange={(event) =>
+                      setAccountForm((prev) => ({
                         ...prev,
-                        email: e.target.value,
-                      }));
-                      handleFormChange();
-                    }}
-                    placeholder="info@acmecorp.com"
+                        lastName: event.target.value,
+                      }))
+                    }
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="company-website">Website</Label>
-                  <Input
-                    id="company-website"
-                    value={companySettings.website || ""}
-                    onChange={(e) => {
-                      setCompanySettings((prev) => ({
-                        ...prev,
-                        website: e.target.value,
-                      }));
-                      handleFormChange();
-                    }}
-                    placeholder="https://acmecorp.com"
-                  />
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="email">Work email</Label>
+                  <Input id="email" value={accountForm.email} disabled />
+                  <p className="text-xs text-muted-foreground">
+                    Contact your administrator to change your email address.
+                  </p>
                 </div>
-                <div>
-                  <Label htmlFor="company-tax-id">Tax ID</Label>
-                  <Input
-                    id="company-tax-id"
-                    value={companySettings.taxId || ""}
-                    onChange={(e) => {
-                      setCompanySettings((prev) => ({
-                        ...prev,
-                        taxId: e.target.value,
-                      }));
-                      handleFormChange();
-                    }}
-                    placeholder="12-3456789"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="company-logo">Company Logo</Label>
-                <div className="flex items-center gap-4 mt-2">
-                  <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                    <Upload className="h-6 w-6 text-gray-400" />
-                  </div>
-                  <Button variant="outline">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Logo
+                <div className="md:col-span-2 flex justify-end">
+                  <Button type="submit" disabled={savingAccount}>
+                    {savingAccount ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save changes"
+                    )}
                   </Button>
                 </div>
-              </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="working-hours" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Working Hours Configuration
-              </CardTitle>
-              <CardDescription>
-                Set standard working hours for each day of the week
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {days.map((day) => (
-                <div
-                  key={day}
-                  className="flex items-center justify-between p-4 border rounded-lg"
-                >
-                  <div className="flex items-center gap-4">
-                    <Switch
-                      checked={
-                        workingHours[day as keyof typeof workingHours].enabled
-                      }
-                      onCheckedChange={(checked) => {
-                        setWorkingHours((prev) => ({
-                          ...prev,
-                          [day]: {
-                            ...prev[day as keyof typeof prev],
-                            enabled: checked,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                    <span className="font-medium capitalize w-20">{day}</span>
-                  </div>
-                  {workingHours[day as keyof typeof workingHours].enabled && (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="time"
-                        value={
-                          workingHours[day as keyof typeof workingHours].start
-                        }
-                        onChange={(e) => {
-                          setWorkingHours((prev) => ({
-                            ...prev,
-                            [day]: {
-                              ...prev[day as keyof typeof prev],
-                              start: e.target.value,
-                            },
-                          }));
-                          handleFormChange();
-                        }}
-                        className="w-32"
-                      />
-                      <span>to</span>
-                      <Input
-                        type="time"
-                        value={
-                          workingHours[day as keyof typeof workingHours].end
-                        }
-                        onChange={(e) => {
-                          setWorkingHours((prev) => ({
-                            ...prev,
-                            [day]: {
-                              ...prev[day as keyof typeof prev],
-                              end: e.target.value,
-                            },
-                          }));
-                          handleFormChange();
-                        }}
-                        className="w-32"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="leaves" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Leave Policies
-              </CardTitle>
-              <CardDescription>
-                Configure leave entitlements and policies
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="annual-leave">Annual Leave Days</Label>
-                  <Input
-                    id="annual-leave"
-                    type="number"
-                    value={leaveSettings.annualLeaveDays}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        annualLeaveDays: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="sick-leave">Sick Leave Days</Label>
-                  <Input
-                    id="sick-leave"
-                    type="number"
-                    value={leaveSettings.sickLeaveDays}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        sickLeaveDays: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="maternity-leave">Maternity Leave Days</Label>
-                  <Input
-                    id="maternity-leave"
-                    type="number"
-                    value={leaveSettings.maternityLeaveDays}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        maternityLeaveDays: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="paternity-leave">Paternity Leave Days</Label>
-                  <Input
-                    id="paternity-leave"
-                    type="number"
-                    value={leaveSettings.paternityLeaveDays}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        paternityLeaveDays: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-              </div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="carry-forward">Carry Forward Days</Label>
-                  <Input
-                    id="carry-forward"
-                    type="number"
-                    value={leaveSettings.carryForwardDays}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        carryForwardDays: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="max-carry-forward">Max Carry Forward</Label>
-                  <Input
-                    id="max-carry-forward"
-                    type="number"
-                    value={leaveSettings.maxCarryForward}
-                    onChange={(e) => {
-                      setLeaveSettings((prev) => ({
-                        ...prev,
-                        maxCarryForward: parseInt(e.target.value) || 0,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="probation-period">
-                  Probation Period (Days)
-                </Label>
-                <Input
-                  id="probation-period"
-                  type="number"
-                  value={leaveSettings.probationPeriodDays}
-                  onChange={(e) => {
-                    setLeaveSettings((prev) => ({
-                      ...prev,
-                      probationPeriodDays: parseInt(e.target.value) || 0,
-                    }));
-                    handleFormChange();
-                  }}
-                  className="w-48"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="payroll" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Payroll Settings
-              </CardTitle>
-              <CardDescription>
-                Configure payroll processing and tax settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select
-                    value={payrollSettings.currency}
-                    onValueChange={(value) => {
-                      setPayrollSettings((prev) => ({
-                        ...prev,
-                        currency: value,
-                      }));
-                      handleFormChange();
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                      <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="pay-frequency">Pay Frequency</Label>
-                  <Select
-                    value={payrollSettings.payFrequency}
-                    onValueChange={(value) => {
-                      setPayrollSettings((prev) => ({
-                        ...prev,
-                        payFrequency: value as any,
-                      }));
-                      handleFormChange();
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Bi-weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Separator />
-              <div>
-                <h3 className="font-medium mb-4">Tax Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="federal-tax">Federal Tax Rate (%)</Label>
-                    <Input
-                      id="federal-tax"
-                      type="number"
-                      step="0.01"
-                      value={payrollSettings.taxSettings.federalTaxRate}
-                      onChange={(e) => {
-                        setPayrollSettings((prev) => ({
-                          ...prev,
-                          taxSettings: {
-                            ...prev.taxSettings,
-                            federalTaxRate: parseFloat(e.target.value) || 0,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="state-tax">State Tax Rate (%)</Label>
-                    <Input
-                      id="state-tax"
-                      type="number"
-                      step="0.01"
-                      value={payrollSettings.taxSettings.stateTaxRate}
-                      onChange={(e) => {
-                        setPayrollSettings((prev) => ({
-                          ...prev,
-                          taxSettings: {
-                            ...prev.taxSettings,
-                            stateTaxRate: parseFloat(e.target.value) || 0,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <Label htmlFor="social-security">
-                      Social Security Rate (%)
-                    </Label>
-                    <Input
-                      id="social-security"
-                      type="number"
-                      step="0.01"
-                      value={payrollSettings.taxSettings.socialSecurityRate}
-                      onChange={(e) => {
-                        setPayrollSettings((prev) => ({
-                          ...prev,
-                          taxSettings: {
-                            ...prev.taxSettings,
-                            socialSecurityRate: parseFloat(e.target.value) || 0,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="medicare">Medicare Rate (%)</Label>
-                    <Input
-                      id="medicare"
-                      type="number"
-                      step="0.01"
-                      value={payrollSettings.taxSettings.medicareRate}
-                      onChange={(e) => {
-                        setPayrollSettings((prev) => ({
-                          ...prev,
-                          taxSettings: {
-                            ...prev.taxSettings,
-                            medicareRate: parseFloat(e.target.value) || 0,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Security & Authentication
-              </CardTitle>
-              <CardDescription>
-                Configure security policies and authentication settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="font-medium mb-4">Password Policy</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="min-length">Minimum Length</Label>
-                    <Input
-                      id="min-length"
-                      type="number"
-                      value={authSettings.passwordPolicy.minLength}
-                      onChange={(e) => {
-                        setAuthSettings((prev) => ({
-                          ...prev,
-                          passwordPolicy: {
-                            ...prev.passwordPolicy,
-                            minLength: parseInt(e.target.value) || 8,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max-age">Password Max Age (Days)</Label>
-                    <Input
-                      id="max-age"
-                      type="number"
-                      value={authSettings.passwordPolicy.maxAge}
-                      onChange={(e) => {
-                        setAuthSettings((prev) => ({
-                          ...prev,
-                          passwordPolicy: {
-                            ...prev.passwordPolicy,
-                            maxAge: parseInt(e.target.value) || 90,
-                          },
-                        }));
-                        handleFormChange();
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-3 mt-4">
-                  {[
-                    {
-                      key: "requireUppercase",
-                      label: "Require Uppercase Letters",
-                    },
-                    {
-                      key: "requireLowercase",
-                      label: "Require Lowercase Letters",
-                    },
-                    { key: "requireNumbers", label: "Require Numbers" },
-                    {
-                      key: "requireSpecialChars",
-                      label: "Require Special Characters",
-                    },
-                  ].map(({ key, label }) => (
-                    <div
-                      key={key}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="text-sm">{label}</span>
-                      <Switch
-                        checked={
-                          authSettings.passwordPolicy[
-                            key as keyof typeof authSettings.passwordPolicy
-                          ] as boolean
-                        }
-                        onCheckedChange={(checked) => {
-                          setAuthSettings((prev) => ({
-                            ...prev,
-                            passwordPolicy: {
-                              ...prev.passwordPolicy,
-                              [key]: checked,
-                            },
-                          }));
-                          handleFormChange();
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <h3 className="font-medium">Session & Access</h3>
-                <div>
-                  <Label htmlFor="session-timeout">
-                    Session Timeout (Minutes)
-                  </Label>
-                  <Input
-                    id="session-timeout"
-                    type="number"
-                    value={authSettings.sessionTimeout}
-                    onChange={(e) => {
-                      setAuthSettings((prev) => ({
-                        ...prev,
-                        sessionTimeout: parseInt(e.target.value) || 480,
-                      }));
-                      handleFormChange();
-                    }}
-                    className="w-48"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">
-                      Two-Factor Authentication
-                    </span>
-                    <p className="text-sm text-muted-foreground">
-                      Require 2FA for all users
-                    </p>
-                  </div>
-                  <Switch
-                    checked={authSettings.twoFactorEnabled}
-                    onCheckedChange={(checked) => {
-                      setAuthSettings((prev) => ({
-                        ...prev,
-                        twoFactorEnabled: checked,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">Single Sign-On (SSO)</span>
-                    <p className="text-sm text-muted-foreground">
-                      Enable SSO integration
-                    </p>
-                  </div>
-                  <Switch
-                    checked={authSettings.ssoEnabled}
-                    onCheckedChange={(checked) => {
-                      setAuthSettings((prev) => ({
-                        ...prev,
-                        ssoEnabled: checked,
-                      }));
-                      handleFormChange();
-                    }}
-                  />
-                </div>
-                {authSettings.ssoEnabled && (
-                  <div>
-                    <Label htmlFor="sso-provider">SSO Provider</Label>
-                    <Input
-                      id="sso-provider"
-                      value={authSettings.ssoProvider || ""}
-                      onChange={(e) => {
-                        setAuthSettings((prev) => ({
-                          ...prev,
-                          ssoProvider: e.target.value,
-                        }));
-                        handleFormChange();
-                      }}
-                      placeholder="e.g., Azure AD, Okta, Google"
-                    />
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="notifications" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="h-5 w-5" />
-                Notification Settings
+                Notification channels
               </CardTitle>
               <CardDescription>
-                Configure system notification preferences and channels
+                Choose how you want to stay informed. Current: {notificationSummary}.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-medium">Email Notifications</span>
-                  <p className="text-sm text-muted-foreground">
-                    Send notifications via email
-                  </p>
+              {loadingNotifications ? (
+                <p className="text-sm text-muted-foreground">Loading notification preferences…</p>
+              ) : (
+                <div className="space-y-6">
+                  {(
+                    [
+                      {
+                        key: "inApp",
+                        label: "In-app",
+                        description: "Receive notifications inside Chiro HRMS.",
+                        icon: SunMedium,
+                        disabled: true,
+                      },
+                      {
+                        key: "email",
+                        label: "Email",
+                        description: "Important updates will be sent to your inbox.",
+                        icon: Mail,
+                      },
+                      {
+                        key: "push",
+                        label: "Push",
+                        description:
+                          "Get push notifications on supported browsers and devices.",
+                        icon: Smartphone,
+                      },
+                      {
+                        key: "sms",
+                        label: "SMS",
+                        description: "Time-critical alerts delivered via SMS.",
+                        icon: ShieldCheck,
+                      },
+                      {
+                        key: "whatsapp",
+                        label: "WhatsApp",
+                        description: "Notifications delivered to WhatsApp (beta).",
+                        icon: Smartphone,
+                      },
+                    ] as const
+                  ).map(({ key, label, description, icon: Icon, disabled }) => (
+                    <div
+                      key={key}
+                      className="flex items-start justify-between rounded-lg border bg-muted/30 p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Icon className="mt-1 h-4 w-4 text-primary" />
+                        <div>
+                          <p className="font-medium">{label}</p>
+                          <p className="text-sm text-muted-foreground">{description}</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={notificationChannels[key]}
+                        disabled={disabled}
+                        onCheckedChange={(value) =>
+                          handleNotificationToggle(key, value)
+                        }
+                      />
+                    </div>
+                  ))}
                 </div>
-                <Switch
-                  checked={notificationSettings.emailEnabled}
-                  onCheckedChange={(checked) => {
-                    setNotificationSettings((prev) => ({
-                      ...prev,
-                      emailEnabled: checked,
-                    }));
-                    handleFormChange();
-                  }}
-                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="security" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" />
+                Change password
+              </CardTitle>
+              <CardDescription>
+                Use at least 8 characters and avoid using the same password on other sites.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={handlePasswordSubmit}>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="currentPassword">Current password</Label>
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(event) =>
+                      setPasswordForm((prev) => ({
+                        ...prev,
+                        currentPassword: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New password</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(event) =>
+                      setPasswordForm((prev) => ({
+                        ...prev,
+                        newPassword: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm new password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(event) =>
+                      setPasswordForm((prev) => ({
+                        ...prev,
+                        confirmPassword: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <Button type="submit" disabled={savingPassword}>
+                    {savingPassword ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Updating…
+                      </>
+                    ) : (
+                      "Update password"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="appearance">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5" />
+                Theme & display
+              </CardTitle>
+              <CardDescription>
+                Personalize how Chiro HRMS looks on your device.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label>Theme</Label>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {(
+                    [
+                      { value: "system", label: "System", icon: Globe },
+                      { value: "light", label: "Light", icon: SunMedium },
+                      { value: "dark", label: "Dark", icon: MoonStar },
+                    ] as const
+                  ).map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => handleThemeChange(value)}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        themePreference === value
+                          ? "border-primary bg-primary/5"
+                          : "hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="h-4 w-4" />
+                        <span>{label}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              {notificationSettings.emailEnabled &&
-                notificationSettings.smtpSettings && (
-                  <div className="space-y-4 pl-4 border-l-2 border-gray-200">
-                    <h4 className="font-medium">SMTP Configuration</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="smtp-host">SMTP Host</Label>
-                        <Input
-                          id="smtp-host"
-                          value={notificationSettings.smtpSettings.host}
-                          onChange={(e) => {
-                            setNotificationSettings((prev) => ({
-                              ...prev,
-                              smtpSettings: prev.smtpSettings
-                                ? {
-                                    ...prev.smtpSettings,
-                                    host: e.target.value,
-                                  }
-                                : undefined,
-                            }));
-                            handleFormChange();
-                          }}
-                          placeholder="smtp.gmail.com"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="smtp-port">Port</Label>
-                        <Input
-                          id="smtp-port"
-                          type="number"
-                          value={notificationSettings.smtpSettings.port}
-                          onChange={(e) => {
-                            setNotificationSettings((prev) => ({
-                              ...prev,
-                              smtpSettings: prev.smtpSettings
-                                ? {
-                                    ...prev.smtpSettings,
-                                    port: parseInt(e.target.value) || 587,
-                                  }
-                                : undefined,
-                            }));
-                            handleFormChange();
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="smtp-username">Username</Label>
-                        <Input
-                          id="smtp-username"
-                          value={notificationSettings.smtpSettings.username}
-                          onChange={(e) => {
-                            setNotificationSettings((prev) => ({
-                              ...prev,
-                              smtpSettings: prev.smtpSettings
-                                ? {
-                                    ...prev.smtpSettings,
-                                    username: e.target.value,
-                                  }
-                                : undefined,
-                            }));
-                            handleFormChange();
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="smtp-password">Password</Label>
-                        <Input
-                          id="smtp-password"
-                          type="password"
-                          value={notificationSettings.smtpSettings.password}
-                          onChange={(e) => {
-                            setNotificationSettings((prev) => ({
-                              ...prev,
-                              smtpSettings: prev.smtpSettings
-                                ? {
-                                    ...prev.smtpSettings,
-                                    password: e.target.value,
-                                  }
-                                : undefined,
-                            }));
-                            handleFormChange();
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="smtp-encryption">Encryption</Label>
-                      <Select
-                        value={notificationSettings.smtpSettings.encryption}
-                        onValueChange={(value) => {
-                          setNotificationSettings((prev) => ({
-                            ...prev,
-                            smtpSettings: prev.smtpSettings
-                              ? {
-                                  ...prev.smtpSettings,
-                                  encryption: value as any,
-                                }
-                              : undefined,
-                          }));
-                          handleFormChange();
-                        }}
-                      >
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="tls">TLS</SelectItem>
-                          <SelectItem value="ssl">SSL</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
               <Separator />
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium">Slack Integration</span>
+                  <p className="font-medium">Compact mode</p>
                   <p className="text-sm text-muted-foreground">
-                    Send notifications to Slack
+                    Reduce spacing and show more information at once.
                   </p>
                 </div>
-                <Switch
-                  checked={notificationSettings.slackEnabled}
-                  onCheckedChange={(checked) => {
-                    setNotificationSettings((prev) => ({
-                      ...prev,
-                      slackEnabled: checked,
-                    }));
-                    handleFormChange();
-                  }}
-                />
+                <Switch checked={compactMode} onCheckedChange={handleCompactToggle} />
               </div>
-              {notificationSettings.slackEnabled && (
-                <div className="pl-4 border-l-2 border-gray-200">
-                  <Label htmlFor="slack-webhook">Slack Webhook URL</Label>
-                  <Input
-                    id="slack-webhook"
-                    value={notificationSettings.slackWebhookUrl || ""}
-                    onChange={(e) => {
-                      setNotificationSettings((prev) => ({
-                        ...prev,
-                        slackWebhookUrl: e.target.value,
-                      }));
-                      handleFormChange();
-                    }}
-                    placeholder="https://hooks.slack.com/services/..."
-                  />
-                </div>
-              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="preferences" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                Locale preferences
+              </CardTitle>
+              <CardDescription>
+                Language and timezone settings affect how information is displayed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Language</Label>
+                <Select value={language} onValueChange={handleLanguageChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AVAILABLE_LANGUAGES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Timezone</Label>
+                <Select value={timezone} onValueChange={handleTimezoneChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select timezone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AVAILABLE_TIMEZONES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
-}
+};
+
+export default SettingsPage;

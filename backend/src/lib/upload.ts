@@ -2,6 +2,7 @@ import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import type { Express } from "express";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,11 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "../../uploads/employee-documents");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const avatarUploadsDir = path.join(__dirname, "../../uploads/avatars");
+if (!fs.existsSync(avatarUploadsDir)) {
+  fs.mkdirSync(avatarUploadsDir, { recursive: true });
 }
 
 // Configure storage
@@ -59,6 +65,38 @@ export const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter,
+});
+
+const avatarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, avatarUploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext);
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  },
+});
+
+const avatarFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedTypes = /jpeg|jpg|png|gif|webp/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+
+  if (extname && mimetype) {
+    cb(null, true);
+  } else {
+    cb(new Error("Invalid file type. Only image files (JPG, PNG, GIF, WEBP) are allowed."));
+  }
+};
+
+export const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
+  },
+  fileFilter: avatarFileFilter,
 });
 
 // Configure multer for bulk imports (larger file size, CSV/Excel)

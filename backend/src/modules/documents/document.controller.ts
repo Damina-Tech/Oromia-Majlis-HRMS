@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -15,6 +15,7 @@ import { processTemplate, extractMergeFields } from "./template-engine.js";
 import { generatePDFFromHTML, generateDocumentFileName } from "./pdf-generator.js";
 import { paginate } from "../../utils/pagination.js";
 import { sendGeneratedDocument } from "./email-service.js";
+import { NotificationService } from "../notifications/notification.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -446,6 +447,11 @@ export async function generateDocument(req: Request, res: Response) {
           firstName: true,
           lastName: true,
           email: true,
+          user: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
 
@@ -477,6 +483,27 @@ export async function generateDocument(req: Request, res: Response) {
       });
 
       generatedDocuments.push(generatedDoc);
+
+      try {
+        if (employee?.user?.id) {
+          await NotificationService.sendNotification({
+            module: NotificationModule.DOCUMENT,
+            type: NotificationType.INFO,
+            title: `Document generated: ${template.name}`,
+            message: `A new ${template.name} document has been generated for you.`,
+            resourceType: "DOCUMENT",
+            resourceId: generatedDoc.id,
+            targets: {
+              userIds: [employee.user.id],
+            },
+            data: {
+              fileName: generatedDoc.fileName,
+            },
+          });
+        }
+      } catch (notifyError) {
+        console.warn("Failed to send document notification:", notifyError);
+      }
 
       // Send email if requested
       if (data.email && employee && employee.email) {

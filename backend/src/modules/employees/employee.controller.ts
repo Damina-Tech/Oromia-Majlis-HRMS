@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { CreateEmployeeDto, UpdateEmployeeDto, ListEmployeesQuery } from "./employee.dto.js";
 import { paginate } from "../../lib/paginate.js";
@@ -7,6 +7,7 @@ import { nextEmployeeCode } from "../../lib/employee-code.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { NotificationService } from "../notifications/notification.service.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -112,6 +113,7 @@ export async function createEmployee(req: Request, res: Response) {
           educationOther: dto.educationOther && dto.educationOther.trim() !== "" ? dto.educationOther : null,
           marriageStatus: dto.marriageStatus && dto.marriageStatus.trim() !== "" ? dto.marriageStatus : null,
           document: dto.document && dto.document.trim() !== "" ? dto.document : null,
+          avatarUrl: dto.avatarUrl && dto.avatarUrl.trim() !== "" ? dto.avatarUrl : null,
           status: dto.status || "ACTIVE",
           joiningDate: dto.joiningDate ? new Date(dto.joiningDate) : null,
           salary: dto.salary ?? null,
@@ -146,6 +148,7 @@ export async function createEmployee(req: Request, res: Response) {
                 firstName: dto.firstName,
                 lastName: dto.lastName,
                 status: dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+                avatarUrl: dto.avatarUrl && dto.avatarUrl.trim() !== "" ? dto.avatarUrl : null,
               },
             });
 
@@ -211,6 +214,18 @@ export async function updateEmployee(req: Request, res: Response) {
   const { id } = req.params;
   const dto = UpdateEmployeeDto.parse(req.body);
 
+  const existing = await prisma.employee.findUnique({
+    where: { id },
+    select: {
+      departmentId: true,
+      user: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
   const updateData: any = {};
   
   if (dto.firstName !== undefined) updateData.firstName = dto.firstName;
@@ -227,6 +242,7 @@ export async function updateEmployee(req: Request, res: Response) {
   if (dto.educationOther !== undefined) updateData.educationOther = dto.educationOther === "" ? null : dto.educationOther;
   if (dto.marriageStatus !== undefined) updateData.marriageStatus = dto.marriageStatus === "" ? null : dto.marriageStatus;
   if (dto.document !== undefined) updateData.document = dto.document === "" ? null : dto.document;
+  if (dto.avatarUrl !== undefined) updateData.avatarUrl = dto.avatarUrl === "" ? null : dto.avatarUrl;
   if (dto.status !== undefined) updateData.status = dto.status;
   if (dto.joiningDate !== undefined) updateData.joiningDate = dto.joiningDate === "" ? null : (dto.joiningDate ? new Date(dto.joiningDate) : null);
   if (dto.salary !== undefined) updateData.salary = dto.salary ?? null;
@@ -246,18 +262,27 @@ export async function updateEmployee(req: Request, res: Response) {
           firstName: true,
           lastName: true,
           status: true,
+          avatarUrl: true,
         }
       }
     },
   });
 
-  // Sync status with user if employee has linked user and status is being updated
-  if (dto.status !== undefined && emp.user) {
-    const userStatus = dto.status === "ACTIVE" || dto.status === "ON_LEAVE" ? "ACTIVE" : "INACTIVE";
-    await prisma.user.update({
-      where: { id: emp.user.id },
-      data: { status: userStatus },
-    });
+  if (emp.user) {
+    const userProfileUpdates: any = {};
+    if (dto.firstName !== undefined) userProfileUpdates.firstName = dto.firstName;
+    if (dto.lastName !== undefined) userProfileUpdates.lastName = dto.lastName;
+    if (dto.avatarUrl !== undefined) userProfileUpdates.avatarUrl = dto.avatarUrl === "" ? null : dto.avatarUrl;
+    if (dto.status !== undefined) {
+      userProfileUpdates.status = dto.status === "ACTIVE" || dto.status === "ON_LEAVE" ? "ACTIVE" : "INACTIVE";
+    }
+
+    if (Object.keys(userProfileUpdates).length > 0) {
+      await prisma.user.update({
+        where: { id: emp.user.id },
+        data: userProfileUpdates,
+      });
+    }
   }
 
   // Convert Decimal salary to number for JSON serialization
@@ -265,6 +290,45 @@ export async function updateEmployee(req: Request, res: Response) {
     ...emp,
     salary: emp.salary ? Number(emp.salary) : null,
   };
+
+  const departmentChanged = existing?.departmentId !== serialized.departmentId;
+
+  if (departmentChanged) {
+    try {
+      if (emp.user?.id) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EMPLOYEE,
+          type: NotificationType.INFO,
+          title: "Department updated",
+          message: serialized.department
+            ? `You have been assigned to the ${serialized.department.name} department.`
+            : "You are no longer assigned to a department.",
+          resourceType: "EMPLOYEE",
+          resourceId: emp.id,
+          targets: {
+            userIds: [emp.user.id],
+          },
+        });
+      }
+
+      if (serialized.department?.managerId) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.DEPARTMENT,
+          type: NotificationType.INFO,
+          title: "New employee assigned",
+          message: `${serialized.firstName} ${serialized.lastName} has been assigned to your department.`,
+          resourceType: "EMPLOYEE",
+          resourceId: emp.id,
+          targets: {
+            userIds: [serialized.department.managerId],
+            excludeUserIds: emp.user?.id ? [emp.user.id] : undefined,
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send department reassignment notification:", notifyError);
+    }
+  }
 
   res.json(serialized);
 }

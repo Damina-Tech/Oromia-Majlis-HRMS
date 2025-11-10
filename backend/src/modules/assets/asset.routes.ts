@@ -52,18 +52,10 @@ import {
 
 const router = Router();
 
-// Asset CRUD routes
+// Asset CRUD routes - specific routes must come before generic :id route
 router.get("/", listAssets); // GET /api/v1/assets
 router.get("/stats", getAssetStats); // GET /api/v1/assets/stats
 router.get("/history", getAssetHistory); // GET /api/v1/assets/history
-router.get("/:id", getAsset); // GET /api/v1/assets/:id
-router.post("/", createAsset); // POST /api/v1/assets
-router.put("/:id", updateAsset); // PUT /api/v1/assets/:id
-router.delete("/:id", deleteAsset); // DELETE /api/v1/assets/:id
-
-// Asset assignment routes
-router.post("/:id/assign", assignAsset); // POST /api/v1/assets/:id/assign
-router.post("/:id/return", returnAsset); // POST /api/v1/assets/:id/return
 
 // Bulk operations
 router.put("/bulk/update", bulkUpdateAssets); // PUT /api/v1/assets/bulk/update
@@ -105,5 +97,15 @@ router.post("/:id/dispose", createAssetDisposal); // POST /api/v1/assets/:id/dis
 router.get("/depreciation", listAssetDepreciation); // GET /api/v1/assets/depreciation
 router.get("/depreciation/:id", getAssetDepreciation); // GET /api/v1/assets/depreciation/:id
 router.post("/depreciation/run", runDepreciation); // POST /api/v1/assets/depreciation/run
+
+// Asset assignment routes (must come before :id route)
+router.post("/:id/assign", assignAsset); // POST /api/v1/assets/:id/assign
+router.post("/:id/return", returnAsset); // POST /api/v1/assets/:id/return
+
+// Generic asset routes (must come last)
+router.get("/:id", getAsset); // GET /api/v1/assets/:id
+router.post("/", createAsset); // POST /api/v1/assets
+router.put("/:id", updateAsset); // PUT /api/v1/assets/:id
+router.delete("/:id", deleteAsset); // DELETE /api/v1/assets/:id
 
 export default router;

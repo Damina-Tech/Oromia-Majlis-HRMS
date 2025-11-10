@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -12,6 +12,7 @@ import {
   BulkUpdateTasksDto,
 } from "./task.dto.js";
 import { paginate } from "../../utils/pagination.js";
+import { NotificationService } from "../notifications/notification.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +88,7 @@ export async function createTask(req: Request, res: Response) {
                 firstName: true,
                 lastName: true,
                 employeeCode: true,
+                userId: true,
               },
             },
           },
@@ -173,6 +175,7 @@ export async function createTask(req: Request, res: Response) {
                 firstName: true,
                 lastName: true,
                 employeeCode: true,
+                userId: true,
               },
             },
           },
@@ -198,6 +201,58 @@ export async function createTask(req: Request, res: Response) {
         },
       },
     });
+
+    try {
+      const assigneeUserIds = Array.from(
+        new Set(
+          (fullTask?.assignments || [])
+            .map((assignment) => assignment.employee?.userId)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      if (assigneeUserIds.length > 0) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.TASK,
+          type: NotificationType.INFO,
+          title: `Task assigned: ${fullTask.title}`,
+          message: `You have been assigned to "${fullTask.title}".`,
+          resourceType: "TASK",
+          resourceId: fullTask.id,
+          dedupKey: `task-assigned-${fullTask.id}`,
+          targets: {
+            userIds: assigneeUserIds,
+            excludeUserIds: currentUserId ? [currentUserId] : undefined,
+          },
+        });
+      }
+
+      const watcherUserIds = Array.from(
+        new Set(
+          (fullTask?.watchers || [])
+            .map((watcher) => watcher.user?.id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      if (watcherUserIds.length > 0) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.TASK,
+          type: NotificationType.INFO,
+          title: `Task watch: ${fullTask.title}`,
+          message: `You are now watching "${fullTask.title}".`,
+          resourceType: "TASK",
+          resourceId: fullTask.id,
+          dedupKey: `task-watch-${fullTask.id}`,
+          targets: {
+            userIds: watcherUserIds,
+            excludeUserIds: currentUserId ? [currentUserId] : undefined,
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send task notifications:", notifyError);
+    }
 
     res.status(201).json(fullTask);
   } catch (err: any) {
@@ -774,6 +829,7 @@ export async function updateTask(req: Request, res: Response) {
                 firstName: true,
                 lastName: true,
                 employeeCode: true,
+                userId: true,
               },
             },
           },
@@ -910,6 +966,92 @@ export async function updateTask(req: Request, res: Response) {
       },
     });
 
+    try {
+      const statusChanged =
+        data.status && data.status !== existingTask.status
+          ? true
+          : false;
+
+      const assignmentUserIds = Array.from(
+        new Set(
+          (fullTask?.assignments || [])
+            .map((assignment) => assignment.employee?.userId)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      const watcherUserIds = Array.from(
+        new Set(
+          (fullTask?.watchers || [])
+            .map((watcher) => watcher.user?.id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      if (statusChanged && assignmentUserIds.length + watcherUserIds.length > 0) {
+        const recipients = Array.from(
+          new Set([...assignmentUserIds, ...watcherUserIds])
+        );
+
+        await NotificationService.sendNotification({
+          module: NotificationModule.TASK,
+          type:
+            data.status === "DONE"
+              ? NotificationType.SUCCESS
+              : NotificationType.INFO,
+          title: `Task status updated: ${fullTask?.title}`,
+          message: `Status changed to ${data.status}.`,
+          resourceType: "TASK",
+          resourceId: fullTask?.id,
+          dedupKey: `task-status-${fullTask?.id}`,
+          targets: {
+            userIds: recipients,
+            excludeUserIds: currentUserId ? [currentUserId] : undefined,
+          },
+        });
+      }
+
+      if (Array.isArray(data.assigneeIds)) {
+        const previousEmployeeIds = new Set(
+          (existingTask.assignments || []).map((assignment) => assignment.employeeId)
+        );
+        const addedEmployeeIds = data.assigneeIds.filter(
+          (employeeId) => !previousEmployeeIds.has(employeeId)
+        );
+
+        if (addedEmployeeIds.length > 0) {
+          const employees = await prisma.employee.findMany({
+            where: {
+              id: { in: addedEmployeeIds },
+              userId: { not: null },
+            },
+            select: { userId: true },
+          });
+          const userIds = employees
+            .map((emp) => emp.userId)
+            .filter((id): id is string => Boolean(id));
+
+          if (userIds.length > 0) {
+            await NotificationService.sendNotification({
+              module: NotificationModule.TASK,
+              type: NotificationType.INFO,
+              title: `Task assigned: ${fullTask?.title}`,
+              message: `You have been assigned to "${fullTask?.title}".`,
+              resourceType: "TASK",
+              resourceId: fullTask?.id,
+              dedupKey: `task-assigned-${fullTask?.id}`,
+              targets: {
+                userIds,
+                excludeUserIds: currentUserId ? [currentUserId] : undefined,
+              },
+            });
+          }
+        }
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send task update notifications:", notifyError);
+    }
+
     res.json(fullTask);
   } catch (err: any) {
     console.error("Update task error:", err);
@@ -981,6 +1123,31 @@ export async function addComment(req: Request, res: Response) {
         },
       },
     });
+
+    try {
+      const task = await prisma.task.findUnique({
+        where: { id },
+        select: { title: true },
+      });
+
+      if (data.mentions && data.mentions.length > 0) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.TASK,
+          type: NotificationType.INFO,
+          title: `You were mentioned in ${task?.title ?? "a task"}`,
+          message: data.content.slice(0, 160),
+          resourceType: "TASK",
+          resourceId: id,
+          dedupKey: `task-comment-mentions-${id}`,
+          targets: {
+            userIds: data.mentions,
+            excludeUserIds: currentUserId ? [currentUserId] : undefined,
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send task comment notification:", notifyError);
+    }
 
     res.status(201).json(comment);
   } catch (err: any) {

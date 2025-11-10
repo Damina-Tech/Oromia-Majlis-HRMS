@@ -17,6 +17,7 @@ export const CreateEmployeeDto = z.object({
   educationOther: z.string().max(200).optional().or(z.literal("")),
   marriageStatus: z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"]).optional().or(z.literal("")),
   document: z.string().optional().or(z.literal("")),
+  avatarUrl: z.string().min(1).optional().or(z.literal("")),
   status: EmpStatusEnum.default("ACTIVE"),
   joiningDate: z.string().optional().or(z.literal("")), // Date string (YYYY-MM-DD or ISO)
   salary: z.coerce.number().nonnegative().optional(),

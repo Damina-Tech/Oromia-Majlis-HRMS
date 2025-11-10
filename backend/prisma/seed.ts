@@ -27,6 +27,8 @@ async function seedPermissions() {
     { name: "payroll.process", module: "payroll", action: "process", description: "Process payroll" },
     { name: "reports.view", module: "reports", action: "view", description: "View reports" },
     { name: "reports.generate", module: "reports", action: "generate", description: "Generate reports" },
+    { name: "reports.export", module: "reports", action: "export", description: "Export reports" },
+    { name: "reports.manage", module: "reports", action: "manage", description: "Manage reports and templates" },
     { name: "users.read", module: "users", action: "read", description: "View users" },
     { name: "users.write", module: "users", action: "write", description: "Create/Edit users" },
     { name: "users.delete", module: "users", action: "delete", description: "Delete users" },
@@ -51,6 +53,7 @@ async function seedPermissions() {
     { name: "onboarding.view", module: "onboarding", action: "view", description: "View onboarding" },
     { name: "onboarding.manage", module: "onboarding", action: "manage", description: "Manage onboarding" },
     { name: "notifications.view", module: "notifications", action: "view", description: "View notifications" },
+    { name: "notifications.manage", module: "notifications", action: "manage", description: "Manage notification delivery and settings" },
     { name: "organization.view", module: "organization", action: "view", description: "View organization structure" },
     { name: "tasks.view", module: "tasks", action: "view", description: "View tasks" },
     { name: "tasks.create", module: "tasks", action: "create", description: "Create tasks" },
@@ -94,9 +97,9 @@ async function seedPermissions() {
 
   // Assign permissions to other roles
   const rolePermissions = {
-    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay"],
-    MANAGER: ["dashboard.view", "employees.read", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve"],
-    EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
+    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay"],
+    MANAGER: ["dashboard.view", "employees.read", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve"],
+    EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
   };
 
   for (const role of roles) {
@@ -143,6 +146,7 @@ async function main() {
 
   // Seed tasks
   await seedTasks();
+  await seedExpenses();
 
   // Create departments
   const deptNames = ["Mayor Office", "HR", "Finance", "IT", "Infrastructure"];
@@ -1781,6 +1785,145 @@ async function seedTasks() {
   }
 
   console.log(`✅ Created ${createdTasks.length} tasks with assignments, watchers, comments, and time logs`);
+}
+
+async function seedExpenses() {
+  console.log("💰 Seeding expenses...");
+
+  // Get users and employees for expense submission
+  const users = await prisma.user.findMany({
+    include: {
+      employee: true,
+    },
+  });
+
+  const employees = await prisma.employee.findMany();
+  const departments = await prisma.department.findMany();
+  const assets = await prisma.asset.findMany();
+  const vendors = await prisma.assetVendor.findMany();
+
+  if (users.length === 0 || employees.length === 0 || departments.length === 0) {
+    console.log("⚠️  Skipping expense seeding - insufficient data");
+    return;
+  }
+
+  const expenseTypes = ["OPERATIONAL", "TRAVEL", "REIMBURSEMENT", "MAINTENANCE", "RENT", "UTILITIES", "OTHER"];
+  const statuses = ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PAID"];
+  const paymentMethods = ["CASH", "BANK_TRANSFER", "E_BIRR", "TELEBIRR", "OTHER"];
+
+  const createdExpenses = [];
+
+  // Create expenses for different users
+  for (let i = 0; i < 15; i++) {
+    const submitter = employees[Math.floor(Math.random() * Math.min(employees.length, 5))];
+    const department = departments[Math.floor(Math.random() * departments.length)];
+    const expenseType = expenseTypes[Math.floor(Math.random() * expenseTypes.length)];
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    const amount = Math.floor(Math.random() * 50000) + 1000; // 1000 to 51000
+    const incurredDate = new Date();
+    incurredDate.setDate(incurredDate.getDate() - Math.floor(Math.random() * 60)); // Last 60 days
+
+    // Generate reference number
+    const year = new Date().getFullYear();
+    const sequence = (i + 1).toString().padStart(4, "0");
+    const referenceNo = `EXP-${year}-${sequence}`;
+
+    const expenseData: any = {
+      referenceNo,
+      title: `Expense ${i + 1}: ${expenseType.toLowerCase()} expense`,
+      description: `Sample ${expenseType.toLowerCase()} expense for testing purposes`,
+      amount,
+      currency: "ETB",
+      expenseType,
+      status,
+      incurredDate,
+      submittedBy: submitter.id,
+      departmentId: department.id,
+    };
+
+    // Randomly add asset or vendor
+    if (Math.random() > 0.5 && assets.length > 0) {
+      expenseData.assetId = assets[Math.floor(Math.random() * assets.length)].id;
+    }
+    if (Math.random() > 0.5 && vendors.length > 0) {
+      expenseData.vendorId = vendors[Math.floor(Math.random() * vendors.length)].id;
+    }
+    if (Math.random() > 0.7) {
+      expenseData.paymentMethod = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
+    }
+
+    // Add approval data if approved or paid
+    if (status === "APPROVED" || status === "PAID") {
+      const approver = employees.find((e) => e.id !== submitter.id) || employees[0];
+      expenseData.approvedBy = approver.id;
+      expenseData.approvedAt = new Date(incurredDate.getTime() + 24 * 60 * 60 * 1000); // 1 day after submission
+    }
+
+    // Add payment data if paid
+    if (status === "PAID") {
+      const payer = employees.find((e) => e.id !== submitter.id && e.id !== expenseData.approvedBy) || employees[0];
+      expenseData.paidBy = payer.id;
+      expenseData.paidAt = new Date(expenseData.approvedAt.getTime() + 24 * 60 * 60 * 1000); // 1 day after approval
+      expenseData.paymentMethod = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
+    }
+
+    const expense = await prisma.expense.create({
+      data: expenseData,
+    });
+
+    // Create approval history
+    if (status !== "DRAFT") {
+      await prisma.expenseApproval.create({
+        data: {
+          expenseId: expense.id,
+          approverId: submitter.id,
+          action: "SUBMITTED",
+          comment: "Expense submitted for approval",
+        },
+      });
+
+      if (status === "APPROVED" || status === "PAID") {
+        const approver = employees.find((e) => e.id === expense.approvedBy) || employees[0];
+        await prisma.expenseApproval.create({
+          data: {
+            expenseId: expense.id,
+            approverId: approver.id,
+            action: "APPROVED",
+            comment: "Expense approved for payment",
+          },
+        });
+      } else if (status === "REJECTED") {
+        const approver = employees.find((e) => e.id !== submitter.id) || employees[0];
+        await prisma.expenseApproval.create({
+          data: {
+            expenseId: expense.id,
+            approverId: approver.id,
+            action: "REJECTED",
+            comment: "Expense rejected - insufficient documentation",
+          },
+        });
+      }
+    }
+
+    // Create payment record if paid
+    if (status === "PAID") {
+      const payer = employees.find((e) => e.id === expense.paidBy) || employees[0];
+      await prisma.expensePayment.create({
+        data: {
+          expenseId: expense.id,
+          paidAmount: expense.amount,
+          paymentMethod: expense.paymentMethod || "CASH",
+          paymentReference: `REF-${Date.now()}-${i}`,
+          paidBy: payer.id,
+          notes: `Payment processed for ${expense.title}`,
+        },
+      });
+    }
+
+    createdExpenses.push(expense);
+  }
+
+  console.log(`✅ Created ${createdExpenses.length} expenses with various statuses`);
 }
 
 main()

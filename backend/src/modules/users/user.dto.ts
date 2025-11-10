@@ -18,6 +18,14 @@ export const UpdateUserDto = z.object({
   roleIds: z.array(z.string()).min(1, "At least one role is required").optional(),
   employeeId: z.string().nullable().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  avatarUrl: z.string().min(1).optional(),
+});
+
+export const UpdateSelfDto = z.object({
+  firstName: z.string().min(1, "First name is required").optional(),
+  lastName: z.string().min(1, "Last name is required").optional(),
+  password: z.string().min(6, "Password must be at least 6 characters").optional(),
+  avatarUrl: z.string().min(1).optional(),
 });
 
 export const ListUsersQuery = z.object({
@@ -31,4 +39,5 @@ export const ListUsersQuery = z.object({
 export type CreateUserDto = z.infer<typeof CreateUserDto>;
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 export type ListUsersQuery = z.infer<typeof ListUsersQuery>;
+export type UpdateSelfDto = z.infer<typeof UpdateSelfDto>;
 

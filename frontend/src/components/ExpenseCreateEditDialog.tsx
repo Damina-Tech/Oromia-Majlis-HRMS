@@ -93,8 +93,7 @@ export default function ExpenseCreateEditDialog({
         });
         setReceiptFile(null);
       } else {
-        // Set default department from user's employee record if available
-        const defaultDept = user?.employee?.departmentId;
+        // Reset form for new expense
         setFormData({
           title: "",
           description: "",
@@ -102,7 +101,7 @@ export default function ExpenseCreateEditDialog({
           currency: "ETB",
           expenseType: "OPERATIONAL",
           incurredDate: new Date().toISOString().split("T")[0],
-          departmentId: defaultDept || "",
+          departmentId: "",
           assetId: undefined,
           vendorId: undefined,
           paymentMethod: undefined,
@@ -145,9 +144,9 @@ export default function ExpenseCreateEditDialog({
           expenseType: formData.expenseType,
           incurredDate: formData.incurredDate,
           departmentId: formData.departmentId,
-          assetId: formData.assetId || null,
-          vendorId: formData.vendorId || null,
-          paymentMethod: formData.paymentMethod || null,
+          assetId: (formData.assetId === "none" || !formData.assetId) ? null : formData.assetId,
+          vendorId: (formData.vendorId === "none" || !formData.vendorId) ? null : formData.vendorId,
+          paymentMethod: (formData.paymentMethod === "none" || !formData.paymentMethod) ? null : formData.paymentMethod,
         };
         await updateExpense(expense!.id, updateData);
 
@@ -168,6 +167,9 @@ export default function ExpenseCreateEditDialog({
       } else {
         const createData: CreateExpenseData = {
           ...formData,
+          assetId: (formData.assetId === "none" || !formData.assetId) ? undefined : formData.assetId,
+          vendorId: (formData.vendorId === "none" || !formData.vendorId) ? undefined : formData.vendorId,
+          paymentMethod: (formData.paymentMethod === "none" || !formData.paymentMethod) ? undefined : formData.paymentMethod,
           submit,
         };
         const newExpense = await createExpense(createData);
@@ -325,14 +327,14 @@ export default function ExpenseCreateEditDialog({
               <div>
                 <Label htmlFor="paymentMethod">Payment Method</Label>
                 <Select
-                  value={formData.paymentMethod || ""}
-                  onValueChange={(value: any) => setFormData({ ...formData, paymentMethod: value || undefined })}
+                  value={formData.paymentMethod || undefined}
+                  onValueChange={(value: any) => setFormData({ ...formData, paymentMethod: value === "none" ? undefined : value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select payment method" />
+                    <SelectValue placeholder="Select payment method (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     <SelectItem value="CASH">Cash</SelectItem>
                     <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                     <SelectItem value="E_BIRR">e-Birr</SelectItem>
@@ -347,14 +349,14 @@ export default function ExpenseCreateEditDialog({
               <div>
                 <Label htmlFor="assetId">Asset (Optional)</Label>
                 <Select
-                  value={formData.assetId || ""}
-                  onValueChange={(value) => setFormData({ ...formData, assetId: value || undefined })}
+                  value={formData.assetId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, assetId: value === "none" ? undefined : value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select asset" />
+                    <SelectValue placeholder="Select asset (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {assets.map((asset) => (
                       <SelectItem key={asset.id} value={asset.id}>
                         {asset.assetCode} - {asset.name}
@@ -366,14 +368,14 @@ export default function ExpenseCreateEditDialog({
               <div>
                 <Label htmlFor="vendorId">Vendor (Optional)</Label>
                 <Select
-                  value={formData.vendorId || ""}
-                  onValueChange={(value) => setFormData({ ...formData, vendorId: value || undefined })}
+                  value={formData.vendorId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, vendorId: value === "none" ? undefined : value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select vendor" />
+                    <SelectValue placeholder="Select vendor (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {vendors.map((vendor) => (
                       <SelectItem key={vendor.id} value={vendor.id}>
                         {vendor.name}

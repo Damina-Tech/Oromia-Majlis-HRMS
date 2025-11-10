@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/index.js";
 import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/announcements/scheduler.js";
+import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,6 +104,19 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API base URL: http://localhost:${PORT}/api/v1`);
+  
+  // Start notification worker
+  startNotificationWorker()
+    .then((worker) => {
+      if (worker) {
+        console.log("✅ Notification delivery worker started");
+      } else {
+        console.log("⚠️ Notification delivery worker not started (Redis unavailable).");
+      }
+    })
+    .catch((err) => {
+      console.error("❌ Failed to start notification delivery worker:", err);
+    });
   
   // Start announcement scheduler
   // Process scheduled announcements every minute

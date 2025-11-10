@@ -9,6 +9,7 @@ export interface User {
   roles: string[];
   permissions: string[];
   employeeId?: string;
+  avatarUrl?: string | null;
 }
 
 interface AuthContextType {
@@ -44,7 +45,8 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
         lastName: userData.lastName || '',
         roles: userData.roles || [],
         permissions: userData.permissions || [],
-        employeeId: userData.employeeId
+        employeeId: userData.employeeId,
+        avatarUrl: userData.avatarUrl ?? null,
       };
       
       localStorage.setItem('accessToken', accessToken);
@@ -115,7 +117,8 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
         lastName: userData.lastName || '',
         roles: userData.roles || [],
         permissions: userData.permissions || [], // Permissions from backend
-        employeeId: userData.employeeId
+        employeeId: userData.employeeId,
+        avatarUrl: userData.avatarUrl ?? null,
       };
       
       // Store token and complete user data (with permissions from backend)

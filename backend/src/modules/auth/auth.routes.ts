@@ -63,6 +63,8 @@ router.post("/login", async (req, res) => {
   const accessToken = signAccess(user.id, roles, permissions, employeeId);
   const refreshToken = signRefresh(user.id, roles, permissions, employeeId);
   res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
+  const avatarUrl = user.avatarUrl ?? user.employee?.avatarUrl ?? null;
+
   res.json({ 
     accessToken, 
     user: { 
@@ -72,7 +74,8 @@ router.post("/login", async (req, res) => {
       lastName: user.lastName,
       roles,
       permissions,
-      employeeId 
+      employeeId,
+      avatarUrl
     } 
   });
 });
@@ -117,6 +120,8 @@ router.post("/refresh", async (req, res) => {
     const permissions = Array.from(permissionsSet);
     
     const accessToken = signAccess(user.id, roles, permissions, employeeId);
+    const avatarUrl = user.avatarUrl ?? user.employee?.avatarUrl ?? null;
+
     res.json({ 
       accessToken,
       user: {
@@ -126,7 +131,8 @@ router.post("/refresh", async (req, res) => {
         lastName: user.lastName,
         roles,
         permissions,
-        employeeId
+        employeeId,
+        avatarUrl
       }
     });
   } catch {

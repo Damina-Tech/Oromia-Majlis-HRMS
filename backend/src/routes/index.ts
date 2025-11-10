@@ -14,6 +14,9 @@ import documentRoutes from "../modules/documents/document.routes.js";
 import announcementRoutes from "../modules/announcements/announcement.routes.js";
 import taskRoutes from "../modules/tasks/task.routes.js";
 import expenseRoutes from "../modules/expenses/expense.routes.js";
+import reportRoutes from "../modules/reports/report.routes.js";
+import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
+import notificationRoutes from "../modules/notifications/notification.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -60,5 +63,12 @@ router.use("/v1/documents", requireAuth, hasAnyPermission("documents.view", "doc
 router.use("/v1/announcements", requireAuth, announcementRoutes);
 router.use("/v1/tasks", requireAuth, hasAnyPermission("tasks.view", "tasks.create", "tasks.edit"), taskRoutes);
 router.use("/v1/expenses", expenseRoutes);
+router.use("/v1/reports", reportRoutes);
+router.use("/v1/dashboard", dashboardRoutes);
+router.use(
+  "/v1/notifications",
+  requireAuth,
+  notificationRoutes
+);
 
 export default router;

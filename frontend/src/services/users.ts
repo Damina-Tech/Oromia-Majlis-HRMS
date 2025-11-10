@@ -17,25 +17,37 @@ export interface Permission {
   action: string;
 }
 
+export interface EmployeeSummary {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  designation?: string;
+  department?: {
+    id: string;
+    name: string;
+  } | null;
+  status?: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
+  employmentType?: string | null;
+  joiningDate?: string | null;
+  avatarUrl?: string | null;
+  manager?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+}
+
 export interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   status: 'ACTIVE' | 'INACTIVE';
+  avatarUrl?: string | null;
   roles: Role[];
   permissions?: Permission[];
-  employee?: {
-    id: string;
-    employeeCode: string;
-    firstName: string;
-    lastName: string;
-    designation?: string;
-    department?: {
-      id: string;
-      name: string;
-    };
-  } | null;
+  employee?: EmployeeSummary | null;
   createdAt?: string;
   updatedAt?: string;
   _isUserAccount?: boolean; // Flag to indicate if this is a real user account or just an employee
@@ -59,6 +71,7 @@ export interface UpdateUserPayload {
   roleIds?: string[];
   employeeId?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
+  avatarUrl?: string;
 }
 
 export interface ListUsersResponse {
@@ -86,6 +99,11 @@ export async function getUser(id: string): Promise<User> {
   return data;
 }
 
+export async function getCurrentUser(): Promise<User> {
+  const { data } = await api.get('/users/me');
+  return data;
+}
+
 export async function createUser(payload: CreateUserPayload): Promise<User> {
   const { data } = await api.post('/users', payload);
   return data;
@@ -93,6 +111,29 @@ export async function createUser(payload: CreateUserPayload): Promise<User> {
 
 export async function updateUser(id: string, payload: UpdateUserPayload): Promise<User> {
   const { data } = await api.put(`/users/${id}`, payload);
+  return data;
+}
+
+export interface UpdateSelfPayload {
+  firstName?: string;
+  lastName?: string;
+  password?: string;
+  avatarUrl?: string;
+}
+
+export async function updateCurrentUser(payload: UpdateSelfPayload): Promise<User> {
+  const { data } = await api.put('/users/me', payload);
+  return data;
+}
+
+export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
+  const formData = new FormData();
+  formData.append('avatar', file);
+  const { data } = await api.post('/users/me/avatar', formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
   return data;
 }
 

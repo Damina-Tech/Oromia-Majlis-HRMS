@@ -11,13 +11,21 @@ import {
   createRole,
   updateRole,
   deleteRole,
+  getCurrentUser,
+  updateCurrentUser,
+  uploadUserAvatar,
 } from "./user.controller.js";
 import { requireAuth, hasAnyPermission, hasPermission } from "../../middleware/auth.js";
+import { uploadAvatar } from "../../lib/upload.js";
 
 const router = Router();
 
 // All routes require authentication
 router.use(requireAuth);
+
+router.get("/me", getCurrentUser);
+router.put("/me", updateCurrentUser);
+router.post("/me/avatar", uploadAvatar.single("avatar"), uploadUserAvatar);
 
 // Get permissions (for dropdowns)
 router.get("/permissions", getPermissions);

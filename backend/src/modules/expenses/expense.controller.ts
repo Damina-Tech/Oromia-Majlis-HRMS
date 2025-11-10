@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import {
   CreateExpenseDto,
   UpdateExpenseDto,
@@ -10,6 +10,7 @@ import {
   PayExpenseDto,
 } from "./expense.dto.js";
 import { paginate } from "../../utils/pagination.js";
+import { NotificationService } from "../notifications/notification.service.js";
 
 const prisma = new PrismaClient();
 
@@ -89,6 +90,7 @@ export async function createExpense(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             employeeCode: true,
+            userId: true,
           },
         },
         department: {
@@ -123,6 +125,41 @@ export async function createExpense(req: Request, res: Response) {
           comment: "Expense submitted for approval",
         },
       });
+    }
+
+    try {
+      if (data.submit) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EXPENSE,
+          type: NotificationType.INFO,
+          title: `Expense submitted: ${expense.title}`,
+          message: `${expense.submittedByEmployee.firstName} ${expense.submittedByEmployee.lastName} submitted an expense for ${Number(
+            expense.amount
+          ).toLocaleString()} ${expense.currency}.`,
+          resourceType: "EXPENSE",
+          resourceId: expense.id,
+          dedupKey: `expense-submitted-${expense.id}`,
+          targets: {
+            roleNames: ["FINANCE", "HR", "MANAGER"],
+            departmentIds: expense.departmentId ? [expense.departmentId] : undefined,
+            excludeUserIds: [currentUserId],
+          },
+        });
+      } else if (expense.submittedByEmployee.userId) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EXPENSE,
+          type: NotificationType.INFO,
+          title: `Expense saved as draft`,
+          message: `${expense.title} has been saved as draft.`,
+          resourceType: "EXPENSE",
+          resourceId: expense.id,
+          targets: {
+            userIds: [expense.submittedByEmployee.userId],
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send expense notification:", notifyError);
     }
 
     return res.status(201).json(expense);
@@ -182,12 +219,23 @@ export async function listExpenses(req: Request, res: Response) {
     }
 
     // Access control: Non-admin users only see their own expenses unless they have view_all permission
-    if (!isAdmin && !isHR && !isFinance && !hasViewAll) {
-      if (currentUserEmployeeId) {
-        where.submittedBy = currentUserEmployeeId;
-      } else {
-        // User without employeeId can't see any expenses
-        where.id = "impossible-id";
+    // But if submittedBy is explicitly provided in query, respect it (for "My Expenses" page)
+    if (!query.submittedBy) {
+      if (!isAdmin && !isHR && !isFinance && !hasViewAll) {
+        if (currentUserEmployeeId) {
+          where.submittedBy = currentUserEmployeeId;
+        } else {
+          // User without employeeId can't see any expenses
+          where.id = "impossible-id";
+        }
+      }
+    } else {
+      // If submittedBy is provided, ensure user can only see their own expenses unless they have view_all
+      if (!isAdmin && !isHR && !isFinance && !hasViewAll) {
+        if (query.submittedBy !== currentUserEmployeeId) {
+          // User trying to view other user's expenses without permission
+          where.id = "impossible-id";
+        }
       }
     }
 
@@ -475,6 +523,7 @@ export async function submitExpense(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
+    const currentUserId = getCurrentUserId(req);
     const data = SubmitExpenseDto.parse(req.body);
 
     if (!currentUserEmployeeId) {
@@ -508,6 +557,7 @@ export async function submitExpense(req: Request, res: Response) {
             id: true,
             firstName: true,
             lastName: true,
+            userId: true,
           },
         },
         department: {
@@ -529,6 +579,24 @@ export async function submitExpense(req: Request, res: Response) {
       },
     });
 
+    try {
+      await NotificationService.sendNotification({
+        module: NotificationModule.EXPENSE,
+        type: NotificationType.INFO,
+        title: `Expense submitted: ${updated.title}`,
+        message: `Expense ${updated.referenceNo} submitted for approval.`,
+        resourceType: "EXPENSE",
+        resourceId: updated.id,
+        targets: {
+          roleNames: ["FINANCE", "HR", "MANAGER"],
+          departmentIds: updated.departmentId ? [updated.departmentId] : undefined,
+          excludeUserIds: currentUserId ? [currentUserId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send expense submit notification:", notifyError);
+    }
+
     return res.json(updated);
   } catch (error: any) {
     console.error("Submit expense error:", error);
@@ -546,6 +614,7 @@ export async function approveExpense(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
+    const currentUserId = getCurrentUserId(req);
     const currentUserRoles = getCurrentUserRoles(req);
     const isAdmin = currentUserRoles.some((r) => r.toUpperCase() === "ADMIN");
     const isHR = currentUserRoles.some((r) => r.toUpperCase() === "HR");
@@ -604,6 +673,7 @@ export async function approveExpense(req: Request, res: Response) {
             id: true,
             firstName: true,
             lastName: true,
+            userId: true,
           },
         },
         approvedByEmployee: {
@@ -626,6 +696,37 @@ export async function approveExpense(req: Request, res: Response) {
       },
     });
 
+    try {
+      if (updated.submittedByEmployee?.userId) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EXPENSE,
+          type: NotificationType.SUCCESS,
+          title: `Expense approved: ${updated.title}`,
+          message: `Expense ${updated.referenceNo} was approved.`,
+          resourceType: "EXPENSE",
+          resourceId: updated.id,
+          targets: {
+            userIds: [updated.submittedByEmployee.userId],
+          },
+        });
+      }
+
+      await NotificationService.sendNotification({
+        module: NotificationModule.EXPENSE,
+        type: NotificationType.INFO,
+        title: `Expense ${updated.referenceNo} approved`,
+        message: `${updated.title} approved by ${updated.approvedByEmployee?.firstName ?? "Finance"}.`,
+        resourceType: "EXPENSE",
+        resourceId: updated.id,
+        targets: {
+          roleNames: ["FINANCE"],
+          excludeUserIds: currentUserId ? [currentUserId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send expense approval notification:", notifyError);
+    }
+
     return res.json(updated);
   } catch (error: any) {
     console.error("Approve expense error:", error);
@@ -643,6 +744,7 @@ export async function rejectExpense(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
+    const currentUserId = getCurrentUserId(req);
     const currentUserRoles = getCurrentUserRoles(req);
     const isAdmin = currentUserRoles.some((r) => r.toUpperCase() === "ADMIN");
     const isHR = currentUserRoles.some((r) => r.toUpperCase() === "HR");
@@ -698,6 +800,7 @@ export async function rejectExpense(req: Request, res: Response) {
             id: true,
             firstName: true,
             lastName: true,
+            userId: true,
           },
         },
       },
@@ -712,6 +815,39 @@ export async function rejectExpense(req: Request, res: Response) {
         comment: data.comment,
       },
     });
+
+    try {
+      if (updated.submittedByEmployee?.userId) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EXPENSE,
+          type: NotificationType.WARNING,
+          title: `Expense rejected: ${updated.title}`,
+          message: data.comment
+            ? `Expense ${updated.referenceNo} was rejected: ${data.comment}`
+            : `Expense ${updated.referenceNo} was rejected.`,
+          resourceType: "EXPENSE",
+          resourceId: updated.id,
+          targets: {
+            userIds: [updated.submittedByEmployee.userId],
+          },
+        });
+      }
+
+      await NotificationService.sendNotification({
+        module: NotificationModule.EXPENSE,
+        type: NotificationType.INFO,
+        title: `Expense ${updated.referenceNo} rejected`,
+        message: `${updated.title} rejected by finance.`,
+        resourceType: "EXPENSE",
+        resourceId: updated.id,
+        targets: {
+          roleNames: ["FINANCE"],
+          excludeUserIds: currentUserId ? [currentUserId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send expense rejection notification:", notifyError);
+    }
 
     return res.json(updated);
   } catch (error: any) {
@@ -730,6 +866,7 @@ export async function payExpense(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
+    const currentUserId = getCurrentUserId(req);
     const currentUserRoles = getCurrentUserRoles(req);
     const isAdmin = currentUserRoles.some((r) => r.toUpperCase() === "ADMIN");
     const isHR = currentUserRoles.some((r) => r.toUpperCase() === "HR");
@@ -784,6 +921,7 @@ export async function payExpense(req: Request, res: Response) {
             id: true,
             firstName: true,
             lastName: true,
+            userId: true,
           },
         },
         paidByEmployee: {
@@ -809,6 +947,37 @@ export async function payExpense(req: Request, res: Response) {
         },
       },
     });
+
+    try {
+      if (updated.submittedByEmployee?.userId) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.EXPENSE,
+          type: NotificationType.SUCCESS,
+          title: `Expense paid: ${updated.title}`,
+          message: `Expense ${updated.referenceNo} has been marked as paid.`,
+          resourceType: "EXPENSE",
+          resourceId: updated.id,
+          targets: {
+            userIds: [updated.submittedByEmployee.userId],
+          },
+        });
+      }
+
+      await NotificationService.sendNotification({
+        module: NotificationModule.EXPENSE,
+        type: NotificationType.INFO,
+        title: `Expense ${updated.referenceNo} paid`,
+        message: `${updated.title} recorded as paid by ${updated.paidByEmployee?.firstName ?? "Finance"}.`,
+        resourceType: "EXPENSE",
+        resourceId: updated.id,
+        targets: {
+          roleNames: ["FINANCE"],
+          excludeUserIds: currentUserId ? [currentUserId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send expense payment notification:", notifyError);
+    }
 
     return res.json(updated);
   } catch (error: any) {

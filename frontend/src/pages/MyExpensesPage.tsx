@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function MyExpensesPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const navigate = useNavigate();
   const canCreate = hasPermission("expense.create");
   const canSubmit = hasPermission("expense.submit");
@@ -72,10 +72,17 @@ export default function MyExpensesPage() {
   const [expenseToSubmit, setExpenseToSubmit] = useState<Expense | null>(null);
 
   useEffect(() => {
-    loadExpenses();
-  }, [page, searchTerm, statusFilter]);
+    if (user?.employeeId) {
+      loadExpenses();
+    }
+  }, [page, searchTerm, statusFilter, user?.employeeId]);
 
   const loadExpenses = async () => {
+    if (!user?.employeeId) {
+      console.warn("No employee ID found for current user");
+      return;
+    }
+    
     try {
       setLoading(true);
       const response = await listExpenses({
@@ -83,6 +90,7 @@ export default function MyExpensesPage() {
         pageSize,
         search: searchTerm || undefined,
         status: statusFilter !== "all" ? (statusFilter as any) : undefined,
+        submittedBy: user.employeeId, // Only show expenses created by the logged-in user
       });
       setExpenses(response.items || []);
       setTotal(response.total || 0);
@@ -112,7 +120,7 @@ export default function MyExpensesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">My Expenses</h1>
-          <p className="text-gray-600 mt-1">Manage and track your expense submissions</p>
+          <p className="text-gray-600 mt-1">Manage and track your expenses</p>
         </div>
         {canCreate && (
           <Button onClick={() => setCreateDialogOpen(true)}>

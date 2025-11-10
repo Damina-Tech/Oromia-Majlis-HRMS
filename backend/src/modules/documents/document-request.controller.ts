@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import {
+  PrismaClient,
+  Prisma,
+  NotificationModule,
+  NotificationType,
+} from "@prisma/client";
 import {
   CreateDocumentRequestDto,
   UpdateDocumentRequestDto,
@@ -11,6 +16,7 @@ import { paginate } from "../../utils/pagination.js";
 import { processTemplate } from "./template-engine.js";
 import { generatePDFFromHTML, generateDocumentFileName } from "./pdf-generator.js";
 import { sendGeneratedDocument } from "./email-service.js";
+import { NotificationService } from "../notifications/notification.service.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -71,6 +77,11 @@ export async function createDocumentRequest(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             employeeCode: true,
+            user: {
+              select: {
+                id: true,
+              },
+            },
           },
         },
         template: {
@@ -89,6 +100,23 @@ export async function createDocumentRequest(req: Request, res: Response) {
         },
       },
     });
+
+    try {
+      await NotificationService.sendNotification({
+        module: NotificationModule.DOCUMENT,
+        type: NotificationType.INFO,
+        title: `Document request submitted`,
+        message: `${currentUser.employee.firstName} ${currentUser.employee.lastName} requested ${documentRequest.template.name}.`,
+        resourceType: "DOCUMENT_REQUEST",
+        resourceId: documentRequest.id,
+        targets: {
+          roleNames: ["HR", "MANAGER"],
+          excludeUserIds: [currentUserId],
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send document request notification:", notifyError);
+    }
 
     return res.status(201).json(documentRequest);
   } catch (error: any) {
@@ -358,13 +386,19 @@ export async function updateDocumentRequest(req: Request, res: Response) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const existingRequest = await prisma.documentRequest.findUnique({
-      where: { id },
-      include: {
-        employee: true,
-        template: true,
+  const existingRequest = await prisma.documentRequest.findUnique({
+    where: { id },
+    include: {
+      employee: {
+        include: {
+          user: {
+            select: { id: true },
+          },
+        },
       },
-    });
+      template: true,
+    },
+  });
 
     if (!existingRequest) {
       return res.status(404).json({ message: "Document request not found" });
@@ -471,15 +505,13 @@ export async function updateDocumentRequest(req: Request, res: Response) {
       where: { id },
       data: updateData,
       include: {
-        employee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            employeeCode: true,
-            email: true,
+      employee: {
+        include: {
+          user: {
+            select: { id: true },
           },
         },
+      },
         template: {
           select: {
             id: true,
@@ -496,6 +528,53 @@ export async function updateDocumentRequest(req: Request, res: Response) {
         },
       },
     });
+
+  try {
+    const recipientUserId =
+      existingRequest.employee?.user?.id ?? updatedRequest.employee?.user?.id;
+
+    if (updatedRequest.status === "APPROVED" && recipientUserId) {
+      await NotificationService.sendNotification({
+        module: NotificationModule.DOCUMENT,
+        type: NotificationType.SUCCESS,
+        title: "Document request approved",
+        message: `${updatedRequest.template.name} request approved.`,
+        resourceType: "DOCUMENT_REQUEST",
+        resourceId: updatedRequest.id,
+        targets: {
+          userIds: [recipientUserId],
+        },
+      });
+    } else if (updatedRequest.status === "REJECTED" && recipientUserId) {
+      await NotificationService.sendNotification({
+        module: NotificationModule.DOCUMENT,
+        type: NotificationType.WARNING,
+        title: "Document request rejected",
+        message: updatedRequest.rejectionReason
+          ? `Request rejected: ${updatedRequest.rejectionReason}`
+          : "Your document request was rejected.",
+        resourceType: "DOCUMENT_REQUEST",
+        resourceId: updatedRequest.id,
+        targets: {
+          userIds: [recipientUserId],
+        },
+      });
+    } else if (updatedRequest.status === "GENERATED" && recipientUserId) {
+      await NotificationService.sendNotification({
+        module: NotificationModule.DOCUMENT,
+        type: NotificationType.SUCCESS,
+        title: "Document ready",
+        message: `${updatedRequest.template.name} has been generated.`,
+        resourceType: "DOCUMENT_REQUEST",
+        resourceId: updatedRequest.id,
+        targets: {
+          userIds: [recipientUserId],
+        },
+      });
+    }
+  } catch (notifyError) {
+    console.warn("Failed to send document request notification:", notifyError);
+  }
 
     return res.status(200).json(updatedRequest);
   } catch (error: any) {

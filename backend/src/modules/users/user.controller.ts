@@ -1,11 +1,16 @@
 import { Request, Response } from "express";
+import type { Express } from "express";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
-import { CreateUserDto, UpdateUserDto, ListUsersQuery } from "./user.dto.js";
+import { CreateUserDto, UpdateUserDto, ListUsersQuery, UpdateSelfDto } from "./user.dto.js";
 import { CreateRoleDto, UpdateRoleDto } from "./role.dto.js";
 import { paginate } from "../../lib/paginate.js";
 
 const prisma = new PrismaClient();
+
+type MulterRequest = Request & {
+  file?: Express.Multer.File;
+};
 
 export async function listUsers(req: Request, res: Response) {
   try {
@@ -39,6 +44,7 @@ export async function listUsers(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             designation: true,
+            avatarUrl: true,
           },
         },
       },
@@ -50,6 +56,7 @@ export async function listUsers(req: Request, res: Response) {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
       status: user.status,
       roles: user.userRoles.map((ur) => ({
         id: ur.role.id,
@@ -81,6 +88,7 @@ export async function listUsers(req: Request, res: Response) {
         email: true,
         designation: true,
         status: true,
+        avatarUrl: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -93,6 +101,7 @@ export async function listUsers(req: Request, res: Response) {
       firstName: emp.firstName,
       lastName: emp.lastName,
       status: emp.status === "ACTIVE" ? "ACTIVE" : "INACTIVE" as "ACTIVE" | "INACTIVE",
+      avatarUrl: emp.avatarUrl ?? null,
       roles: [], // No roles since no user account
       employee: {
         id: emp.id,
@@ -179,10 +188,21 @@ export async function getUser(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             designation: true,
+            status: true,
+            employmentType: true,
+            joiningDate: true,
+            avatarUrl: true,
             department: {
               select: {
                 id: true,
                 name: true,
+              },
+            },
+            manager: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
               },
             },
           },
@@ -222,6 +242,7 @@ export async function getUser(req: Request, res: Response) {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
       status: user.status,
       roles: user.userRoles.map((ur) => ({
         id: ur.role.id,
@@ -315,6 +336,7 @@ export async function createUser(req: Request, res: Response) {
               firstName: true,
               lastName: true,
               designation: true,
+              avatarUrl: true,
             },
           },
         },
@@ -337,6 +359,7 @@ export async function createUser(req: Request, res: Response) {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
       status: user.status,
       roles: user.userRoles.map((ur) => ({
         id: ur.role.id,
@@ -369,6 +392,13 @@ export async function updateUser(req: Request, res: Response) {
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { id },
+      include: {
+        employee: {
+          select: {
+            id: true,
+          },
+        },
+      },
     });
     if (!existingUser) {
       return res.status(404).json({ message: "User not found" });
@@ -445,6 +475,10 @@ export async function updateUser(req: Request, res: Response) {
         status: dto.status ?? existingUser.status,
       };
 
+      if (dto.avatarUrl !== undefined) {
+        updateData.avatarUrl = dto.avatarUrl;
+      }
+
       const updatedUser = await tx.user.update({
         where: { id },
         data: updateData,
@@ -466,13 +500,21 @@ export async function updateUser(req: Request, res: Response) {
         },
       });
 
-      // Sync status with employee if user has linked employee
-      if (dto.status !== undefined && updatedUser.employee) {
-        const employeeStatus = dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE";
-        await tx.employee.update({
-          where: { id: updatedUser.employee.id },
-          data: { status: employeeStatus },
-        });
+      if (updatedUser.employee) {
+        const employeeProfileUpdates: any = {};
+        if (dto.firstName !== undefined) employeeProfileUpdates.firstName = dto.firstName;
+        if (dto.lastName !== undefined) employeeProfileUpdates.lastName = dto.lastName;
+        if (dto.avatarUrl !== undefined) employeeProfileUpdates.avatarUrl = dto.avatarUrl;
+        if (dto.status !== undefined) {
+          employeeProfileUpdates.status = dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE";
+        }
+
+        if (Object.keys(employeeProfileUpdates).length > 0) {
+          await tx.employee.update({
+            where: { id: updatedUser.employee.id },
+            data: employeeProfileUpdates,
+          });
+        }
       }
 
       // Update roles if provided
@@ -535,24 +577,73 @@ export async function updateUser(req: Request, res: Response) {
       return updatedUser;
     });
 
-    // Format response - don't include passwordHash
-    const formatted = {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      status: user.status,
-      roles: user.userRoles.map((ur) => ({
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            status: true,
+            employmentType: true,
+            joiningDate: true,
+            avatarUrl: true,
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            manager: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!refreshedUser) {
+      return res.status(404).json({ message: "User not found after update" });
+    }
+
+    const updatedFormatted = {
+      id: refreshedUser.id,
+      email: refreshedUser.email,
+      firstName: refreshedUser.firstName,
+      lastName: refreshedUser.lastName,
+      avatarUrl: refreshedUser.avatarUrl,
+      status: refreshedUser.status,
+      roles: refreshedUser.userRoles.map((ur) => ({
         id: ur.role.id,
         name: ur.role.name,
         description: ur.role.description,
       })),
-      employee: user.employee,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      employee: refreshedUser.employee,
+      createdAt: refreshedUser.createdAt,
+      updatedAt: refreshedUser.updatedAt,
     };
 
-    res.json(formatted);
+    res.json(updatedFormatted);
   } catch (error: any) {
     if (error.name === "ZodError") {
       return res.status(400).json({ message: "Invalid request data", errors: error.errors });
@@ -599,6 +690,267 @@ export async function deleteUser(req: Request, res: Response) {
   } catch (error) {
     console.error("Failed to delete user:", error);
     res.status(500).json({ message: "Failed to delete user" });
+  }
+}
+
+export async function getCurrentUser(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const permissionsMap = new Map<string, {
+      id: string;
+      name: string;
+      description?: string;
+      module: string;
+      action: string;
+    }>();
+
+    user.userRoles.forEach((ur) => {
+      ur.role.permissions.forEach((rp) => {
+        const perm = rp.permission;
+        if (!permissionsMap.has(perm.id)) {
+          permissionsMap.set(perm.id, {
+            id: perm.id,
+            name: perm.name,
+            description: perm.description ?? undefined,
+            module: perm.module,
+            action: perm.action,
+          });
+        }
+      });
+    });
+
+    const formatted = {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      status: user.status,
+      roles: user.userRoles.map((ur) => ({
+        id: ur.role.id,
+        name: ur.role.name,
+        description: ur.role.description,
+      })),
+      permissions: Array.from(permissionsMap.values()),
+      employee: user.employee,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    res.json(formatted);
+  } catch (error) {
+    console.error("Failed to get current user:", error);
+    res.status(500).json({ message: "Failed to fetch profile" });
+  }
+}
+
+export async function updateCurrentUser(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const dto = UpdateSelfDto.parse(req.body);
+
+    if (!dto.firstName && !dto.lastName && !dto.password && !dto.avatarUrl) {
+      return res.status(400).json({ message: "No updates provided" });
+    }
+
+    const data: any = {};
+    if (dto.firstName) data.firstName = dto.firstName;
+    if (dto.lastName) data.lastName = dto.lastName;
+    if (dto.avatarUrl) data.avatarUrl = dto.avatarUrl;
+    if (dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            status: true,
+            employmentType: true,
+            joiningDate: true,
+            avatarUrl: true,
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            manager: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (dto.firstName || dto.lastName || dto.avatarUrl) {
+      const employeeUpdate: any = {};
+      if (dto.firstName) employeeUpdate.firstName = dto.firstName;
+      if (dto.lastName) employeeUpdate.lastName = dto.lastName;
+      if (dto.avatarUrl) employeeUpdate.avatarUrl = dto.avatarUrl;
+
+      if (Object.keys(employeeUpdate).length > 0) {
+        await prisma.employee.updateMany({
+          where: { userId },
+          data: employeeUpdate,
+        });
+      }
+    }
+
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            status: true,
+            employmentType: true,
+            joiningDate: true,
+            avatarUrl: true,
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            manager: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!refreshedUser) {
+      return res.status(404).json({ message: "User not found after update" });
+    }
+
+    res.json({
+      id: refreshedUser.id,
+      email: refreshedUser.email,
+      firstName: refreshedUser.firstName,
+      lastName: refreshedUser.lastName,
+      avatarUrl: refreshedUser.avatarUrl,
+      status: refreshedUser.status,
+      roles: refreshedUser.userRoles.map((ur) => ({
+        id: ur.role.id,
+        name: ur.role.name,
+        description: ur.role.description,
+      })),
+      employee: refreshedUser.employee,
+      createdAt: refreshedUser.createdAt,
+      updatedAt: refreshedUser.updatedAt,
+    });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+    }
+    console.error("Failed to update current user:", error);
+    res.status(500).json({ message: "Failed to update profile" });
+  }
+}
+
+export async function uploadUserAvatar(req: MulterRequest, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+    });
+
+    await prisma.employee.updateMany({
+      where: { userId },
+      data: { avatarUrl },
+    });
+
+    res.json({ avatarUrl });
+  } catch (error: any) {
+    console.error("Failed to upload avatar:", error);
+    res.status(500).json({ message: "Failed to upload avatar", error: error.message ?? error });
   }
 }
 

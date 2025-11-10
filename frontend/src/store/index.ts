@@ -61,9 +61,10 @@ export const useAuth = () => useStore((state) => ({
 export const useNotifications = () => useStore((state) => ({
   notifications: state.notifications,
   unreadCount: state.unreadCount,
-  addNotification: state.addNotification,
-  markAsRead: state.markAsRead,
-  markAllAsRead: state.markAllAsRead,
+  setNotifications: state.setNotifications,
+  setUnreadCount: state.setUnreadCount,
+  upsertNotification: state.upsertNotification,
+  markLocalRead: state.markLocalRead,
   clearNotifications: state.clearNotifications
 }));
 

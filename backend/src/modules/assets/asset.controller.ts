@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import {
+  PrismaClient,
+  Prisma,
+  NotificationModule,
+  NotificationType,
+} from "@prisma/client";
 import {
   CreateAssetDto,
   UpdateAssetDto,
@@ -11,6 +16,7 @@ import {
   BulkUpdateAssetsDto,
 } from "./asset.dto.js";
 import { paginate } from "../../utils/pagination.js";
+import { NotificationService } from "../notifications/notification.service.js";
 import { generateAssetCode } from "./asset-utils.js";
 
 const prisma = new PrismaClient();
@@ -170,12 +176,27 @@ export async function getAsset(req: Request, res: Response) {
             },
           },
         },
-        assignedByUser: {
+        createdByUser: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
           },
+        },
+        assignments: {
+          include: {
+            assignedByUser: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
         },
         history: {
           include: {
@@ -475,10 +496,15 @@ export async function assignAsset(req: Request, res: Response) {
     }
 
     // Check if employee exists
-    const employee = await prisma.employee.findUnique({
-      where: { id: data.employeeId },
-      include: { department: true },
-    });
+  const employee = await prisma.employee.findUnique({
+    where: { id: data.employeeId },
+    include: {
+      department: true,
+      user: {
+        select: { id: true },
+      },
+    },
+  });
 
     if (!employee) {
       return res.status(404).json({ message: "Employee not found" });
@@ -489,7 +515,7 @@ export async function assignAsset(req: Request, res: Response) {
       return res.status(400).json({ message: "Asset is already assigned to this employee" });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
       // Create assignment record
       const assignment = await tx.assetAssignment.create({
         data: {
@@ -543,7 +569,42 @@ export async function assignAsset(req: Request, res: Response) {
       return { ...updatedAsset, assignment };
     });
 
-    return res.status(200).json(result);
+  try {
+    if (employee.user?.id) {
+      await NotificationService.sendNotification({
+        module: NotificationModule.ASSET,
+        type: NotificationType.INFO,
+        title: `Asset assigned: ${result.name}`,
+        message: `You have been assigned asset ${result.name}.`,
+        resourceType: "ASSET",
+        resourceId: result.id,
+        targets: {
+          userIds: [employee.user.id],
+        },
+        data: {
+          assetId: result.id,
+          assetCode: result.assetCode,
+        },
+      });
+    }
+
+    await NotificationService.sendNotification({
+      module: NotificationModule.ASSET,
+      type: NotificationType.INFO,
+      title: `Asset ${result.assetCode || result.name} assigned`,
+      message: `${result.name} assigned to ${employee.firstName} ${employee.lastName}.`,
+      resourceType: "ASSET",
+      resourceId: result.id,
+      targets: {
+        roleNames: ["ADMIN", "HR"],
+        excludeUserIds: currentUserId ? [currentUserId] : undefined,
+      },
+    });
+  } catch (notifyError) {
+    console.warn("Failed to send asset assignment notification:", notifyError);
+  }
+
+  return res.status(200).json(result);
   } catch (error: any) {
     console.error("Assign asset error:", error);
     return res.status(500).json({ message: "Failed to assign asset" });

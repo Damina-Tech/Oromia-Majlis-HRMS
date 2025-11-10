@@ -1,11 +1,18 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import {
+  PrismaClient,
+  Prisma,
+  NotificationModule,
+  NotificationType,
+} from "@prisma/client";
 import {
   CreateLeaveRequestDto,
   UpdateLeaveStatusDto,
   UpdateLeaveRequestDto,
   ListLeaveRequestsQuery,
 } from "./leave.dto.js";
+
+import { NotificationService } from "../notifications/notification.service.js";
 
 const prisma = new PrismaClient();
 
@@ -227,10 +234,40 @@ export async function createLeaveRequest(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             email: true,
+            departmentId: true,
+            userId: true,
           },
         },
       },
     });
+
+    try {
+      await NotificationService.sendNotification({
+        module: NotificationModule.LEAVE,
+        type: NotificationType.INFO,
+        title: "New leave request submitted",
+        message: `${leave.employee.firstName} ${leave.employee.lastName} submitted a ${leave.type.toLowerCase()} leave request.`,
+        resourceType: "LEAVE_REQUEST",
+        resourceId: leave.id,
+        dedupKey: `leave-submitted-${leave.employeeId}`,
+        data: {
+          leaveId: leave.id,
+          startDate: leave.startDate,
+          endDate: leave.endDate,
+          days: leave.days,
+          employeeId: leave.employeeId,
+        },
+        targets: {
+          roleNames: ["HR", "MANAGER"],
+          departmentIds: leave.employee?.departmentId
+            ? [leave.employee.departmentId]
+            : undefined,
+          excludeUserIds: [user.id],
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send leave submission notification:", notifyError);
+    }
 
     res.status(201).json(leave);
   } catch (error) {
@@ -341,6 +378,7 @@ export async function updateLeaveStatus(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             email: true,
+            userId: true,
           },
         },
         approver: {
@@ -352,6 +390,41 @@ export async function updateLeaveStatus(req: Request, res: Response) {
         },
       },
     });
+
+    try {
+      if (updated.employee?.userId) {
+        const statusMessage =
+          data.status === "APPROVED"
+            ? "approved"
+            : data.status === "REJECTED"
+            ? "rejected"
+            : "updated";
+
+        await NotificationService.sendNotification({
+          module: NotificationModule.LEAVE,
+          type:
+            data.status === "APPROVED"
+              ? NotificationType.SUCCESS
+              : data.status === "REJECTED"
+              ? NotificationType.WARNING
+              : NotificationType.INFO,
+          title: `Leave request ${statusMessage}`,
+          message:
+            data.status === "APPROVED"
+              ? "Your leave request has been approved."
+              : data.status === "REJECTED"
+              ? `Your leave request was rejected${data.comment ? `: ${data.comment}` : ""}.`
+              : `Your leave request status changed to ${data.status.toLowerCase()}.`,
+          resourceType: "LEAVE_REQUEST",
+          resourceId: updated.id,
+          targets: {
+            userIds: [updated.employee.userId],
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.warn("Failed to send leave status notification:", notifyError);
+    }
 
     res.json(updated);
   } catch (error) {

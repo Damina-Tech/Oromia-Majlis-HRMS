@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -19,6 +19,8 @@ import {
 import { createAuditLog } from "./payroll-audit.js";
 import { generateBankExport, getBankExportBuffer } from "./bank-export.js";
 import { generateAndSavePayslip, generatePayslipData } from "./payslip-generator.js";
+import { NotificationService } from "../notifications/notification.service.js";
+import { format } from "date-fns";
 
 const prisma = new PrismaClient();
 
@@ -182,6 +184,26 @@ export async function createPayrollRun(req: Request, res: Response) {
       performedBy: userId,
       description: `Created payroll run for period ${dto.periodStart} to ${dto.periodEnd}`,
     });
+
+    try {
+      const periodLabel = `${format(new Date(dto.periodStart), "MMM dd, yyyy")} - ${format(
+        new Date(dto.periodEnd),
+        "MMM dd, yyyy"
+      )}`;
+      await NotificationService.sendNotification({
+        module: NotificationModule.PAYROLL,
+        type: NotificationType.INFO,
+        title: `Payroll run created (${periodLabel})`,
+        message: `A new payroll run covering ${periodLabel} has been created with ${result.payrollRun.employeeCount} employees.`,
+        resourceType: "PAYROLL_RUN",
+        resourceId: result.payrollRun.id,
+        targets: {
+          roleNames: ["FINANCE", "HR"],
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send payroll creation notification:", notifyError);
+    }
 
     return res.status(201).json(result);
   } catch (error: any) {
@@ -371,6 +393,11 @@ export async function updatePayrollRun(req: Request, res: Response) {
                 employeeCode: true,
                 firstName: true,
                 lastName: true,
+                user: {
+                  select: {
+                    id: true,
+                  },
+                },
               },
             },
           },
@@ -495,6 +522,27 @@ export async function approvePayrollRun(req: Request, res: Response) {
       performedBy: userId,
       description: "Payroll run approved",
     });
+
+    try {
+      const periodLabel = `${format(payrollRun.periodStart, "MMM dd, yyyy")} - ${format(
+        payrollRun.periodEnd,
+        "MMM dd, yyyy"
+      )}`;
+      await NotificationService.sendNotification({
+        module: NotificationModule.PAYROLL,
+        type: NotificationType.INFO,
+        title: `Payroll run approved (${periodLabel})`,
+        message: `Payroll run ${payrollRun.periodType} has been approved and is ready for processing.`,
+        resourceType: "PAYROLL_RUN",
+        resourceId: payrollRun.id,
+        targets: {
+          roleNames: ["FINANCE"],
+          excludeUserIds: userId ? [userId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send payroll approval notification:", notifyError);
+    }
 
     return res.status(200).json(payrollRun);
   } catch (error: any) {
@@ -630,6 +678,50 @@ export async function processPayrollRun(req: Request, res: Response) {
       performedBy: userId,
       description: "Payroll run processed and deductions applied",
     });
+
+    try {
+      const periodLabel = `${format(payrollRun.periodStart, "MMM dd, yyyy")} - ${format(
+        payrollRun.periodEnd,
+        "MMM dd, yyyy"
+      )}`;
+
+      const employeeUserIds = Array.from(
+        new Set(
+          payrollRun.items
+            .map((item) => item.employee?.user?.id)
+            .filter((value): value is string => Boolean(value))
+        )
+      );
+
+      if (employeeUserIds.length > 0) {
+        await NotificationService.sendNotification({
+          module: NotificationModule.PAYROLL,
+          type: NotificationType.SUCCESS,
+          title: `Payslips ready (${periodLabel})`,
+          message: `Payroll run for ${periodLabel} has been processed. Your payslip is now ready.`,
+          resourceType: "PAYROLL_RUN",
+          resourceId: payrollRun.id,
+          targets: {
+            userIds: employeeUserIds,
+          },
+        });
+      }
+
+      await NotificationService.sendNotification({
+        module: NotificationModule.PAYROLL,
+        type: NotificationType.INFO,
+        title: `Payroll run processed (${periodLabel})`,
+        message: `Payroll run ${payrollRun.periodType} has been processed.`,
+        resourceType: "PAYROLL_RUN",
+        resourceId: payrollRun.id,
+        targets: {
+          roleNames: ["FINANCE", "HR"],
+          excludeUserIds: userId ? [userId] : undefined,
+        },
+      });
+    } catch (notifyError) {
+      console.warn("Failed to send payroll processing notifications:", notifyError);
+    }
 
     return res.status(200).json(payrollRun);
   } catch (error: any) {

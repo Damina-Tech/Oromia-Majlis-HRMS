@@ -1,4 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
+import { NotificationService } from "../notifications/notification.service.js";
 
 const prisma = new PrismaClient();
 
@@ -123,6 +124,40 @@ export async function enqueueAnnouncementDelivery(announcementId: string) {
           email: emp.email,
           phone: emp.phone,
         }));
+    }
+
+    const userIds = Array.from(
+      new Set(
+        targetUsers
+          .map((targetUser) => targetUser.userId)
+          .filter((userId): userId is string => Boolean(userId))
+      )
+    );
+
+    if (userIds.length > 0) {
+      try {
+        await NotificationService.sendNotification({
+          module: NotificationModule.ANNOUNCEMENT,
+          type: announcement.urgency === "URGENT" ? NotificationType.WARNING : NotificationType.INFO,
+          title: announcement.title,
+          message:
+            announcement.type === "MEETING"
+              ? "New meeting announcement published."
+              : announcement.body.slice(0, 160),
+          resourceType: "ANNOUNCEMENT",
+          resourceId: announcement.id,
+          dedupKey: `announcement-${announcement.id}`,
+          targets: {
+            userIds,
+          },
+          data: {
+            urgency: announcement.urgency,
+            type: announcement.type,
+          },
+        });
+      } catch (notifyError) {
+        console.warn("Failed to send announcement notification:", notifyError);
+      }
     }
 
     // Create delivery records for each channel and user
