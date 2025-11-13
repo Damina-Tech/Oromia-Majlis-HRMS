@@ -22,19 +22,38 @@ export interface EmployeeSummary {
   employeeCode: string;
   firstName: string;
   lastName: string;
-  designation?: string;
+  email: string;
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  marriageStatus?: string | null;
+  address?: string | null;
+  emergencyContact?: string | null;
+  designation?: string | null;
+  employmentType?: string | null;
+  educationLevel?: string | null;
+  educationOther?: string | null;
+  educationField?: string | null;
+  document?: string | null;
+  status?: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
+  joiningDate?: string | null;
+  salary?: number | string | null;
   department?: {
     id: string;
     name: string;
   } | null;
-  status?: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
-  employmentType?: string | null;
-  joiningDate?: string | null;
-  avatarUrl?: string | null;
   manager?: {
     id: string;
     firstName: string;
     lastName: string;
+  } | null;
+  avatarUrl?: string | null;
+  user?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl?: string | null;
   } | null;
 }
 

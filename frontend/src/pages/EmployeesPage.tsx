@@ -1,5 +1,5 @@
-"use client";
-import React, { useEffect, useMemo, useState } from "react";
+ "use client";
+ import React, { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
   Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle, Upload, FileDown, User
 } from "lucide-react";
 import api, { uploadDocument, bulkImportEmployees, downloadSampleTemplate } from "@/services/api"; // Axios instance with baseURL + auth
-import { createUser, getRoles, type Role } from "@/services/users";
+import { getRoles, type Role } from "@/services/users";
 
 // ---------- Types ----------
 type Dept = { id: string; name: string };
@@ -42,6 +42,7 @@ type Employee = {
   employmentType?: string | null;
   educationLevel?: string | null;
   educationOther?: string | null;
+  educationField?: string | null;
   marriageStatus?: string | null;
   document?: string | null;
   status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
@@ -60,6 +61,30 @@ type Employee = {
     avatarUrl?: string | null;
   } | null;
   avatarUrl?: string | null;
+};
+
+type EmployeeListSummary = {
+  totalEmployees: number;
+  active: number;
+  inactive: number;
+  onLeave: number;
+  departments: number;
+};
+
+type EmployeeListResponse = {
+  items: Employee[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary?: EmployeeListSummary;
+};
+
+const DEFAULT_EMPLOYEE_SUMMARY: EmployeeListSummary = {
+  totalEmployees: 0,
+  active: 0,
+  inactive: 0,
+  onLeave: 0,
+  departments: 0,
 };
 
 // ---------- Helpers ----------
@@ -93,12 +118,20 @@ const formatStatusLabel = (status: Employee["status"]) =>
 const formatEmploymentType = (value?: string | null) =>
   value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
 
+const ADVANCED_EDUCATION_LEVELS = ["DEGREE", "MASTER", "PHD"] as const;
+const requiresEducationField = (level?: string | null) =>
+  !!level && ADVANCED_EDUCATION_LEVELS.includes(level as typeof ADVANCED_EDUCATION_LEVELS[number]);
+
 // ---------- API calls ----------
 async function apiListEmployees(params: {
-  search?: string; status?: Employee["status"]; departmentId?: string; page?: number; pageSize?: number;
-}) {
+  search?: string;
+  status?: Employee["status"];
+  departmentId?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<EmployeeListResponse> {
   const { data } = await api.get("/employees", { params });
-  return data as { items: Employee[]; total: number; page: number; pageSize: number };
+  return data as EmployeeListResponse;
 }
 async function apiGetEmployee(id: string) {
   const { data } = await api.get(`/employees/${id}`);
@@ -135,13 +168,18 @@ function AddEmployeeDialog({
   const [uploading, setUploading] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [defaultCreateUserAccount, setDefaultCreateUserAccount] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("hrms_employee_default_create_account") === "true";
+  });
+
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     dateOfBirth: "", gender: "", designation: "", employmentType: "",
-    educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+    educationLevel: "", educationOther: "", educationField: "", marriageStatus: "", document: "",
     departmentId: "", status: "ACTIVE" as Employee["status"],
     joiningDate: "", salary: "", address: "", emergencyContact: "",
-    createUserAccount: false,
+    createUserAccount: defaultCreateUserAccount,
     userPassword: "",
     userConfirmPassword: "",
     userRoleId: "",
@@ -179,6 +217,9 @@ function AddEmployeeDialog({
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
         return "Please enter a valid email address";
       }
+    }
+    if (name === "educationField" && requiresEducationField(form.educationLevel) && !value.trim()) {
+      return "Please specify the education field or major";
     }
     return "";
   };
@@ -225,6 +266,10 @@ function AddEmployeeDialog({
     
     const emailError = validateField("email", form.email);
     if (emailError) errors.email = emailError;
+
+    if (requiresEducationField(form.educationLevel) && !form.educationField.trim()) {
+      errors.educationField = "Please specify the education field or major";
+    }
     
     // If there are validation errors, set them and stop submission
     if (Object.keys(errors).length > 0) {
@@ -255,30 +300,6 @@ function AddEmployeeDialog({
         }
       }
       
-      const payload: any = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        phone: form.phone || undefined,
-        dateOfBirth: form.dateOfBirth || undefined,
-        gender: form.gender || undefined,
-        address: form.address || undefined,
-        emergencyContact: form.emergencyContact || undefined,
-        designation: form.designation || undefined,
-        employmentType: form.employmentType || undefined,
-        educationLevel: form.educationLevel || undefined,
-        educationOther: form.educationOther || undefined,
-        marriageStatus: form.marriageStatus || undefined,
-        document: documentUrl,
-        status: form.status,
-        joiningDate: form.joiningDate || undefined,
-        salary: form.salary ? Number(form.salary) : undefined,
-        departmentId: form.departmentId && form.departmentId.trim() !== "" ? form.departmentId : undefined,
-      };
-      
-      const created = await apiCreateEmployee(payload as any);
-      
-      // Create user account if requested
       if (form.createUserAccount && canManageUsers) {
         if (!form.userPassword || form.userPassword.length < 6) {
           setError("Password must be at least 6 characters");
@@ -295,34 +316,49 @@ function AddEmployeeDialog({
           setSubmitting(false);
           return;
         }
-        
-        try {
-          await createUser({
-            email: form.email,
-            password: form.userPassword,
-            firstName: form.firstName,
-            lastName: form.lastName,
-            roleIds: [form.userRoleId],
-            employeeId: created.id,
-            status: "ACTIVE",
-          });
-          toast.success("Employee and user account created successfully!", {
-            duration: 3000,
-            description: `${created.firstName} ${created.lastName} has been added with login access.`
-          });
-        } catch (userError: any) {
-          // Employee was created but user creation failed
-          toast.warning("Employee created but user account creation failed", {
-            description: userError?.response?.data?.message || "You can create a user account later from User Management."
-          });
-        }
-      } else {
-        // Show success toast
-        toast.success("Employee created successfully!", {
-          duration: 3000,
-          description: `${created.firstName} ${created.lastName} has been added to the system.`
-        });
       }
+
+      const payload: any = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone || undefined,
+        dateOfBirth: form.dateOfBirth || undefined,
+        gender: form.gender || undefined,
+        address: form.address || undefined,
+        emergencyContact: form.emergencyContact || undefined,
+        designation: form.designation || undefined,
+        employmentType: form.employmentType || undefined,
+        educationLevel: form.educationLevel || undefined,
+        educationOther: form.educationOther || undefined,
+        educationField: form.educationField || undefined,
+        marriageStatus: form.marriageStatus || undefined,
+        document: documentUrl,
+        status: form.status,
+        joiningDate: form.joiningDate || undefined,
+        salary: form.salary ? Number(form.salary) : undefined,
+        departmentId: form.departmentId && form.departmentId.trim() !== "" ? form.departmentId : undefined,
+      };
+
+      if (form.createUserAccount && canManageUsers) {
+        payload.createUserAccount = true;
+        payload.userPassword = form.userPassword;
+        payload.userRoleId = form.userRoleId;
+      }
+      
+      const created = await apiCreateEmployee(payload as any);
+
+      toast.success(
+        created?.user
+          ? "Employee and user account created successfully!"
+          : "Employee created successfully!",
+        {
+          duration: 3000,
+          description: `${created.firstName} ${created.lastName} has been added${
+            created?.user ? " with login access." : " to the system."
+          }`,
+        }
+      );
       
       // Call parent callback
       onCreated(created);
@@ -332,9 +368,9 @@ function AddEmployeeDialog({
       setForm({
         firstName: "", lastName: "", email: "", phone: "",
         dateOfBirth: "", gender: "", designation: "", employmentType: "",
-        educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+        educationLevel: "", educationOther: "", educationField: "", marriageStatus: "", document: "",
         departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
-        createUserAccount: false,
+        createUserAccount: defaultCreateUserAccount,
         userPassword: "",
         userConfirmPassword: "",
         userRoleId: "",
@@ -354,9 +390,7 @@ function AddEmployeeDialog({
       // Don't close the dialog on error
       setSubmitting(false);
     } finally {
-      if (!error) {
-        setSubmitting(false);
-      }
+      setSubmitting(false);
     }
   };
 
@@ -364,18 +398,29 @@ function AddEmployeeDialog({
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (!newOpen) {
-      // Reset errors when closing
+    if (newOpen) {
+      if (typeof window !== "undefined") {
+        const storedDefault = localStorage.getItem("hrms_employee_default_create_account");
+        const nextDefault = storedDefault === "true";
+        setDefaultCreateUserAccount(nextDefault);
+        setForm((prev) => ({
+          ...prev,
+          createUserAccount: nextDefault,
+        }));
+      }
       setError(null);
       setFieldErrors({});
       setSelectedFile(null);
-      // Reset form
+    } else {
+      setError(null);
+      setFieldErrors({});
+      setSelectedFile(null);
       setForm({
         firstName: "", lastName: "", email: "", phone: "",
         dateOfBirth: "", gender: "", designation: "", employmentType: "",
-        educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+        educationLevel: "", educationOther: "", educationField: "", marriageStatus: "", document: "",
         departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
-        createUserAccount: false,
+        createUserAccount: defaultCreateUserAccount,
         userPassword: "",
         userConfirmPassword: "",
         userRoleId: "",
@@ -563,6 +608,9 @@ function AddEmployeeDialog({
                     if (v !== "OTHER") {
                       onChange("educationOther", "");
                     }
+                    if (!requiresEducationField(v)) {
+                      onChange("educationField", "");
+                    }
                   }}
                 >
                   <SelectTrigger id="educationLevel">
@@ -586,6 +634,22 @@ function AddEmployeeDialog({
                       value={form.educationOther}
                       onChange={e => onChange("educationOther", e.target.value)}
                     />
+                  </div>
+                )}
+                {requiresEducationField(form.educationLevel) && (
+                  <div className="mt-2 space-y-2">
+                    <Label htmlFor="educationField">Field / Major *</Label>
+                    <Input
+                      id="educationField"
+                      placeholder="e.g. Computer Science"
+                      value={form.educationField}
+                      onChange={(e) => onChange("educationField", e.target.value)}
+                      onBlur={() => onBlur("educationField")}
+                      className={fieldErrors.educationField ? "border-red-500 focus-visible:ring-red-500" : ""}
+                    />
+                    {fieldErrors.educationField && (
+                      <p className="text-sm text-red-500">{fieldErrors.educationField}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -773,7 +837,7 @@ function EditEmployeeDialog({
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     dateOfBirth: "", gender: "", designation: "", employmentType: "",
-    educationLevel: "", educationOther: "", marriageStatus: "", document: "",
+    educationLevel: "", educationOther: "", educationField: "", marriageStatus: "", document: "",
     departmentId: "", status: "ACTIVE" as Employee["status"],
     joiningDate: "", salary: "", address: "", emergencyContact: "",
   });
@@ -792,6 +856,7 @@ function EditEmployeeDialog({
         employmentType: employee.employmentType || "",
         educationLevel: employee.educationLevel || "",
         educationOther: employee.educationOther || "",
+        educationField: employee.educationField || "",
         marriageStatus: employee.marriageStatus || "",
         document: employee.document || "",
         departmentId: employee.departmentId || "",
@@ -820,6 +885,9 @@ function EditEmployeeDialog({
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
         return "Please enter a valid email address";
       }
+    }
+    if (name === "educationField" && requiresEducationField(form.educationLevel) && !value.trim()) {
+      return "Please specify the education field or major";
     }
     return "";
   };
@@ -859,6 +927,10 @@ function EditEmployeeDialog({
     if (lastNameError) errors.lastName = lastNameError;
     const emailError = validateField("email", form.email);
     if (emailError) errors.email = emailError;
+
+    if (requiresEducationField(form.educationLevel) && !form.educationField.trim()) {
+      errors.educationField = "Please specify the education field or major";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -901,6 +973,7 @@ function EditEmployeeDialog({
         employmentType: form.employmentType || undefined,
         educationLevel: form.educationLevel || undefined,
         educationOther: form.educationOther || undefined,
+        educationField: form.educationField || undefined,
         marriageStatus: form.marriageStatus || undefined,
         document: documentUrl,
         status: form.status,
@@ -1053,6 +1126,9 @@ function EditEmployeeDialog({
                       if (v !== "OTHER") {
                         onChange("educationOther", "");
                       }
+                      if (!requiresEducationField(v)) {
+                        onChange("educationField", "");
+                      }
                     }}
                   >
                     <SelectTrigger id="edit-educationLevel">
@@ -1076,6 +1152,22 @@ function EditEmployeeDialog({
                         value={form.educationOther}
                         onChange={e => onChange("educationOther", e.target.value)}
                       />
+                    </div>
+                  )}
+                  {requiresEducationField(form.educationLevel) && (
+                    <div className="mt-2 space-y-2">
+                      <Label htmlFor="edit-educationField">Field / Major *</Label>
+                      <Input
+                        id="edit-educationField"
+                        placeholder="e.g. Computer Science"
+                        value={form.educationField}
+                        onChange={e => onChange("educationField", e.target.value)}
+                        onBlur={() => onBlur("educationField")}
+                        className={fieldErrors.educationField ? "border-red-500" : ""}
+                      />
+                      {fieldErrors.educationField && (
+                        <p className="text-sm text-red-500">{fieldErrors.educationField}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1172,7 +1264,7 @@ const EmployeesPage: React.FC = () => {
   const canWrite = hasPermission("employees.write");
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all"); // stores deptId or 'all'
+  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on-leave">("all");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -1181,59 +1273,134 @@ const EmployeesPage: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Dept[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window === "undefined") return 10;
+    const stored = Number(localStorage.getItem("hrms_employee_page_size"));
+    return stored && !Number.isNaN(stored) ? stored : 10;
+  });
+  const [total, setTotal] = useState(0);
+  const [employeeSummary, setEmployeeSummary] = useState<EmployeeListSummary>(DEFAULT_EMPLOYEE_SUMMARY);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
   const [importDialog, setImportDialog] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState<{ total: number; successful: number; failed: number; errors: Array<{ row: number; email?: string; error: string }> } | null>(null);
 
-  // Load deps & employees
   useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        setLoading(true);
-        const [deps, empRes] = await Promise.all([
-          apiListDepartments(),
-          apiListEmployees({ page: 1, pageSize: 200 })
-        ]);
+        const deps = await apiListDepartments();
+        if (cancelled) return;
         setDepartments(deps);
-        setEmployees(empRes.items);
+        setEmployeeSummary((prev) => ({
+          ...prev,
+          departments: deps.length,
+        }));
       } catch (e: any) {
-        toast.error(e?.response?.data?.message ?? "Failed to load data");
-      } finally {
-        setLoading(false);
+        if (!cancelled) {
+          toast.error(e?.response?.data?.message ?? "Failed to load departments");
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Client-side filtering to keep your UX
-  const filteredEmployees = useMemo(() => {
-    return employees.filter((e) => {
-      const fullName = `${e.firstName} ${e.lastName}`.trim();
-      const matchesSearch =
-        fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.employeeCode.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncPageSize = () => {
+      const stored = Number(localStorage.getItem("hrms_employee_page_size"));
+      if (!Number.isNaN(stored) && stored > 0 && stored !== pageSize) {
+        setPageSize(stored);
+        setPage(1);
+      }
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "hrms_employee_page_size") {
+        syncPageSize();
+      }
+    };
+    const handleCustomUpdate = () => syncPageSize();
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("hrms:employee-settings-update", handleCustomUpdate as EventListener);
+    syncPageSize();
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("hrms:employee-settings-update", handleCustomUpdate as EventListener);
+    };
+  }, [pageSize]);
 
-      const matchesDepartment =
-        departmentFilter === "all" || e.departmentId === departmentFilter;
+  useEffect(() => {
+    let cancelled = false;
+    const fetchEmployees = async () => {
+      try {
+        setLoading(true);
+        const response = await apiListEmployees({
+          search: debouncedSearch || undefined,
+          departmentId: departmentFilter === "all" ? undefined : departmentFilter,
+          status:
+            statusFilter === "all"
+              ? undefined
+              : (statusFilter.replace("-", "_").toUpperCase() as Employee["status"]),
+          page,
+          pageSize,
+        });
 
-      const uiStatus = toUiStatus(e.status);
-      const matchesStatus =
-        statusFilter === "all" || uiStatus === statusFilter;
+        if (cancelled) return;
 
-    return matchesSearch && matchesDepartment && matchesStatus;
-    });
-  }, [employees, searchTerm, departmentFilter, statusFilter]);
+        setEmployees(response.items);
+        setTotal(response.total);
 
-  const totals = useMemo(() => {
-    const active = employees.filter(e => e.status === "ACTIVE").length;
-    const onLeave = employees.filter(e => e.status === "ON_LEAVE").length;
-    return { total: employees.length, active, onLeave, departments: departments.length };
-  }, [employees, departments]);
+        const summary = response.summary ?? DEFAULT_EMPLOYEE_SUMMARY;
+        setEmployeeSummary({
+          ...summary,
+          departments: summary.departments || departments.length,
+        });
+      } catch (e: any) {
+        if (!cancelled) {
+          toast.error(e?.response?.data?.message ?? "Failed to load employees");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, departmentFilter, statusFilter, page, pageSize, reloadKey, departments.length]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(total / pageSize));
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [total, pageSize, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = total === 0 ? 0 : Math.min(page * pageSize, total);
 
   const handleEmployeeUpdated = (updated: Employee) => {
     setEmployees(prev => prev.map(emp => emp.id === updated.id ? updated : emp));
     setEditingEmployee(null);
+    setReloadKey((key) => key + 1);
   };
 
   const handleDeleteEmployee = async () => {
@@ -1241,8 +1408,9 @@ const EmployeesPage: React.FC = () => {
     try {
       await apiDeleteEmployee(deletingEmployee.id);
       toast.success("Employee deleted successfully");
-      setEmployees(prev => prev.filter(emp => emp.id !== deletingEmployee.id));
       setDeletingEmployee(null);
+      setEmployees(prev => prev.filter(emp => emp.id !== deletingEmployee.id));
+      setReloadKey((key) => key + 1);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to delete employee");
     }
@@ -1274,7 +1442,10 @@ const EmployeesPage: React.FC = () => {
             </Button>
           <AddEmployeeDialog
             departments={departments}
-            onCreated={(emp) => setEmployees(prev => [emp, ...prev])}
+            onCreated={() => {
+              setPage(1);
+              setReloadKey((key) => key + 1);
+            }}
             canCreate={!!canWrite}
           />
           </div>
@@ -1286,7 +1457,7 @@ const EmployeesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
-              <p className="text-2xl font-bold">{totals.total}</p>
+              <p className="text-2xl font-bold">{employeeSummary.totalEmployees.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-blue-600" />
@@ -1298,7 +1469,7 @@ const EmployeesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
-              <p className="text-2xl font-bold">{totals.active}</p>
+              <p className="text-2xl font-bold">{employeeSummary.active.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-green-600" />
@@ -1310,7 +1481,7 @@ const EmployeesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">On Leave</p>
-              <p className="text-2xl font-bold">{totals.onLeave}</p>
+              <p className="text-2xl font-bold">{employeeSummary.onLeave.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-yellow-600" />
@@ -1322,7 +1493,7 @@ const EmployeesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Departments</p>
-              <p className="text-2xl font-bold">{totals.departments}</p>
+              <p className="text-2xl font-bold">{employeeSummary.departments.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-purple-600" />
@@ -1344,13 +1515,22 @@ const EmployeesPage: React.FC = () => {
               <Input
                 placeholder="Search by name, email, or employee ID..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (page !== 1) setPage(1);
+                }}
                 className="pl-10"
               />
             </div>
             
             {/* Department filter uses deptId */}
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <Select
+              value={departmentFilter}
+              onValueChange={(value) => {
+                setDepartmentFilter(value);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
@@ -1363,7 +1543,13 @@ const EmployeesPage: React.FC = () => {
             </Select>
 
             {/* Status filter keeps your UI values */}
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value as typeof statusFilter);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -1395,7 +1581,7 @@ const EmployeesPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEmployees.map((e) => {
+                {employees.map((e) => {
                   const avatarSrc = resolveAvatarUrl(e.avatarUrl ?? e.user?.avatarUrl ?? null);
                   return (
                     <TableRow key={e.id}>
@@ -1497,14 +1683,14 @@ const EmployeesPage: React.FC = () => {
                                     <span>
                                       Joined {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}
                                     </span>
-                                  </div>
+                                    </div>
                                   {e.manager && (
                                     <div className="flex items-center gap-2">
                                       <User className="h-4 w-4" />
                                       <span>
                                         Manager: {e.manager.firstName} {e.manager.lastName}
                                       </span>
-                                    </div>
+                                  </div>
                                   )}
                                 </div>
                               </div>
@@ -1535,6 +1721,11 @@ const EmployeesPage: React.FC = () => {
                                     {e.educationLevel === "OTHER"
                                       ? e.educationOther ?? "—"
                                       : formatEmploymentType(e.educationLevel)}
+                                    {e.educationField && (
+                                      <span className="block text-xs text-muted-foreground mt-1">
+                                        Field: {e.educationField}
+                                      </span>
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -1590,14 +1781,43 @@ const EmployeesPage: React.FC = () => {
                         )}
                       </div>
                     </TableCell>
-                    </TableRow>
+                  </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </div>
 
-          {!loading && filteredEmployees.length === 0 && (
+          {total > 0 && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                Showing {showingFrom} to {showingTo} of {total.toLocaleString()} employees
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                  disabled={page === 1 || loading}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Next
+                </Button>
+            </div>
+            </div>
+          )}
+
+          {!loading && employees.length === 0 && (
             <div className="text-center py-8">
               <p className="text-gray-500">No employees found matching your criteria.</p>
             </div>
@@ -1723,13 +1943,14 @@ const EmployeesPage: React.FC = () => {
                       
                       if (result.results.successful > 0) {
                         toast.success(`Successfully imported ${result.results.successful} employee(s)`);
-                        // Reload employees list
-                        const [deps, empRes] = await Promise.all([
-                          apiListDepartments(),
-                          apiListEmployees({ page: 1, pageSize: 200 })
-                        ]);
+                        const deps = await apiListDepartments();
                         setDepartments(deps);
-                        setEmployees(empRes.items);
+                        setEmployeeSummary((prev) => ({
+                          ...prev,
+                          departments: deps.length,
+                        }));
+                        setPage(1);
+                        setReloadKey((key) => key + 1);
                       }
                       
                       if (result.results.failed > 0) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Card,
   CardContent,
@@ -11,21 +11,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Briefcase,
-  Building2,
   Calendar,
   Mail,
-  MapPin,
   Shield,
   User as UserIcon,
   Lock,
   RefreshCw,
   Clock,
+  Briefcase,
+  Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,7 +41,7 @@ type PermissionGroup = {
 };
 
 const ProfilePage: React.FC = () => {
-  const { user, refreshUserData } = useAuth();
+  const { user, refreshUserData, updateUserProfile } = useAuth();
   const [profile, setProfile] = useState<DetailedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -71,6 +69,7 @@ const ProfilePage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL || "http://localhost:4000", []);
   const resolveAvatarUrl = useCallback(
@@ -105,9 +104,46 @@ const ProfilePage: React.FC = () => {
     return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
   }, []);
 
-  const loadProfile = useCallback(async () => {
+  const formatOptionalText = useCallback(
+    (value?: string | null) => (value ? formatEmploymentType(value) : "—"),
+    [formatEmploymentType]
+  );
+
+  const formatDateValue = useCallback((value?: string | null) => {
+    if (!value) return "—";
+    try {
+      return format(new Date(value), "PP");
+    } catch {
+      return "—";
+    }
+  }, []);
+
+  const formatSalary = useCallback((value?: number | string | null) => {
+    if (value === null || value === undefined) return "—";
+    const numeric = typeof value === "string" ? Number(value) : value;
+    if (Number.isNaN(numeric)) {
+      return typeof value === "string" ? value : "—";
+    }
+    return `ETB ${numeric.toLocaleString()}`;
+  }, []);
+
+  const formatEducation = useCallback(
+    (level?: string | null, other?: string | null) => {
+      if (!level) return "—";
+      if (level === "OTHER") {
+        return other ?? "Other";
+      }
+      return formatEmploymentType(level);
+    },
+    [formatEmploymentType]
+  );
+
+  const loadProfile = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return;
-    setLoading(true);
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setLoading(true);
+    }
     setFetchError(null);
     try {
       const data = await getCurrentUser();
@@ -117,6 +153,7 @@ const ProfilePage: React.FC = () => {
         lastName: data.lastName ?? "",
         email: data.email ?? "",
       });
+      setAvatarPreview(null);
       const storedAbout = localStorage.getItem(`hrms_profile_about_${user.id}`);
       if (storedAbout) {
         setAboutForm(JSON.parse(storedAbout));
@@ -127,13 +164,23 @@ const ProfilePage: React.FC = () => {
         error?.response?.data?.message ?? "Failed to load your profile information."
       );
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [user]);
 
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview && avatarPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+    };
+  }, [avatarPreview]);
 
   const fullName = useMemo(() => {
     if (!profile) return "";
@@ -183,8 +230,79 @@ const ProfilePage: React.FC = () => {
     ];
   }, [profile?.employee, formatEmploymentType]);
 
-  const employmentStatus = profile?.employee?.status ?? null;
-  const avatarSrc = resolveAvatarUrl(profile?.avatarUrl ?? profile?.employee?.avatarUrl);
+  const employee = profile?.employee ?? null;
+  const employmentStatus = employee?.status ?? null;
+  const resolvedAvatarUrl =
+    profile?.avatarUrl ?? employee?.avatarUrl ?? user?.avatarUrl ?? null;
+  const avatarSrc = avatarPreview ?? resolveAvatarUrl(resolvedAvatarUrl);
+
+  const basicInformation: Array<{ label: string; value: ReactNode }> = useMemo(() => {
+    return [
+      { label: "Full name", value: fullName || "—" },
+      { label: "Email", value: profile?.email ?? "—" },
+      { label: "Phone", value: employee?.phone ?? "—" },
+      { label: "Date of birth", value: formatDateValue(employee?.dateOfBirth) },
+      { label: "Gender", value: formatOptionalText(employee?.gender) },
+      { label: "Marital status", value: formatOptionalText(employee?.marriageStatus) },
+      { label: "Address", value: employee?.address ?? "—" },
+      { label: "Emergency contact", value: employee?.emergencyContact ?? "—" },
+    ];
+  }, [employee, formatDateValue, formatOptionalText, fullName, profile?.email]);
+
+  const documentValue = useMemo<ReactNode>(() => {
+    if (!employee?.document) return "—";
+    const filename = employee.document.split("/").pop() ?? "Document";
+    return (
+      <a
+        href={resolveAvatarUrl(employee.document)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+      >
+        <Paperclip className="h-4 w-4" />
+        {filename}
+      </a>
+    );
+  }, [employee, resolveAvatarUrl]);
+
+  const professionalInformation: Array<{ label: string; value: ReactNode }> = useMemo(() => {
+    const statusBadge = employmentStatus ? (
+      <Badge variant="outline" className={getStatusBadgeClass(employmentStatus)}>
+        {formatStatus(employmentStatus)}
+      </Badge>
+    ) : (
+      "—"
+    );
+
+    return [
+      { label: "Employee ID", value: employee?.employeeCode ?? "—" },
+      { label: "Designation", value: employee?.designation ?? "—" },
+      { label: "Employment type", value: formatOptionalText(employee?.employmentType) },
+      {
+        label: "Education level",
+        value: formatEducation(employee?.educationLevel, employee?.educationOther),
+      },
+      {
+        label: "Field or major",
+        value: employee?.educationField ? employee.educationField : "—",
+      },
+      { label: "Department", value: employee?.department?.name ?? "—" },
+      { label: "Employment status", value: statusBadge },
+      { label: "Joining date", value: formatDateValue(employee?.joiningDate) },
+      { label: "Salary", value: formatSalary(employee?.salary) },
+      { label: "Documents", value: documentValue },
+    ];
+  }, [
+    documentValue,
+    employee,
+    employmentStatus,
+    formatEducation,
+    formatOptionalText,
+    formatSalary,
+    formatDateValue,
+    formatStatus,
+    getStatusBadgeClass,
+  ]);
 
   const handleBasicSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -257,9 +375,18 @@ const ProfilePage: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview((prev) => {
+      if (prev && prev.startsWith("blob:")) {
+        URL.revokeObjectURL(prev);
+      }
+      return previewUrl;
+    });
+
     setUploadingAvatar(true);
     try {
       const { avatarUrl } = await uploadAvatar(file);
+      setAvatarPreview(null);
       setProfile((prev) => {
         if (!prev) return prev;
         const updatedEmployee = prev.employee
@@ -267,15 +394,20 @@ const ProfilePage: React.FC = () => {
           : prev.employee;
         return { ...prev, avatarUrl, employee: updatedEmployee };
       });
-      await refreshUserData();
+      updateUserProfile({ avatarUrl });
+      await loadProfile({ silent: true });
       toast.success("Profile photo updated");
     } catch (error: any) {
+      setAvatarPreview(null);
       console.error("Failed to upload avatar", error);
       toast.error(
         error?.response?.data?.message ?? "Unable to update your profile photo."
       );
     } finally {
       setUploadingAvatar(false);
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -316,7 +448,7 @@ const ProfilePage: React.FC = () => {
             <CardDescription>{fetchError}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={loadProfile}>
+            <Button onClick={() => loadProfile()}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Try again
             </Button>
@@ -400,39 +532,10 @@ const ProfilePage: React.FC = () => {
         <TabsList className="w-full md:w-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="permissions">Permissions</TabsTrigger>
+          {/* <TabsTrigger value="permissions">Permissions</TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {profile?.employee && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Employment snapshot</CardTitle>
-                <CardDescription>
-                  Key details synced from your HR record.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {employmentSummary.map((item) => (
-                    <div key={item.label} className="flex flex-col gap-1">
-                      <span className="text-xs uppercase text-muted-foreground">{item.label}</span>
-                      <span className="text-sm font-medium text-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                  {employmentStatus && (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs uppercase text-muted-foreground">Status</span>
-                      <Badge variant="outline" className={getStatusBadgeClass(employmentStatus)}>
-                        {formatStatus(employmentStatus)}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
           <Card>
             <CardHeader>
               <CardTitle>Basic information</CardTitle>
@@ -563,58 +666,48 @@ const ProfilePage: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="details" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                Employment details
-              </CardTitle>
-              <CardDescription>
-                Information associated with your employee record.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-muted-foreground">Employee ID</p>
-                <p className="font-medium">
-                  {profile?.employee?.employeeCode ?? "Not assigned"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Designation</p>
-                <p className="font-medium">
-                  {profile?.employee?.designation ?? "Not specified"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Department</p>
-                <p className="font-medium">
-                  {profile?.employee?.department?.name ?? "Not assigned"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Status</p>
-                <Badge variant={profile?.status === "ACTIVE" ? "default" : "destructive"}>
-                  {profile?.status ?? "Unknown"}
-                </Badge>
-              </div>
-              <div className="md:col-span-2">
-                <Separator className="my-2" />
-                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-4 w-4" />
-                    Chiro HRMS Organization
-                  </span>
-                  {aboutForm.location && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      {aboutForm.location}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Basic information</CardTitle>
+                <CardDescription>Your personal and contact details.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4 md:grid-cols-2">
+                  {basicInformation.map((item) => (
+                    <div key={item.label} className="space-y-1">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {item.label}
+                      </dt>
+                      <dd className="text-sm text-foreground">{item.value ?? "—"}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="h-5 w-5" />
+                  Professional information
+                </CardTitle>
+                <CardDescription>Snapshot of your role and employment data.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4 md:grid-cols-2">
+                  {professionalInformation.map((item) => (
+                    <div key={item.label} className="space-y-1">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {item.label}
+                      </dt>
+                      <dd className="text-sm text-foreground">{item.value ?? "—"}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card>
             <CardHeader>
@@ -647,96 +740,7 @@ const ProfilePage: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" />
-                Update password
-              </CardTitle>
-              <CardDescription>
-                Use a strong password that you don&apos;t reuse on other sites.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={handlePasswordChange}>
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">New password</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={(event) =>
-                      setPasswordForm((prev) => ({
-                        ...prev,
-                        newPassword: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(event) =>
-                      setPasswordForm((prev) => ({
-                        ...prev,
-                        confirmPassword: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground md:col-span-2">
-                  Password must be at least 8 characters long.
-                </p>
-                <div className="md:col-span-2 flex justify-end">
-                  <Button type="submit" disabled={savingPassword}>
-                    {savingPassword ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Updating…
-                      </>
-                    ) : (
-                      "Update password"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Account activity</CardTitle>
-              <CardDescription>
-                Recent events related to your account and access changes.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <div className="flex items-start gap-3">
-                <Shield className="mt-1 h-4 w-4 text-emerald-500" />
-                <div>
-                  <p className="font-medium text-foreground">SSO available</p>
-                  <p>Single sign-on is enabled for the organization. Use &ldquo;Login with SSO&rdquo; on the sign-in page.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <UserIcon className="mt-1 h-4 w-4 text-blue-500" />
-                <div>
-                  <p className="font-medium text-foreground">Primary role</p>
-                  <p>
-                    {profile?.roles?.[0]?.name ?? "User"} &mdash;{" "}
-                    {profile?.roles?.[0]?.description ?? "Standard account access"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="permissions">
+        {/* <TabsContent value="permissions">
           <Card>
             <CardHeader>
               <CardTitle>Permissions overview</CardTitle>
@@ -779,7 +783,7 @@ const ProfilePage: React.FC = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent> */}
       </Tabs>
     </div>
   );

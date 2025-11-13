@@ -30,6 +30,7 @@ import {
   UserCog,
   RefreshCw,
   MoonStar,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +85,11 @@ const SettingsPage: React.FC = () => {
   const [language, setLanguage] = useState("en-US");
   const [timezone, setTimezone] = useState("Africa/Addis_Ababa");
   const [compactMode, setCompactMode] = useState(false);
+  const [employeeSettings, setEmployeeSettings] = useState({
+    defaultCreateAccount: false,
+    defaultPageSize: 10,
+  });
+  const [savingEmployeeSettings, setSavingEmployeeSettings] = useState(false);
   const applyTheme = useCallback((value: ThemePreference) => {
     if (value === "system") {
       document.documentElement.classList.remove("dark");
@@ -113,6 +119,17 @@ const SettingsPage: React.FC = () => {
     if (storedTimezone) setTimezone(storedTimezone);
     const storedCompact = localStorage.getItem("hrms_compact_mode");
     if (storedCompact) setCompactMode(storedCompact === "true");
+    const storedDefaultCreateAccount = localStorage.getItem("hrms_employee_default_create_account");
+    const storedEmployeePageSize = localStorage.getItem("hrms_employee_page_size");
+    const parsedPageSize =
+      storedEmployeePageSize && !Number.isNaN(Number(storedEmployeePageSize))
+        ? Number(storedEmployeePageSize)
+        : 10;
+    const validatedPageSize = parsedPageSize > 0 ? parsedPageSize : 10;
+    setEmployeeSettings({
+      defaultCreateAccount: storedDefaultCreateAccount === "true",
+      defaultPageSize: validatedPageSize,
+    });
   }, [user, applyTheme]);
   const loadNotificationPrefs = useCallback(async () => {
     if (!user) return;
@@ -230,6 +247,21 @@ const SettingsPage: React.FC = () => {
     setCompactMode(value);
     localStorage.setItem("hrms_compact_mode", value ? "true" : "false");
   };
+  const handleEmployeeSettingsSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingEmployeeSettings(true);
+    try {
+      localStorage.setItem(
+        "hrms_employee_default_create_account",
+        employeeSettings.defaultCreateAccount ? "true" : "false"
+      );
+      localStorage.setItem("hrms_employee_page_size", String(employeeSettings.defaultPageSize));
+      window.dispatchEvent(new Event("hrms:employee-settings-update"));
+      toast.success("Employee management settings updated");
+    } finally {
+      setSavingEmployeeSettings(false);
+    }
+  };
   const notificationSummary = useMemo(() => {
     const enabled = Object.entries(notificationChannels)
       .filter(([, value]) => value)
@@ -253,6 +285,7 @@ const SettingsPage: React.FC = () => {
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
+        <TabsTrigger value="employees">Employees</TabsTrigger>
         </TabsList>
         <TabsContent value="account" className="space-y-6">
           <Card>
@@ -379,7 +412,7 @@ const SettingsPage: React.FC = () => {
                           <p className="text-sm text-muted-foreground">{description}</p>
                         </div>
                       </div>
-                      <Switch
+                    <Switch
                         checked={notificationChannels[key]}
                         disabled={disabled}
                         onCheckedChange={(value) =>
@@ -499,7 +532,7 @@ const SettingsPage: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <Icon className="h-4 w-4" />
                         <span>{label}</span>
-                      </div>
+                    </div>
                     </button>
                   ))}
                 </div>
@@ -508,7 +541,7 @@ const SettingsPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">Compact mode</p>
-                  <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                     Reduce spacing and show more information at once.
                   </p>
                 </div>
@@ -549,16 +582,86 @@ const SettingsPage: React.FC = () => {
                 <Select value={timezone} onValueChange={handleTimezoneChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select timezone" />
-                  </SelectTrigger>
-                  <SelectContent>
+                        </SelectTrigger>
+                        <SelectContent>
                     {AVAILABLE_TIMEZONES.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
+                        </SelectContent>
+                      </Select>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="employees" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Employee management
+              </CardTitle>
+              <CardDescription>
+                Control defaults for employee creation and the directory experience.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-6" onSubmit={handleEmployeeSettingsSave}>
+                <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">Default create user account</p>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically enable the “Create User Account” option when adding a new employee.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={employeeSettings.defaultCreateAccount}
+                    onCheckedChange={(checked) =>
+                      setEmployeeSettings((prev) => ({ ...prev, defaultCreateAccount: checked }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-[260px_auto] sm:items-center">
+                  <div>
+                    <p className="font-medium">Employees per page</p>
+                    <p className="text-sm text-muted-foreground">
+                      Choose how many employees appear in each page of the directory.
+                    </p>
+                  </div>
+                  <Select
+                    value={String(employeeSettings.defaultPageSize)}
+                    onValueChange={(value) =>
+                      setEmployeeSettings((prev) => ({
+                        ...prev,
+                        defaultPageSize: Number(value),
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Employees per page" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 per page</SelectItem>
+                      <SelectItem value="20">20 per page</SelectItem>
+                      <SelectItem value="50">50 per page</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Separator />
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={savingEmployeeSettings}>
+                    {savingEmployeeSettings ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save settings"
+                    )}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>

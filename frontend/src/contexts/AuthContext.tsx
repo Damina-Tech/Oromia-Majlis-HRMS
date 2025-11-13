@@ -18,6 +18,7 @@ interface AuthContextType {
   loginWithSSO: (provider: string) => Promise<boolean>;
   logout: () => void;
   refreshUserData: () => Promise<boolean>;
+  updateUserProfile: (patch: Partial<User>) => void;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
   isLoading: boolean;
@@ -61,6 +62,15 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
       localStorage.removeItem('accessToken');
       return false;
     }
+  };
+
+  const updateUserProfile = (patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...patch };
+      localStorage.setItem('hrms_user', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const logout = () => {
@@ -164,6 +174,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     loginWithSSO,
     logout,
     refreshUserData,
+    updateUserProfile,
     isAuthenticated: !!user,
     hasPermission,
     isLoading

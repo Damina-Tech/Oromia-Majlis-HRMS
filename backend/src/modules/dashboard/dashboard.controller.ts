@@ -132,7 +132,7 @@ export async function getDashboardStats(req: Request, res: Response) {
     // Pending Leave Requests (for Admin/HR/Manager)
     if (isAdmin || isHR || isManager) {
       try {
-        const pendingLeaves = await prisma.leave.count({
+        const pendingLeaves = await prisma.leaveRequest.count({
           where: { status: "PENDING" },
         });
         stats.pendingLeaves = pendingLeaves;
@@ -141,7 +141,7 @@ export async function getDashboardStats(req: Request, res: Response) {
       }
     } else if (isEmployee && employeeId) {
       try {
-        const myPendingLeaves = await prisma.leave.count({
+        const myPendingLeaves = await prisma.leaveRequest.count({
           where: {
             employeeId,
             status: "PENDING",
@@ -159,7 +159,7 @@ export async function getDashboardStats(req: Request, res: Response) {
         const [thisMonthPayroll, lastMonthPayroll] = await Promise.all([
           prisma.payroll.aggregate({
             where: {
-              payPeriodStart: { gte: thisMonthStart, lte: thisMonthEnd },
+              periodStart: { gte: thisMonthStart, lte: thisMonthEnd },
             },
             _sum: {
               netSalary: true,
@@ -167,7 +167,7 @@ export async function getDashboardStats(req: Request, res: Response) {
           }),
           prisma.payroll.aggregate({
             where: {
-              payPeriodStart: { gte: lastMonthStart, lte: lastMonthEnd },
+              periodStart: { gte: lastMonthStart, lte: lastMonthEnd },
             },
             _sum: {
               netSalary: true,
@@ -194,7 +194,7 @@ export async function getDashboardStats(req: Request, res: Response) {
     try {
       const overdueTasks = await prisma.task.count({
         where: {
-          status: { not: "COMPLETED" },
+          status: { notIn: ["DONE", "CANCELLED"] },
           dueDate: { lt: today },
         },
       });
@@ -219,31 +219,23 @@ export async function getDashboardStats(req: Request, res: Response) {
     yesterday.setDate(yesterday.getDate() - 1);
 
     try {
-      // Recent leaves
       if (isAdmin || isHR || isManager) {
-        const recentLeaves = await prisma.leave.findMany({
-          where: {
-            createdAt: { gte: yesterday },
-          },
+        const recentLeaves = await prisma.leaveRequest.findMany({
+          where: { createdAt: { gte: yesterday } },
           take: 5,
           orderBy: { createdAt: "desc" },
           include: {
             employee: {
-              select: {
-                firstName: true,
-                lastName: true,
-                employeeCode: true,
-              },
+              select: { firstName: true, lastName: true },
             },
           },
         });
-
         recentLeaves.forEach((leave) => {
           recentActivity.push({
             id: `leave-${leave.id}`,
             type: "leave",
             title: `${leave.employee.firstName} ${leave.employee.lastName} applied for ${leave.leaveType} leave`,
-            description: `${leave.days} days from ${new Date(leave.startDate).toLocaleDateString()}`,
+            description: `${leave.days} day(s) starting ${new Date(leave.startDate).toLocaleDateString()}`,
             timestamp: leave.createdAt,
             status: leave.status,
             module: "LEAVES",
@@ -251,24 +243,15 @@ export async function getDashboardStats(req: Request, res: Response) {
         });
       }
 
-      // Recent expenses
       if (isAdmin || isHR || isManager) {
         const recentExpenses = await prisma.expense.findMany({
-          where: {
-            createdAt: { gte: yesterday },
-          },
+          where: { createdAt: { gte: yesterday } },
           take: 5,
           orderBy: { createdAt: "desc" },
           include: {
-            submittedByEmployee: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
+            submittedByEmployee: { select: { firstName: true, lastName: true } },
           },
         });
-
         recentExpenses.forEach((exp) => {
           recentActivity.push({
             id: `expense-${exp.id}`,
@@ -282,28 +265,44 @@ export async function getDashboardStats(req: Request, res: Response) {
         });
       }
 
-      // Recent tasks
+      if (isAdmin || isHR || isManager) {
+        const recentAnnouncements = await prisma.announcement.findMany({
+          where: { createdAt: { gte: yesterday } },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: {
+            createdByUser: { select: { firstName: true, lastName: true } },
+          },
+        });
+        recentAnnouncements.forEach((announcement) => {
+          const author = announcement.createdByUser
+            ? `${announcement.createdByUser.firstName} ${announcement.createdByUser.lastName}`
+            : "System";
+          recentActivity.push({
+            id: `announcement-${announcement.id}`,
+            type: "announcement",
+            title: `Announcement "${announcement.title}" created`,
+            description: `By ${author} · Status: ${announcement.status}`,
+            timestamp: announcement.createdAt,
+            status: announcement.status,
+            module: "ANNOUNCEMENTS",
+          });
+        });
+      }
+
       const recentTasks = await prisma.task.findMany({
-        where: {
-          createdAt: { gte: yesterday },
-        },
+        where: { createdAt: { gte: yesterday } },
         take: 5,
         orderBy: { createdAt: "desc" },
         include: {
           assignments: {
             take: 1,
             include: {
-              employee: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                },
-              },
+              employee: { select: { firstName: true, lastName: true } },
             },
           },
         },
       });
-
       recentTasks.forEach((task) => {
         const assignee = task.assignments[0]?.employee;
         recentActivity.push({
@@ -318,14 +317,143 @@ export async function getDashboardStats(req: Request, res: Response) {
           module: "TASKS",
         });
       });
+
+      if (isAdmin || isHR || isManager) {
+        const recentDocuments = await prisma.generatedDocument.findMany({
+          where: { createdAt: { gte: yesterday } },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: {
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        });
+        recentDocuments.forEach((doc) => {
+          recentActivity.push({
+            id: `document-${doc.id}`,
+            type: "document",
+            title: `Document "${doc.fileName}" generated`,
+            description: doc.employee
+              ? `For ${doc.employee.firstName} ${doc.employee.lastName}`
+              : "Generated for recipient",
+            timestamp: doc.createdAt,
+            status: "GENERATED",
+            module: "DOCUMENTS",
+          });
+        });
+      }
+
+      if (isAdmin || isHR || isManager) {
+        const recentAssetAssignments = await prisma.assetAssignment.findMany({
+          where: { createdAt: { gte: yesterday } },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: {
+            asset: { select: { name: true, assetCode: true } },
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        });
+        recentAssetAssignments.forEach((assignment) => {
+          recentActivity.push({
+            id: `asset-assignment-${assignment.id}`,
+            type: "asset",
+            title: `Asset "${assignment.asset.name}" assigned`,
+            description: assignment.employee
+              ? `To ${assignment.employee.firstName} ${assignment.employee.lastName}`
+              : "Assigned",
+            timestamp: assignment.createdAt,
+            status: "ASSIGNED",
+            module: "ASSETS",
+          });
+        });
+      }
+
+      if (isAdmin || isHR) {
+        const recentEmployees = await prisma.employee.findMany({
+          where: { createdAt: { gte: yesterday } },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            department: { select: { name: true } },
+            createdAt: true,
+          },
+        });
+        recentEmployees.forEach((emp) => {
+          recentActivity.push({
+            id: `employee-${emp.id}`,
+            type: "employee",
+            title: `New employee onboarded: ${emp.firstName} ${emp.lastName}`,
+            description: `${emp.designation ?? "Role N/A"} · ${emp.department?.name ?? "Department N/A"}`,
+            timestamp: emp.createdAt,
+            status: "CREATED",
+            module: "EMPLOYEES",
+          });
+        });
+      }
+
+      if (isAdmin || isHR) {
+        const recentPayrolls = await prisma.payroll.findMany({
+          where: { createdAt: { gte: yesterday } },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            employee: { select: { firstName: true, lastName: true } },
+            periodStart: true,
+            periodEnd: true,
+            netSalary: true,
+            status: true,
+            createdAt: true,
+          },
+        });
+        recentPayrolls.forEach((payroll) => {
+          recentActivity.push({
+            id: `payroll-${payroll.id}`,
+            type: "payroll",
+            title: `Payroll processed for ${payroll.employee.firstName} ${payroll.employee.lastName}`,
+            description: `ETB ${Number(payroll.netSalary).toLocaleString()} · ${new Date(
+              payroll.periodStart
+            ).toLocaleDateString()} - ${new Date(payroll.periodEnd).toLocaleDateString()}`,
+            timestamp: payroll.createdAt,
+            status: payroll.status,
+            module: "PAYROLL",
+          });
+        });
+      }
+
+      if (isEmployee && employeeId) {
+        const myRecentTasks = await prisma.task.findMany({
+          where: {
+            assignments: { some: { employeeId } },
+            createdAt: { gte: yesterday },
+          },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        });
+        myRecentTasks.forEach((task) => {
+          recentActivity.push({
+            id: `my-task-${task.id}`,
+            type: "task",
+            title: `Task assigned to you: "${task.title}"`,
+            description: `Priority: ${task.priority}, Status: ${task.status}`,
+            timestamp: task.createdAt,
+            status: task.status,
+            module: "TASKS",
+          });
+        });
+      }
     } catch (err: any) {
       console.warn("Failed to load recent activity:", err.message);
     }
 
-    // Sort activity by timestamp
-    recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const topActivity = recentActivity
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5);
 
-    stats.recentActivity = recentActivity.slice(0, 20);
+    stats.recentActivity = topActivity;
 
     // Charts data
     const charts: any = {};
@@ -363,7 +491,7 @@ export async function getDashboardStats(req: Request, res: Response) {
 
           const payroll = await prisma.payroll.aggregate({
             where: {
-              payPeriodStart: { gte: monthStart, lte: monthEnd },
+              periodStart: { gte: monthStart, lte: monthEnd },
             },
             _sum: {
               netSalary: true,
@@ -431,7 +559,7 @@ export async function getDashboardStats(req: Request, res: Response) {
     try {
       const overdueTasksList = await prisma.task.findMany({
         where: {
-          status: { not: "COMPLETED" },
+          status: { notIn: ["DONE", "CANCELLED"] },
           dueDate: { lt: today },
         },
         take: 10,

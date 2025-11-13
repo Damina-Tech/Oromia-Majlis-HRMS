@@ -38,7 +38,7 @@ export async function listEmployees(req: Request, res: Response) {
 
   const { skip, take } = paginate(page, pageSize);
 
-  const [items, total] = await Promise.all([
+  const [items, total, overallCounts, departmentCount] = await Promise.all([
     prisma.employee.findMany({
       where,
       skip,
@@ -54,11 +54,17 @@ export async function listEmployees(req: Request, res: Response) {
             firstName: true,
             lastName: true,
             status: true,
+            avatarUrl: true,
           }
         }
       },
     }),
     prisma.employee.count({ where }),
+    prisma.employee.groupBy({
+      by: ["status"],
+      _count: { status: true },
+    }),
+    prisma.department.count(),
   ]);
 
   // Convert Decimal salary to number for JSON serialization
@@ -67,7 +73,26 @@ export async function listEmployees(req: Request, res: Response) {
     salary: emp.salary ? Number(emp.salary) : null,
   }));
 
-  res.json({ items: serializedItems, total, page, pageSize });
+  const statusTotals = overallCounts.reduce<Record<string, number>>((acc, item) => {
+    acc[item.status] = item._count.status;
+    return acc;
+  }, {});
+
+  const totalEmployeesOverall = overallCounts.reduce((acc, curr) => acc + curr._count.status, 0);
+
+  res.json({
+    items: serializedItems,
+    total,
+    page,
+    pageSize,
+    summary: {
+      totalEmployees: totalEmployeesOverall,
+      active: statusTotals.ACTIVE ?? 0,
+      inactive: statusTotals.INACTIVE ?? 0,
+      onLeave: statusTotals.ON_LEAVE ?? 0,
+      departments: departmentCount,
+    },
+  });
 }
 
 export async function getEmployee(req: Request, res: Response) {
@@ -93,6 +118,10 @@ export async function createEmployee(req: Request, res: Response) {
 
     const count = await prisma.employee.count(); // simple sequence
     const employeeCode = nextEmployeeCode(count + 1);
+    const shouldCreateUser = Boolean(dto.createUserAccount);
+
+    const userRoleId = dto.userRoleId && dto.userRoleId.trim() !== "" ? dto.userRoleId : null;
+    const providedPassword = dto.userPassword && dto.userPassword.trim() !== "" ? dto.userPassword : null;
 
     // Create employee and automatically create user account with EMPLOYEE role
     const emp = await prisma.$transaction(async (tx) => {
@@ -111,6 +140,7 @@ export async function createEmployee(req: Request, res: Response) {
           employmentType: dto.employmentType || null,
           educationLevel: dto.educationLevel && dto.educationLevel.trim() !== "" ? dto.educationLevel : null,
           educationOther: dto.educationOther && dto.educationOther.trim() !== "" ? dto.educationOther : null,
+          educationField: dto.educationField && dto.educationField.trim() !== "" ? dto.educationField : null,
           marriageStatus: dto.marriageStatus && dto.marriageStatus.trim() !== "" ? dto.marriageStatus : null,
           document: dto.document && dto.document.trim() !== "" ? dto.document : null,
           avatarUrl: dto.avatarUrl && dto.avatarUrl.trim() !== "" ? dto.avatarUrl : null,
@@ -122,55 +152,62 @@ export async function createEmployee(req: Request, res: Response) {
         },
       });
 
-      // Automatically create user account with EMPLOYEE role
-      try {
-        // Find EMPLOYEE role
-        const employeeRole = await tx.role.findUnique({
-          where: { name: "EMPLOYEE" },
-        });
+      if (shouldCreateUser) {
+        try {
+          if (!userRoleId) {
+            throw new Error("User role is required when creating a user account.");
+          }
+          if (!providedPassword) {
+            throw new Error("User password is required when creating a user account.");
+          }
 
-        if (employeeRole) {
-          // Check if user already exists with this email
+          const role = await tx.role.findUnique({
+            where: { id: userRoleId },
+          });
+
+          if (!role) {
+            throw new Error("Selected role was not found.");
+          }
+
           const existingUser = await tx.user.findUnique({
             where: { email: dto.email },
           });
 
-          if (!existingUser) {
-            // Generate default password (employee email + employeeCode)
-            const defaultPassword = `${dto.email}${employeeCode}`;
-            const passwordHash = await bcrypt.hash(defaultPassword, 10);
-
-            // Create user account
-            const user = await tx.user.create({
-              data: {
-                email: dto.email,
-                passwordHash,
-                firstName: dto.firstName,
-                lastName: dto.lastName,
-                status: dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
-                avatarUrl: dto.avatarUrl && dto.avatarUrl.trim() !== "" ? dto.avatarUrl : null,
-              },
-            });
-
-            // Assign EMPLOYEE role
-            await tx.userRole.create({
-              data: {
-                userId: user.id,
-                roleId: employeeRole.id,
-              },
-            });
-
-            // Link employee to user
-            await tx.employee.update({
-              where: { id: newEmp.id },
-              data: { userId: user.id },
-            });
+          if (existingUser) {
+            throw new Error("A user account with this email already exists.");
           }
+
+          const passwordHash = await bcrypt.hash(providedPassword, 10);
+
+          const user = await tx.user.create({
+            data: {
+              email: dto.email,
+              passwordHash,
+              firstName: dto.firstName,
+              lastName: dto.lastName,
+              status: dto.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+              avatarUrl: dto.avatarUrl && dto.avatarUrl.trim() !== "" ? dto.avatarUrl : null,
+            },
+          });
+
+          await tx.userRole.create({
+            data: {
+              userId: user.id,
+              roleId: role.id,
+            },
+          });
+
+          await tx.employee.update({
+            where: { id: newEmp.id },
+            data: { userId: user.id },
+          });
+        } catch (userError: any) {
+          console.error("Failed to create user account for employee:", userError);
+          const normalizedError =
+            userError instanceof Error ? userError : new Error("Failed to create user account.");
+          (normalizedError as any).status = 400;
+          throw normalizedError;
         }
-      } catch (userError: any) {
-        // If user creation fails, log but don't fail employee creation
-        console.error("Failed to auto-create user account for employee:", userError);
-        // Employee is still created, but without user account
       }
 
       // Reload employee with all relations
@@ -186,6 +223,7 @@ export async function createEmployee(req: Request, res: Response) {
               firstName: true,
               lastName: true,
               status: true,
+              avatarUrl: true,
             }
           }
         },
@@ -205,6 +243,9 @@ export async function createEmployee(req: Request, res: Response) {
       return res.status(409).json({ 
         message: "An employee with this email already exists in the system." 
       });
+    }
+    if (error?.status) {
+      return res.status(error.status).json({ message: error.message || "Failed to create employee" });
     }
     throw error;
   }
@@ -240,6 +281,7 @@ export async function updateEmployee(req: Request, res: Response) {
   if (dto.employmentType !== undefined) updateData.employmentType = dto.employmentType === "" ? null : dto.employmentType;
   if (dto.educationLevel !== undefined) updateData.educationLevel = dto.educationLevel === "" ? null : dto.educationLevel;
   if (dto.educationOther !== undefined) updateData.educationOther = dto.educationOther === "" ? null : dto.educationOther;
+  if (dto.educationField !== undefined) updateData.educationField = dto.educationField === "" ? null : dto.educationField;
   if (dto.marriageStatus !== undefined) updateData.marriageStatus = dto.marriageStatus === "" ? null : dto.marriageStatus;
   if (dto.document !== undefined) updateData.document = dto.document === "" ? null : dto.document;
   if (dto.avatarUrl !== undefined) updateData.avatarUrl = dto.avatarUrl === "" ? null : dto.avatarUrl;
@@ -379,6 +421,7 @@ export async function downloadSampleTemplate(req: Request, res: Response) {
       "employmentType",
       "educationLevel",
       "educationOther",
+      "educationField",
       "marriageStatus",
       "status",
       "joiningDate",
@@ -400,6 +443,7 @@ export async function downloadSampleTemplate(req: Request, res: Response) {
       "FULL_TIME",
       "DEGREE",
       "",
+      "Software Engineering",
       "SINGLE",
       "ACTIVE",
       "2024-01-01",
@@ -548,6 +592,7 @@ export async function bulkImportEmployees(req: MulterRequest, res: Response) {
           employmentType: data.employmentType || undefined,
           educationLevel: data.educationLevel || undefined,
           educationOther: data.educationOther || undefined,
+          educationField: data.educationField || undefined,
           marriageStatus: data.marriageStatus || undefined,
           status: data.status || "ACTIVE",
           joiningDate: data.joiningDate || undefined,
@@ -576,6 +621,7 @@ export async function bulkImportEmployees(req: MulterRequest, res: Response) {
               employmentType: validatedDto.employmentType || null,
               educationLevel: validatedDto.educationLevel && validatedDto.educationLevel.trim() !== "" ? validatedDto.educationLevel : null,
               educationOther: validatedDto.educationOther && validatedDto.educationOther.trim() !== "" ? validatedDto.educationOther : null,
+              educationField: validatedDto.educationField && validatedDto.educationField.trim() !== "" ? validatedDto.educationField : null,
               marriageStatus: validatedDto.marriageStatus && validatedDto.marriageStatus.trim() !== "" ? validatedDto.marriageStatus : null,
               status: validatedDto.status || "ACTIVE",
               joiningDate: validatedDto.joiningDate ? new Date(validatedDto.joiningDate) : null,
