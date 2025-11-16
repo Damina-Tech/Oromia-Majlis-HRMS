@@ -53,6 +53,8 @@ import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
+import LeadsPage from "./pages/LeadsPage";
+import LeadDetailPage from "./pages/LeadDetailPage";
 
 const queryClient = new QueryClient();
 
@@ -166,6 +168,8 @@ function AppRoutes() {
           data-id="gfpbgf4gj"
           data-path="src/App.tsx"
         />
+        <Route path="leads" element={<LeadsPage />} />
+        <Route path="leads/:leadId" element={<LeadDetailPage />} />
         <Route
           path="attendance"
           element={

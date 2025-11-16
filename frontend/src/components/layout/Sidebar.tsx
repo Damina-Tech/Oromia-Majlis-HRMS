@@ -24,8 +24,9 @@ import {
   ChevronRight,
   Timer,
   ChevronDown,
-  CheckSquare } from
-'lucide-react';
+  CheckSquare,
+  Handshake,
+} from "lucide-react";
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -43,6 +44,12 @@ const menuItems = [
   icon: Users,
   href: '/employees',
   permission: 'employees.read'
+},
+{
+  title: 'Leads',
+  icon: Handshake,
+  href: '/leads',
+  permission: 'leads.read'
 },
 {
   title: 'Organization',

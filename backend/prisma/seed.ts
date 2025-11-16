@@ -292,6 +292,9 @@ async function main() {
 
   console.log("✅ Created employee:", employeeEmp.employeeCode);
 
+  // Seed leads and related CRM data
+  await seedLeads(admin, managerUser, employeeUser, depts);
+
   // Create additional department manager (Finance Department)
   const financeManagerEmail = "finance.manager@ciro.gov.et";
   const financeManagerPassword = await bcrypt.hash("FinanceMgr123!", 10);
@@ -1790,6 +1793,12 @@ async function seedTasks() {
 async function seedExpenses() {
   console.log("💰 Seeding expenses...");
 
+  const existingExpenses = await prisma.expense.count();
+  if (existingExpenses > 0) {
+    console.log("ℹ️ Expenses already exist, skipping expense seeding");
+    return;
+  }
+
   // Get users and employees for expense submission
   const users = await prisma.user.findMany({
     include: {
@@ -1924,6 +1933,251 @@ async function seedExpenses() {
   }
 
   console.log(`✅ Created ${createdExpenses.length} expenses with various statuses`);
+}
+
+async function seedLeads(
+  adminUser: { id: string },
+  managerUser: { id: string },
+  employeeUser: { id: string },
+  departments: Array<{ id: string; name: string }>
+) {
+  const existing = await prisma.lead.count();
+  if (existing > 0) {
+    console.log("ℹ️ Leads already exist, skipping lead seed.");
+    return;
+  }
+
+  console.log("🌱 Seeding sample leads...");
+
+  const departmentLookup = new Map(
+    departments.map((dept) => [dept.name.toLowerCase(), dept.id])
+  );
+
+  const hours = (value: number) => value * 60 * 60 * 1000;
+  const days = (value: number) => value * 24 * 60 * 60 * 1000;
+
+  const samples = [
+    {
+      fullName: "Selam Teshome",
+      email: "selam.teshome@demo-leads.com",
+      phone: "+251 911 001 002",
+      companyName: "Selam Export",
+      location: "Adama",
+      interest: "Core HR & Payroll",
+      source: "Website",
+      stage: "NEW",
+      priority: "MEDIUM",
+      tags: ["website", "hr"],
+      notes: ["Signed up on landing page, awaiting qualification."],
+    },
+    {
+      fullName: "Lensa Logistics PLC",
+      email: "it@lensalogistics.com",
+      phone: "+251 922 334 455",
+      companyName: "Lensa Logistics",
+      location: "Addis Ababa",
+      interest: "Employee self-service portal",
+      source: "Referral",
+      stage: "CONTACTED",
+      priority: "HIGH",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("hr"),
+      lastContactedAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + days(3)),
+      tags: ["referral", "logistics"],
+      notes: ["Initial discovery call complete. Requested pricing sheet."],
+    },
+    {
+      fullName: "Blue Nile Manufacturing",
+      email: "tech@bluenilemf.com",
+      phone: "+251 913 556 789",
+      companyName: "Blue Nile Manufacturing",
+      location: "Bahir Dar",
+      interest: "Time tracking & shop-floor attendance",
+      source: "Trade Fair",
+      stage: "QUALIFIED",
+      priority: "HIGH",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("it"),
+      lastContactedAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + days(2)),
+      tags: ["manufacturing", "attendance"],
+      notes: ["Needs biometric integration demo."],
+    },
+    {
+      fullName: "Green Fields Agritech",
+      email: "ops@greenfields.ag",
+      phone: "+251 945 112 233",
+      companyName: "Green Fields Agritech",
+      location: "Hawassa",
+      interest: "Performance management",
+      source: "Email Campaign",
+      stage: "PROPOSAL_SENT",
+      priority: "MEDIUM",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("hr"),
+      lastContactedAt: new Date(Date.now() - days(2)),
+      nextFollowUpAt: new Date(Date.now() + days(1)),
+      tags: ["proposal", "agritech"],
+      notes: ["Proposal shared, awaiting CFO approval."],
+    },
+    {
+      fullName: "Aster Diagnostics",
+      email: "admin@asterdx.com",
+      phone: "+251 968 223 441",
+      companyName: "Aster Diagnostics",
+      location: "Dire Dawa",
+      interest: "Document automation",
+      source: "Partner",
+      stage: "NEGOTIATION",
+      priority: "HIGH",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("it"),
+      lastContactedAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + hours(12)),
+      tags: ["negotiation", "healthcare"],
+      notes: ["Legal review in progress, small pricing gap remaining."],
+    },
+    {
+      fullName: "Quantum Retail Group",
+      email: "people@quantumretail.com",
+      phone: "+251 977 665 443",
+      companyName: "Quantum Retail Group",
+      location: "Mekelle",
+      interest: "360° performance",
+      source: "LinkedIn",
+      stage: "READY_TO_CONVERT",
+      priority: "HIGH",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("hr"),
+      lastContactedAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + hours(6)),
+      tags: ["retail", "ready"],
+      notes: ["Budget approved, waiting on exec signature."],
+    },
+    {
+      fullName: "Axum Airlines",
+      email: "procurement@axumair.com",
+      phone: "+251 934 556 677",
+      companyName: "Axum Airlines",
+      location: "Addis Ababa",
+      interest: "Payroll outsourcing",
+      source: "Customer Event",
+      stage: "CONVERTED",
+      priority: "HIGH",
+      assignedToUserId: managerUser.id,
+      assignedDepartmentId: departmentLookup.get("finance"),
+      lastContactedAt: new Date(),
+      tags: ["converted", "aviation"],
+      notes: ["Deal closed. Implementation kickoff scheduled."],
+    },
+    {
+      fullName: "Unity Consultancy",
+      email: "info@unityconsultancy.com",
+      phone: "+251 901 223 344",
+      companyName: "Unity Consultancy",
+      location: "Addis Ababa",
+      interest: "HR analytics",
+      source: "Cold Outreach",
+      stage: "ARCHIVED",
+      priority: "LOW",
+      assignedToUserId: employeeUser.id,
+      assignedDepartmentId: departmentLookup.get("hr"),
+      lastContactedAt: new Date(Date.now() - days(20)),
+      tags: ["archived", "consulting"],
+      notes: ["Paused initiative until next fiscal year."],
+    },
+  ];
+
+  for (const sample of samples) {
+    const lead = await prisma.lead.create({
+      data: {
+        fullName: sample.fullName,
+        email: sample.email,
+        phone: sample.phone,
+        companyName: sample.companyName,
+        location: sample.location,
+        interest: sample.interest,
+        source: sample.source,
+        stage: sample.stage as Prisma.LeadStage,
+        priority: sample.priority as Prisma.LeadPriority,
+        status:
+          sample.stage === "CONVERTED"
+            ? "CONVERTED"
+            : sample.stage === "ARCHIVED"
+            ? "ARCHIVED"
+            : "ACTIVE",
+        tags: sample.tags ?? [],
+        assignedToUserId: sample.assignedToUserId ?? null,
+        assignedDepartmentId: sample.assignedDepartmentId ?? null,
+        createdBy: adminUser.id,
+        lastContactedAt: sample.lastContactedAt ?? null,
+        nextFollowUpAt: sample.nextFollowUpAt ?? null,
+        convertedAt: sample.stage === "CONVERTED" ? new Date() : null,
+        archivedAt: sample.stage === "ARCHIVED" ? new Date() : null,
+        potentialValue: sample.stage === "CONVERTED" ? 420000 : 120000,
+      },
+    });
+
+    await prisma.leadHistory.create({
+      data: {
+        leadId: lead.id,
+        action: "CREATED",
+        actorId: adminUser.id,
+      },
+    });
+
+    if (sample.stage !== "NEW") {
+      await prisma.leadHistory.create({
+        data: {
+          leadId: lead.id,
+          action: "STAGE_CHANGED",
+          actorId: sample.assignedToUserId ?? adminUser.id,
+          toStage: sample.stage as Prisma.LeadStage,
+        },
+      });
+    }
+
+    if (sample.notes) {
+      for (const note of sample.notes) {
+        await prisma.leadNote.create({
+          data: {
+            leadId: lead.id,
+            authorId: sample.assignedToUserId ?? adminUser.id,
+            content: note,
+          },
+        });
+      }
+    }
+  }
+
+  await prisma.leadMetrics.deleteMany({ where: { scope: "GLOBAL" } });
+
+  const [stageCounts, sourceCounts, totalLeads, convertedLeads] = await Promise.all([
+    prisma.lead.groupBy({ by: ["stage"], _count: { _all: true } }),
+    prisma.lead.groupBy({
+      by: ["source"],
+      where: { source: { not: null } },
+      _count: { _all: true },
+    }),
+    prisma.lead.count(),
+    prisma.lead.count({ where: { status: "CONVERTED" } }),
+  ]);
+
+  await prisma.leadMetrics.create({
+    data: {
+      scope: "GLOBAL",
+      funnel: stageCounts.map((row) => ({ stage: row.stage, count: row._count._all })) as Prisma.InputJsonValue,
+      sources: sourceCounts.map((row) => ({ source: row.source, count: row._count._all })) as Prisma.InputJsonValue,
+      totals: {
+        total: totalLeads,
+        converted: convertedLeads,
+        conversionRate: totalLeads ? convertedLeads / totalLeads : 0,
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  console.log(`✅ Seeded ${samples.length} leads with histories, notes, and metrics`);
 }
 
 main()

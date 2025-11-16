@@ -17,6 +17,7 @@ const DEFAULT_CHANNEL_PREFS = {
 
 const DEFAULT_MODULE_PREFS: Record<string, boolean> = {
   EMPLOYEE: true,
+  LEAD: true,
   DEPARTMENT: true,
   LEAVE: true,
   ATTENDANCE: true,

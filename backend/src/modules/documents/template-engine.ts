@@ -68,8 +68,6 @@ async function getEmployeeData(employeeId: string): Promise<MergeFieldData["empl
           lastName: true,
         },
       },
-      salaryGrade: true,
-      salaryStep: true,
     },
   });
 
@@ -103,8 +101,6 @@ async function getEmployeeData(employeeId: string): Promise<MergeFieldData["empl
     manager: employee.manager
       ? `${employee.manager.firstName} ${employee.manager.lastName}`.trim()
       : "",
-    salaryGrade: employee.salaryGrade?.name || "",
-    salaryStep: employee.salaryStep?.salary?.toString() || "",
   };
 }
 

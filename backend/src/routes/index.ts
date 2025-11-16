@@ -16,6 +16,7 @@ import taskRoutes from "../modules/tasks/task.routes.js";
 import expenseRoutes from "../modules/expenses/expense.routes.js";
 import reportRoutes from "../modules/reports/report.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
+import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
@@ -65,6 +66,12 @@ router.use("/v1/tasks", requireAuth, hasAnyPermission("tasks.view", "tasks.creat
 router.use("/v1/expenses", expenseRoutes);
 router.use("/v1/reports", reportRoutes);
 router.use("/v1/dashboard", dashboardRoutes);
+router.use(
+  "/v1/leads",
+  requireAuth,
+  hasAnyPermission("leads.read", "leads.write", "leads.manage"),
+  leadsRoutes
+);
 router.use(
   "/v1/notifications",
   requireAuth,
