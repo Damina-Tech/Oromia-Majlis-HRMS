@@ -1,0 +1,46 @@
+name: Deploy Pharmacy API to cPanel via FTP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/api-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  api-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+
+    - name: Prepare deploy bundle
+      run: |
+        rm -rf deploy
+        mkdir -p deploy
+        cp package.json package-lock.json deploy/
+        cp tsconfig.json deploy/
+        mkdir -p deploy/src
+        mkdir -p deploy/prisma
+        cp -r src/* deploy/src/
+        cp -r prisma/* deploy/prisma/
+
+    - name: Deploy runtime bundle to cPanel via FTP
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME_API }}
+        password: ${{ secrets.FTP_PASSWORD_API }}
+        local-dir: ./backend/deploy/
+        protocol: ftp
