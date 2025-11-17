@@ -15,7 +15,7 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: (_origin, callback) => callback(null, true),
   credentials: true
 }));
 
