@@ -1,5 +1,6 @@
  "use client";
- import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -18,12 +20,48 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
-  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle, Upload, FileDown, User
+  Search,
+  Plus,
+  Filter,
+  Download,
+  Mail,
+  Phone,
+  Calendar,
+  Edit,
+  Trash2,
+  Eye,
+  AlertCircle,
+  Upload,
+  FileDown,
+  User,
+  IdCard,
+  Sparkles,
+  Printer,
 } from "lucide-react";
 import api, { uploadDocument, bulkImportEmployees, downloadSampleTemplate } from "@/services/api"; // Axios instance with baseURL + auth
 import { getRoles, type Role } from "@/services/users";
+import {
+  listIdCardTemplates,
+  createIdCardTemplate,
+  updateIdCardTemplate,
+  setDefaultIdCardTemplate,
+  generateEmployeeIdCard as requestGenerateIdCard,
+  batchGenerateIdCards,
+  type IdCardTemplate,
+  type IdCardTemplateSettings,
+} from "@/services/employeeId";
+import IdCardPreview from "@/components/employees/IdCardPreview";
 
 // ---------- Types ----------
 type Dept = { id: string; name: string };
@@ -61,6 +99,10 @@ type Employee = {
     avatarUrl?: string | null;
   } | null;
   avatarUrl?: string | null;
+  idCardGeneratedAt?: string | null;
+  idCardTemplateId?: string | null;
+  idCardPdfUrl?: string | null;
+  idCardPngUrl?: string | null;
 };
 
 type EmployeeListSummary = {
@@ -77,6 +119,14 @@ type EmployeeListResponse = {
   page: number;
   pageSize: number;
   summary?: EmployeeListSummary;
+};
+
+type TemplateFormState = {
+  id?: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  settings: IdCardTemplateSettings;
 };
 
 const DEFAULT_EMPLOYEE_SUMMARY: EmployeeListSummary = {
@@ -112,6 +162,12 @@ const resolveAvatarUrl = (value?: string | null) => {
   return `${apiBaseUrl}${value}`;
 };
 
+const resolveFileUrl = (value?: string | null) => {
+  if (!value) return undefined;
+  if (value.startsWith("http")) return value;
+  return `${apiBaseUrl}${value}`;
+};
+
 const formatStatusLabel = (status: Employee["status"]) =>
   status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
@@ -121,6 +177,48 @@ const formatEmploymentType = (value?: string | null) =>
 const ADVANCED_EDUCATION_LEVELS = ["DEGREE", "MASTER", "PHD"] as const;
 const requiresEducationField = (level?: string | null) =>
   !!level && ADVANCED_EDUCATION_LEVELS.includes(level as typeof ADVANCED_EDUCATION_LEVELS[number]);
+
+const DEFAULT_TEMPLATE_SETTINGS: IdCardTemplateSettings = {
+  size: "ID1",
+  background: { type: "color", value: "#ffffff" },
+  border: { width: 2, color: "#111827", radius: 20 },
+  text: { color: "#0f172a", fontFamily: "Inter, sans-serif", fontSize: 14, headingSize: 22 },
+  layout: "PHOTO_LEFT",
+  fieldVisibility: {
+    showEmployeeName: true,
+    showJobTitle: true,
+    showDepartment: true,
+    showEmployeeCode: true,
+    showPhoto: true,
+    showCompanyLogo: true,
+    showIssueDate: true,
+    showExpiryDate: false,
+    showBarcode: true,
+    showSignature: false,
+    showStamp: false,
+  },
+  assets: {},
+  extraLines: ["{{department}}", "ID: {{employeeCode}}"],
+  codeType: "QR",
+};
+
+const normalizeSettings = (input?: IdCardTemplateSettings): IdCardTemplateSettings => ({
+  ...DEFAULT_TEMPLATE_SETTINGS,
+  ...input,
+  border: { ...DEFAULT_TEMPLATE_SETTINGS.border, ...(input?.border ?? {}) },
+  text: { ...DEFAULT_TEMPLATE_SETTINGS.text, ...(input?.text ?? {}) },
+  fieldVisibility: { ...DEFAULT_TEMPLATE_SETTINGS.fieldVisibility, ...(input?.fieldVisibility ?? {}) },
+  assets: { ...(input?.assets ?? {}) },
+  extraLines: input?.extraLines ?? DEFAULT_TEMPLATE_SETTINGS.extraLines,
+});
+
+const buildTemplateForm = (template?: IdCardTemplate): TemplateFormState => ({
+  id: template?.id,
+  name: template?.name ?? "New template",
+  description: template?.description ?? "",
+  isDefault: template?.isDefault ?? false,
+  settings: normalizeSettings(template?.settings),
+});
 
 // ---------- API calls ----------
 async function apiListEmployees(params: {
@@ -1262,6 +1360,9 @@ function EditEmployeeDialog({
 const EmployeesPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("employees.write");
+  const canManageId = hasPermission("employees.id.manage");
+  const canGenerateId = canManageId || hasPermission("employees.id.generate");
+  const canBatchGenerate = canManageId || hasPermission("employees.id.batch");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
@@ -1288,6 +1389,49 @@ const EmployeesPage: React.FC = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState<{ total: number; successful: number; failed: number; errors: Array<{ row: number; email?: string; error: string }> } | null>(null);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+
+  const [idTemplates, setIdTemplates] = useState<IdCardTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
+  const [templateForm, setTemplateForm] = useState<TemplateFormState>(() => buildTemplateForm());
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [uploadingAssets, setUploadingAssets] = useState<Record<string, boolean>>({});
+
+  const [idDialogOpen, setIdDialogOpen] = useState(false);
+  const [idDialogEmployee, setIdDialogEmployee] = useState<Employee | null>(null);
+  const [idDialogTemplateId, setIdDialogTemplateId] = useState<string | null>(null);
+  const [idDialogIssueDate, setIdDialogIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [idDialogExpiryDate, setIdDialogExpiryDate] = useState<string>("");
+  const [idGenerating, setIdGenerating] = useState(false);
+  const [idResult, setIdResult] = useState<{ pdfUrl: string; pngUrl: string } | null>(null);
+
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchTemplateId, setBatchTemplateId] = useState<string | null>(null);
+  const [batchIssueDate, setBatchIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [batchExpiryDate, setBatchExpiryDate] = useState<string>("");
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchZipUrl, setBatchZipUrl] = useState<string | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    if (!canGenerateId) return;
+    setTemplatesLoading(true);
+    try {
+      const data = await listIdCardTemplates();
+      setIdTemplates(data);
+      setActiveTemplateId((prev) => {
+        const fallback =
+          data.find((tpl) => tpl.id === prev) ?? data.find((tpl) => tpl.isDefault) ?? data[0] ?? null;
+        setTemplateForm(buildTemplateForm(fallback ?? undefined));
+        return fallback?.id ?? null;
+      });
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to load ID templates");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [canGenerateId, toast]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1387,6 +1531,17 @@ const EmployeesPage: React.FC = () => {
   }, [debouncedSearch, departmentFilter, statusFilter, page, pageSize, reloadKey, departments.length]);
 
   useEffect(() => {
+    setSelectedEmployeeIds((prev) =>
+      prev.filter((id) => employees.some((emp) => emp.id === id && emp.status === "ACTIVE"))
+    );
+  }, [employees]);
+
+  useEffect(() => {
+    if (!canGenerateId) return;
+    loadTemplates();
+  }, [canGenerateId, loadTemplates]);
+
+  useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(total / pageSize));
     if (page > maxPage) {
       setPage(maxPage);
@@ -1396,6 +1551,27 @@ const EmployeesPage: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = total === 0 ? 0 : Math.min(page * pageSize, total);
+  const previewEmployee = useMemo(
+    () => employees.find((emp) => emp.status === "ACTIVE") ?? employees[0] ?? null,
+    [employees]
+  );
+  const selectableEmployeeIds = useMemo(
+    () => employees.filter((emp) => emp.status === "ACTIVE").map((emp) => emp.id),
+    [employees]
+  );
+  const allSelected =
+    selectableEmployeeIds.length > 0 && selectedEmployeeIds.length === selectableEmployeeIds.length;
+
+  const selectedTemplate = useMemo(() => {
+    if (!idTemplates.length) return null;
+    return (
+      idTemplates.find((tpl) => tpl.id === idDialogTemplateId) ||
+      idTemplates.find((tpl) => tpl.isDefault) ||
+      idTemplates[0]
+    );
+  }, [idDialogTemplateId, idTemplates]);
+  const baseColumnCount = 6;
+  const tableColumnCount = canBatchGenerate ? baseColumnCount + 1 : baseColumnCount;
 
   const handleEmployeeUpdated = (updated: Employee) => {
     setEmployees(prev => prev.map(emp => emp.id === updated.id ? updated : emp));
@@ -1416,6 +1592,188 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
+  const toggleEmployeeSelection = (employeeId: string, checked: boolean) => {
+    setSelectedEmployeeIds((prev) => {
+      if (checked) {
+        if (prev.includes(employeeId)) return prev;
+        return [...prev, employeeId];
+      }
+      return prev.filter((id) => id !== employeeId);
+    });
+  };
+
+  const toggleSelectAllEmployees = (checked: boolean) => {
+    if (checked) {
+      setSelectedEmployeeIds(selectableEmployeeIds);
+    } else {
+      setSelectedEmployeeIds([]);
+    }
+  };
+
+  const handleTemplateFieldChange = <T extends keyof TemplateFormState>(field: T, value: TemplateFormState[T]) => {
+    setTemplateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleTemplateSettingsChange = <T extends keyof IdCardTemplateSettings>(
+    field: T,
+    value: IdCardTemplateSettings[T]
+  ) => {
+    setTemplateForm((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleTemplateToggle = (field: keyof IdCardTemplateSettings["fieldVisibility"], value: boolean) => {
+    setTemplateForm((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        fieldVisibility: {
+          ...prev.settings.fieldVisibility,
+          [field]: value,
+        },
+      },
+    }));
+  };
+
+  const handleAssetUpload = useCallback(async (
+    field: "logoUrl" | "signatureUrl" | "stampUrl" | "backgroundUrl",
+    file: File
+  ) => {
+    setUploadingAssets((prev) => ({ ...prev, [field]: true }));
+    try {
+      const result = await uploadDocument(file);
+      setTemplateForm((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          assets: {
+            ...prev.settings.assets,
+            [field]: result.url,
+          },
+        },
+      }));
+      toast.success(`${field === "logoUrl" ? "Logo" : field === "signatureUrl" ? "Signature" : field === "stampUrl" ? "Stamp" : "Background"} uploaded successfully`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? `Failed to upload ${field}`);
+    } finally {
+      setUploadingAssets((prev) => ({ ...prev, [field]: false }));
+    }
+  }, []);
+
+  const handleTemplateSave = async () => {
+    if (!templateForm.name.trim()) {
+      toast.error("Template name is required");
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      const payload = {
+        name: templateForm.name.trim(),
+        description: templateForm.description?.trim() || undefined,
+        settings: templateForm.settings,
+        isDefault: templateForm.isDefault,
+      };
+      if (templateForm.id) {
+        await updateIdCardTemplate(templateForm.id, payload);
+        toast.success("Template updated");
+      } else {
+        await createIdCardTemplate(payload);
+        toast.success("Template created");
+      }
+      await loadTemplates();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to save template");
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleSetDefaultTemplate = async (templateId: string) => {
+    try {
+      await setDefaultIdCardTemplate(templateId);
+      toast.success("Default ID template updated");
+      await loadTemplates();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to update default");
+    }
+  };
+
+  const openGenerateDialog = (employee: Employee) => {
+    if (!canGenerateId) return;
+    const fallbackTemplate =
+      idTemplates.find((tpl) => tpl.isDefault) ?? idTemplates.find((tpl) => tpl.id === activeTemplateId) ?? idTemplates[0];
+    setIdDialogEmployee(employee);
+    setIdDialogTemplateId(fallbackTemplate?.id ?? null);
+    setIdDialogIssueDate(new Date().toISOString().slice(0, 10));
+    setIdDialogExpiryDate("");
+    setIdResult(null);
+    setIdDialogOpen(true);
+  };
+
+  const handleGenerateIdCard = async () => {
+    if (!idDialogEmployee || !idDialogTemplateId) {
+      toast.error("Select a template");
+      return;
+    }
+    setIdGenerating(true);
+    try {
+      const response = await requestGenerateIdCard(idDialogEmployee.id, {
+        templateId: idDialogTemplateId,
+        issueDate: idDialogIssueDate || undefined,
+        expiryDate: idDialogExpiryDate || undefined,
+      });
+      setIdResult({ pdfUrl: response.pdfUrl, pngUrl: response.pngUrl });
+      toast.success("ID card generated");
+      setReloadKey((key) => key + 1);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to generate ID card");
+    } finally {
+      setIdGenerating(false);
+    }
+  };
+
+  const handleBatchGenerate = async () => {
+    if (!selectedEmployeeIds.length) {
+      toast.error("Select at least one active employee");
+      return;
+    }
+    if (!batchTemplateId) {
+      toast.error("Select a template for batch generation");
+      return;
+    }
+    setBatchGenerating(true);
+    try {
+      const response = await batchGenerateIdCards({
+        templateId: batchTemplateId,
+        employeeIds: selectedEmployeeIds,
+        issueDate: batchIssueDate || undefined,
+        expiryDate: batchExpiryDate || undefined,
+      });
+      setBatchZipUrl(response.zipUrl);
+      toast.success(`Generated ${response.results.length} ID cards`);
+      setSelectedEmployeeIds([]);
+      setReloadKey((key) => key + 1);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Batch generation failed");
+    } finally {
+      setBatchGenerating(false);
+    }
+  };
+
+  const handlePrintIdCard = () => {
+    if (!idResult) return;
+    const pdfUrl = resolveFileUrl(idResult.pdfUrl);
+    if (!pdfUrl) return;
+    const printWindow = window.open(pdfUrl, "_blank");
+    printWindow?.focus();
+    printWindow?.print();
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -1425,21 +1783,50 @@ const EmployeesPage: React.FC = () => {
           <p className="text-gray-600 mt-1">Manage and view employee information</p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canGenerateId && (
+            <Button variant="outline" size="sm" onClick={() => setTemplateSheetOpen(true)}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              ID Settings
+            </Button>
+          )}
+          {canBatchGenerate && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!selectedEmployeeIds.length || !idTemplates.length}
+              onClick={() => {
+                setBatchDialogOpen(true);
+                setBatchTemplateId(
+                  idTemplates.find((tpl) => tpl.isDefault)?.id ??
+                    idTemplates[0]?.id ??
+                    null
+                );
+                setBatchZipUrl(null);
+              }}
+            >
+              <IdCard className="mr-2 h-4 w-4" />
+              Batch IDs
+            </Button>
+          )}
           {canWrite && (
-            <Button variant="outline" onClick={() => {
-              setImportDialog(true);
-              setImportFile(null);
-              setImportResults(null);
-            }}>
-              <Upload className="h-4 w-4 mr-2" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setImportDialog(true);
+                setImportFile(null);
+                setImportResults(null);
+              }}
+            >
+              <Upload className="mr-2 h-4 w-4" />
               Import Bulk
             </Button>
           )}
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+          <Button variant="outline" size="sm">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
           <AddEmployeeDialog
             departments={departments}
             onCreated={() => {
@@ -1448,7 +1835,7 @@ const EmployeesPage: React.FC = () => {
             }}
             canCreate={!!canWrite}
           />
-          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -1572,6 +1959,15 @@ const EmployeesPage: React.FC = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canBatchGenerate && (
+                    <TableHead className="w-8">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={(checked) => toggleSelectAllEmployees(checked === true)}
+                        aria-label="Select all employees"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Employee</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Status</TableHead>
@@ -1585,6 +1981,16 @@ const EmployeesPage: React.FC = () => {
                   const avatarSrc = resolveAvatarUrl(e.avatarUrl ?? e.user?.avatarUrl ?? null);
                   return (
                     <TableRow key={e.id}>
+                    {canBatchGenerate && (
+                      <TableCell className="w-8">
+                        <Checkbox
+                          checked={selectedEmployeeIds.includes(e.id)}
+                          onCheckedChange={(checked) => toggleEmployeeSelection(e.id, checked === true)}
+                          disabled={e.status !== "ACTIVE"}
+                          aria-label={`Select ${e.firstName}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center space-x-3">
                         <Avatar>
@@ -1602,6 +2008,11 @@ const EmployeesPage: React.FC = () => {
                           {e.userId && e.user?.status === "ACTIVE" && (
                             <Badge variant="outline" className="mt-1 text-xs bg-green-50 text-green-700 border-green-200">
                               Has Account
+                            </Badge>
+                          )}
+                          {e.idCardGeneratedAt && (
+                            <Badge variant="secondary" className="mt-1 text-xs bg-indigo-50 text-indigo-700 border-indigo-200">
+                              ID ready
                             </Badge>
                           )}
                         </div>
@@ -1745,7 +2156,7 @@ const EmployeesPage: React.FC = () => {
                                     <p className="flex items-center gap-2">
                                       <Download className="h-3 w-3" />
                                       <a
-                                        href={`${apiBaseUrl}${e.document}`}
+                                        href={resolveFileUrl(e.document)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-600 hover:underline"
@@ -1756,17 +2167,57 @@ const EmployeesPage: React.FC = () => {
                                   )}
                                 </div>
                               </div>
+                              <div className="rounded-lg border border-dashed border-muted-foreground/40 bg-muted/30 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-foreground">ID Card</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {e.idCardGeneratedAt
+                                        ? `Generated ${formatDistanceToNow(new Date(e.idCardGeneratedAt), {
+                                            addSuffix: true,
+                                          })}`
+                                        : "Not generated yet"}
+                                    </p>
+                                  </div>
+                                  {canGenerateId && (
+                                    <Button size="sm" variant="outline" onClick={() => openGenerateDialog(e)}>
+                                      <IdCard className="mr-2 h-4 w-4" />
+                                      Generate
+                                    </Button>
+                                  )}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {e.idCardPdfUrl && (
+                                    <Button size="sm" asChild>
+                                      <a href={resolveFileUrl(e.idCardPdfUrl)} target="_blank" rel="noopener noreferrer">
+                                        Download PDF
+                                      </a>
+                                    </Button>
+                                  )}
+                                  {e.idCardPngUrl && (
+                                    <Button size="sm" variant="outline" asChild>
+                                      <a href={resolveFileUrl(e.idCardPngUrl)} target="_blank" rel="noopener noreferrer">
+                                        Download PNG
+                                      </a>
+                                    </Button>
+                                  )}
+                                  {!e.idCardPdfUrl && (
+                                    <p className="text-xs text-muted-foreground">No ID card available yet.</p>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </DialogContent>
                         </Dialog>
                         
-                        {hasPermission("employees.write") && (
-                      <>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => setEditingEmployee(e)}
-                            >
+                        {canGenerateId && (
+                          <Button variant="ghost" size="sm" onClick={() => openGenerateDialog(e)}>
+                            <IdCard className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canWrite && (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => setEditingEmployee(e)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -1824,6 +2275,586 @@ const EmployeesPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      <Sheet open={templateSheetOpen} onOpenChange={setTemplateSheetOpen}>
+        <SheetContent className="w-full space-y-6 overflow-y-auto sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Employee ID templates</SheetTitle>
+            <SheetDescription>Customize how ID cards look across the organization.</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={activeTemplateId ?? "__new__"}
+              onValueChange={(value) => {
+                if (value === "__new__") {
+                  setActiveTemplateId(null);
+                  setTemplateForm(buildTemplateForm());
+                  return;
+                }
+                const found = idTemplates.find((tpl) => tpl.id === value);
+                setActiveTemplateId(found?.id ?? null);
+                setTemplateForm(buildTemplateForm(found ?? undefined));
+              }}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select template" />
+              </SelectTrigger>
+              <SelectContent>
+                {idTemplates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>
+                    {tpl.name} {tpl.isDefault ? "(Default)" : ""}
+                  </SelectItem>
+                ))}
+                {canManageId && <SelectItem value="__new__">Create new template</SelectItem>}
+              </SelectContent>
+            </Select>
+            {canManageId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setActiveTemplateId(null);
+                  setTemplateForm(buildTemplateForm());
+                }}
+              >
+                New template
+              </Button>
+            )}
+            {activeTemplateId && canManageId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleSetDefaultTemplate(activeTemplateId)}
+                disabled={templatesLoading}
+              >
+                Set default
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4 rounded-2xl border bg-card/60 p-4 shadow-sm">
+              <div className="grid gap-2">
+                <Label>Template name</Label>
+                <Input
+                  value={templateForm.name}
+                  onChange={(e) => handleTemplateFieldChange("name", e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={templateForm.description ?? ""}
+                  onChange={(e) => handleTemplateFieldChange("description", e.target.value)}
+                  rows={2}
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Card size</Label>
+                  <Select
+                    value={templateForm.settings.size}
+                    onValueChange={(value) =>
+                      handleTemplateSettingsChange("size", value as IdCardTemplateSettings["size"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ID1">ID-1 (Standard)</SelectItem>
+                      <SelectItem value="ID2">ID-2</SelectItem>
+                      <SelectItem value="ID3">Portrait</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Layout</Label>
+                  <Select
+                    value={templateForm.settings.layout}
+                    onValueChange={(value) =>
+                      handleTemplateSettingsChange("layout", value as IdCardTemplateSettings["layout"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PHOTO_LEFT">Photo left</SelectItem>
+                      <SelectItem value="PHOTO_RIGHT">Photo right</SelectItem>
+                      <SelectItem value="PHOTO_TOP">Photo top</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Background color</Label>
+                  <Input
+                    type="color"
+                    value={templateForm.settings.background.value}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("background", {
+                        ...templateForm.settings.background,
+                        type: "color",
+                        value: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Border radius</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={40}
+                    value={templateForm.settings.border.radius}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("border", {
+                        ...templateForm.settings.border,
+                        radius: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Text color</Label>
+                  <Input
+                    type="color"
+                    value={templateForm.settings.text.color}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("text", {
+                        ...templateForm.settings.text,
+                        color: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Font family</Label>
+                  <Input
+                    value={templateForm.settings.text.fontFamily}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("text", {
+                        ...templateForm.settings.text,
+                        fontFamily: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Body font size</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={32}
+                    value={templateForm.settings.text.fontSize}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("text", {
+                        ...templateForm.settings.text,
+                        fontSize: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Heading font size</Label>
+                  <Input
+                    type="number"
+                    min={12}
+                    max={48}
+                    value={templateForm.settings.text.headingSize}
+                    onChange={(e) =>
+                      handleTemplateSettingsChange("text", {
+                        ...templateForm.settings.text,
+                        headingSize: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Code type</Label>
+                <Select
+                  value={templateForm.settings.codeType}
+                  onValueChange={(value) =>
+                    handleTemplateSettingsChange("codeType", value as IdCardTemplateSettings["codeType"])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="QR">QR code</SelectItem>
+                    <SelectItem value="BARCODE">Barcode</SelectItem>
+                    <SelectItem value="NONE">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Company Logo</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAssetUpload("logoUrl", file);
+                    }}
+                    disabled={uploadingAssets.logoUrl}
+                  />
+                  {templateForm.settings.assets?.logoUrl && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img
+                        src={resolveFileUrl(templateForm.settings.assets.logoUrl)}
+                        alt="Logo preview"
+                        className="h-10 w-auto rounded border"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleTemplateSettingsChange("assets", {
+                            ...templateForm.settings.assets,
+                            logoUrl: undefined,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {uploadingAssets.logoUrl && (
+                    <p className="text-xs text-muted-foreground">Uploading...</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Signature</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAssetUpload("signatureUrl", file);
+                    }}
+                    disabled={uploadingAssets.signatureUrl}
+                  />
+                  {templateForm.settings.assets?.signatureUrl && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img
+                        src={resolveFileUrl(templateForm.settings.assets.signatureUrl)}
+                        alt="Signature preview"
+                        className="h-10 w-auto rounded border"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleTemplateSettingsChange("assets", {
+                            ...templateForm.settings.assets,
+                            signatureUrl: undefined,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {uploadingAssets.signatureUrl && (
+                    <p className="text-xs text-muted-foreground">Uploading...</p>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Stamp</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAssetUpload("stampUrl", file);
+                    }}
+                    disabled={uploadingAssets.stampUrl}
+                  />
+                  {templateForm.settings.assets?.stampUrl && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img
+                        src={resolveFileUrl(templateForm.settings.assets.stampUrl)}
+                        alt="Stamp preview"
+                        className="h-10 w-auto rounded border"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleTemplateSettingsChange("assets", {
+                            ...templateForm.settings.assets,
+                            stampUrl: undefined,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {uploadingAssets.stampUrl && (
+                    <p className="text-xs text-muted-foreground">Uploading...</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Background Image</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAssetUpload("backgroundUrl", file);
+                    }}
+                    disabled={uploadingAssets.backgroundUrl}
+                  />
+                  {templateForm.settings.assets?.backgroundUrl && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img
+                        src={resolveFileUrl(templateForm.settings.assets.backgroundUrl)}
+                        alt="Background preview"
+                        className="h-20 w-auto rounded border"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleTemplateSettingsChange("assets", {
+                            ...templateForm.settings.assets,
+                            backgroundUrl: undefined,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {uploadingAssets.backgroundUrl && (
+                    <p className="text-xs text-muted-foreground">Uploading...</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Additional lines (one per line)</Label>
+                <Textarea
+                  rows={3}
+                  value={templateForm.settings.extraLines.join("\n")}
+                  onChange={(e) =>
+                    handleTemplateSettingsChange(
+                      "extraLines",
+                      e.target.value
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label className="text-sm font-semibold">Visible fields</Label>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {Object.entries(templateForm.settings.fieldVisibility).map(([field, value]) => (
+                    <div key={field} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                      <span className="text-sm capitalize">{field.replace(/show/i, "").replace(/([A-Z])/g, " $1")}</span>
+                      <Switch
+                        checked={value}
+                        onCheckedChange={(checked) => handleTemplateToggle(field as any, checked)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-2xl border bg-muted/40 p-4">
+              <p className="mb-3 text-sm font-medium text-muted-foreground">Live preview</p>
+              {previewEmployee ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Front</p>
+                    <IdCardPreview
+                      template={templateForm.settings}
+                      employee={previewEmployee}
+                      issueDate={idDialogIssueDate}
+                      expiryDate={idDialogExpiryDate}
+                      side="front"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Back</p>
+                    <IdCardPreview
+                      template={templateForm.settings}
+                      employee={previewEmployee}
+                      issueDate={idDialogIssueDate}
+                      expiryDate={idDialogExpiryDate}
+                      side="back"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Add an employee to preview this template.</p>
+              )}
+            </div>
+          </div>
+          <SheetFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTemplateSheetOpen(false)}>
+              Close
+            </Button>
+            {canManageId && (
+              <Button onClick={handleTemplateSave} disabled={templateSaving || templatesLoading}>
+                {templateSaving ? "Saving..." : templateForm.id ? "Update template" : "Create template"}
+              </Button>
+            )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={idDialogOpen} onOpenChange={setIdDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Generate ID card</DialogTitle>
+            <DialogDescription>
+              {idDialogEmployee
+                ? `Create an ID card for ${idDialogEmployee.firstName} ${idDialogEmployee.lastName}.`
+                : "Select an employee to continue."}
+            </DialogDescription>
+          </DialogHeader>
+          {idDialogEmployee ? (
+            <div className="grid gap-6 lg:grid-cols-[0.65fr_0.35fr]">
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label>Template</Label>
+                  <Select value={idDialogTemplateId ?? ""} onValueChange={(value) => setIdDialogTemplateId(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {idTemplates.map((tpl) => (
+                        <SelectItem key={tpl.id} value={tpl.id}>
+                          {tpl.name} {tpl.isDefault ? "(Default)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Issue date</Label>
+                    <Input type="date" value={idDialogIssueDate} onChange={(e) => setIdDialogIssueDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expiry date</Label>
+                    <Input type="date" value={idDialogExpiryDate} onChange={(e) => setIdDialogExpiryDate(e.target.value)} />
+                  </div>
+                </div>
+                <Button onClick={handleGenerateIdCard} disabled={idGenerating || !idDialogTemplateId}>
+                  {idGenerating ? "Generating..." : "Generate ID"}
+                </Button>
+                {idResult && (
+                  <div className="space-y-2 rounded-lg border p-3 text-sm">
+                    <p className="font-medium text-foreground">ID card ready</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" asChild>
+                        <a href={resolveFileUrl(idResult.pdfUrl)} target="_blank" rel="noopener noreferrer">
+                          Download PDF
+                        </a>
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handlePrintIdCard}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        Print
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={resolveFileUrl(idResult.pngUrl)} target="_blank" rel="noopener noreferrer">
+                          Download PNG
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-center bg-muted/40 p-3">
+                {selectedTemplate ? (
+                  <IdCardPreview
+                    template={selectedTemplate.settings}
+                    employee={idDialogEmployee}
+                    issueDate={idDialogIssueDate}
+                    expiryDate={idDialogExpiryDate}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">No template available.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select an employee to generate an ID card.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={batchDialogOpen}
+        onOpenChange={(open) => {
+          setBatchDialogOpen(open);
+          if (!open) setBatchZipUrl(null);
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Batch generate ID cards</DialogTitle>
+            <DialogDescription>
+              Generate cards for {selectedEmployeeIds.length} active employee
+              {selectedEmployeeIds.length === 1 ? "" : "s"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Template</Label>
+              <Select value={batchTemplateId ?? ""} onValueChange={(value) => setBatchTemplateId(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {idTemplates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={tpl.id}>
+                      {tpl.name} {tpl.isDefault ? "(Default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Issue date</Label>
+                <Input type="date" value={batchIssueDate} onChange={(e) => setBatchIssueDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Expiry date</Label>
+                <Input type="date" value={batchExpiryDate} onChange={(e) => setBatchExpiryDate(e.target.value)} />
+              </div>
+            </div>
+            <Button onClick={handleBatchGenerate} disabled={batchGenerating || !batchTemplateId}>
+              {batchGenerating ? "Generating..." : "Generate IDs"}
+            </Button>
+            {batchZipUrl && (
+              <div className="rounded-lg border border-dashed p-3 text-sm">
+                <p className="font-medium text-foreground">Batch ready</p>
+                <Button asChild size="sm" className="mt-2">
+                  <a href={resolveFileUrl(batchZipUrl)} target="_blank" rel="noopener noreferrer">
+                    Download ZIP
+                  </a>
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Employee Dialog */}
       <EditEmployeeDialog

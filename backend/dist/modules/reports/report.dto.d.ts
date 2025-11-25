@@ -26,23 +26,23 @@ export declare const VisualizationTypeSchema: z.ZodEnum<{
     HEATMAP: "HEATMAP";
 }>;
 export declare const DateRangeSchema: z.ZodEnum<{
+    CUSTOM: "CUSTOM";
     TODAY: "TODAY";
     THIS_WEEK: "THIS_WEEK";
     THIS_MONTH: "THIS_MONTH";
     LAST_30_DAYS: "LAST_30_DAYS";
     LAST_90_DAYS: "LAST_90_DAYS";
     THIS_YEAR: "THIS_YEAR";
-    CUSTOM: "CUSTOM";
 }>;
 export declare const ReportFilterSchema: z.ZodObject<{
     dateRange: z.ZodOptional<z.ZodEnum<{
+        CUSTOM: "CUSTOM";
         TODAY: "TODAY";
         THIS_WEEK: "THIS_WEEK";
         THIS_MONTH: "THIS_MONTH";
         LAST_30_DAYS: "LAST_30_DAYS";
         LAST_90_DAYS: "LAST_90_DAYS";
         THIS_YEAR: "THIS_YEAR";
-        CUSTOM: "CUSTOM";
     }>>;
     startDate: z.ZodOptional<z.ZodString>;
     endDate: z.ZodOptional<z.ZodString>;
@@ -80,13 +80,13 @@ export declare const GenerateReportDtoSchema: z.ZodObject<{
     }>;
     filters: z.ZodObject<{
         dateRange: z.ZodOptional<z.ZodEnum<{
+            CUSTOM: "CUSTOM";
             TODAY: "TODAY";
             THIS_WEEK: "THIS_WEEK";
             THIS_MONTH: "THIS_MONTH";
             LAST_30_DAYS: "LAST_30_DAYS";
             LAST_90_DAYS: "LAST_90_DAYS";
             THIS_YEAR: "THIS_YEAR";
-            CUSTOM: "CUSTOM";
         }>>;
         startDate: z.ZodOptional<z.ZodString>;
         endDate: z.ZodOptional<z.ZodString>;
@@ -142,13 +142,13 @@ export declare const ReportTemplateSchema: z.ZodObject<{
     reportType: z.ZodString;
     defaultFilters: z.ZodOptional<z.ZodObject<{
         dateRange: z.ZodOptional<z.ZodEnum<{
+            CUSTOM: "CUSTOM";
             TODAY: "TODAY";
             THIS_WEEK: "THIS_WEEK";
             THIS_MONTH: "THIS_MONTH";
             LAST_30_DAYS: "LAST_30_DAYS";
             LAST_90_DAYS: "LAST_90_DAYS";
             THIS_YEAR: "THIS_YEAR";
-            CUSTOM: "CUSTOM";
         }>>;
         startDate: z.ZodOptional<z.ZodString>;
         endDate: z.ZodOptional<z.ZodString>;
@@ -185,13 +185,13 @@ export declare const ReportDataSchema: z.ZodObject<{
         generatedAt: z.ZodString;
         filters: z.ZodOptional<z.ZodObject<{
             dateRange: z.ZodOptional<z.ZodEnum<{
+                CUSTOM: "CUSTOM";
                 TODAY: "TODAY";
                 THIS_WEEK: "THIS_WEEK";
                 THIS_MONTH: "THIS_MONTH";
                 LAST_30_DAYS: "LAST_30_DAYS";
                 LAST_90_DAYS: "LAST_90_DAYS";
                 THIS_YEAR: "THIS_YEAR";
-                CUSTOM: "CUSTOM";
             }>>;
             startDate: z.ZodOptional<z.ZodString>;
             endDate: z.ZodOptional<z.ZodString>;
@@ -226,13 +226,13 @@ export declare const ReportAuditLogSchema: z.ZodObject<{
     }, z.core.$strip>>;
     filters: z.ZodOptional<z.ZodObject<{
         dateRange: z.ZodOptional<z.ZodEnum<{
+            CUSTOM: "CUSTOM";
             TODAY: "TODAY";
             THIS_WEEK: "THIS_WEEK";
             THIS_MONTH: "THIS_MONTH";
             LAST_30_DAYS: "LAST_30_DAYS";
             LAST_90_DAYS: "LAST_90_DAYS";
             THIS_YEAR: "THIS_YEAR";
-            CUSTOM: "CUSTOM";
         }>>;
         startDate: z.ZodOptional<z.ZodString>;
         endDate: z.ZodOptional<z.ZodString>;

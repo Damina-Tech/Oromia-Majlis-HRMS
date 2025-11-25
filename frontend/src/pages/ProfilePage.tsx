@@ -12,8 +12,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Calendar,
   Mail,
@@ -24,11 +38,20 @@ import {
   Clock,
   Briefcase,
   Paperclip,
+  IdCard,
+  Download,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentUser, updateCurrentUser, uploadAvatar, type User as DetailedUser } from "@/services/users";
 import { format } from "date-fns";
+import {
+  listIdCardTemplates,
+  generateEmployeeIdCard as requestGenerateEmployeeIdCard,
+  type IdCardTemplate,
+} from "@/services/employeeId";
+import IdCardPreview from "@/components/employees/IdCardPreview";
 
 type PermissionGroup = {
   module: string;
@@ -41,7 +64,7 @@ type PermissionGroup = {
 };
 
 const ProfilePage: React.FC = () => {
-  const { user, refreshUserData, updateUserProfile } = useAuth();
+  const { user, refreshUserData, updateUserProfile, hasPermission } = useAuth();
   const [profile, setProfile] = useState<DetailedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -70,9 +93,26 @@ const ProfilePage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [idTemplates, setIdTemplates] = useState<IdCardTemplate[]>([]);
+  const [idDialogOpen, setIdDialogOpen] = useState(false);
+  const [idTemplateId, setIdTemplateId] = useState<string | null>(null);
+  const [idIssueDate, setIdIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [idExpiryDate, setIdExpiryDate] = useState<string>("");
+  const [idGenerating, setIdGenerating] = useState(false);
+  const [idResult, setIdResult] = useState<{ pdfUrl: string; pngUrl: string } | null>(null);
+
+  const canGenerateId = hasPermission("employees.id.generate") || hasPermission("employees.id.manage");
 
   const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL || "http://localhost:4000", []);
   const resolveAvatarUrl = useCallback(
+    (value?: string | null) => {
+      if (!value) return undefined;
+      if (value.startsWith("http")) return value;
+      return `${apiBaseUrl}${value}`;
+    },
+    [apiBaseUrl]
+  );
+  const resolveFileUrl = useCallback(
     (value?: string | null) => {
       if (!value) return undefined;
       if (value.startsWith("http")) return value;
@@ -175,6 +215,22 @@ const ProfilePage: React.FC = () => {
   }, [loadProfile]);
 
   useEffect(() => {
+    if (!canGenerateId) return;
+    (async () => {
+      try {
+        const templates = await listIdCardTemplates();
+        setIdTemplates(templates);
+        setIdTemplateId((prev) => {
+          if (prev && templates.some((tpl) => tpl.id === prev)) return prev;
+          return templates.find((tpl) => tpl.isDefault)?.id ?? templates[0]?.id ?? null;
+        });
+      } catch (error) {
+        console.warn("Failed to load ID templates for profile", error);
+      }
+    })();
+  }, [canGenerateId]);
+
+  useEffect(() => {
     return () => {
       if (avatarPreview && avatarPreview.startsWith("blob:")) {
         URL.revokeObjectURL(avatarPreview);
@@ -235,6 +291,14 @@ const ProfilePage: React.FC = () => {
   const resolvedAvatarUrl =
     profile?.avatarUrl ?? employee?.avatarUrl ?? user?.avatarUrl ?? null;
   const avatarSrc = avatarPreview ?? resolveAvatarUrl(resolvedAvatarUrl);
+  const selectedProfileTemplate = useMemo(() => {
+    if (!idTemplates.length) return null;
+    return (
+      idTemplates.find((tpl) => tpl.id === idTemplateId) ??
+      idTemplates.find((tpl) => tpl.isDefault) ??
+      idTemplates[0]
+    );
+  }, [idTemplateId, idTemplates]);
 
   const basicInformation: Array<{ label: string; value: ReactNode }> = useMemo(() => {
     return [
@@ -412,6 +476,45 @@ const ProfilePage: React.FC = () => {
         fileInputRef.current.value = "";
       }
     }
+  };
+
+  const openProfileIdDialog = () => {
+    if (!employee || !canGenerateId) return;
+    setIdTemplateId((prev) => prev ?? idTemplates.find((tpl) => tpl.isDefault)?.id ?? idTemplates[0]?.id ?? null);
+    setIdIssueDate(new Date().toISOString().slice(0, 10));
+    setIdExpiryDate("");
+    setIdResult(null);
+    setIdDialogOpen(true);
+  };
+
+  const handleProfileGenerateId = async () => {
+    if (!employee || !idTemplateId) {
+      toast.error("Select a template first.");
+      return;
+    }
+    setIdGenerating(true);
+    try {
+      const response = await requestGenerateEmployeeIdCard(employee.id, {
+        templateId: idTemplateId,
+        issueDate: idIssueDate || undefined,
+        expiryDate: idExpiryDate || undefined,
+      });
+      setIdResult({ pdfUrl: response.pdfUrl, pngUrl: response.pngUrl });
+      toast.success("ID card generated");
+      await loadProfile({ silent: true });
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to generate ID card");
+    } finally {
+      setIdGenerating(false);
+    }
+  };
+
+  const handleProfilePrintId = () => {
+    if (!idResult) return;
+    const pdfUrl = idResult.pdfUrl.startsWith("http") ? idResult.pdfUrl : `${apiBaseUrl}${idResult.pdfUrl}`;
+    const printWindow = window.open(pdfUrl, "_blank");
+    printWindow?.focus();
+    printWindow?.print();
   };
 
   if (!user) {
@@ -709,6 +812,75 @@ const ProfilePage: React.FC = () => {
             </Card>
           </div>
 
+          {employee && (
+            <Card>
+              <CardHeader className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <IdCard className="h-5 w-5" />
+                    Employee ID
+                  </CardTitle>
+                  <CardDescription>
+                    {employee.idCardGeneratedAt
+                      ? `Last generated ${format(new Date(employee.idCardGeneratedAt), "PP")}`
+                      : "Generate your official employee ID card."}
+                  </CardDescription>
+                </div>
+                {canGenerateId && (
+                  <Button size="sm" variant="outline" onClick={openProfileIdDialog}>
+                    Generate ID
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="grid gap-6 lg:grid-cols-[0.55fr_0.45fr]">
+                <div className="space-y-3 text-sm">
+                  <p>
+                    <span className="font-semibold text-foreground">Status: </span>
+                    {employee.idCardGeneratedAt ? "Ready" : "Not generated"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {employee.idCardPdfUrl && (
+                      <Button size="sm" asChild>
+                        <a href={resolveFileUrl(employee.idCardPdfUrl)} target="_blank" rel="noopener noreferrer">
+                          <Download className="mr-2 h-4 w-4" />
+                          PDF
+                        </a>
+                      </Button>
+                    )}
+                    {employee.idCardPngUrl && (
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={resolveFileUrl(employee.idCardPngUrl)} target="_blank" rel="noopener noreferrer">
+                          PNG
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Include this card when attending official events or requesting access to secure locations.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center">
+                  {selectedProfileTemplate ? (
+                    <IdCardPreview
+                      template={selectedProfileTemplate.settings}
+                      employee={{
+                        firstName: employee.firstName,
+                        lastName: employee.lastName,
+                        employeeCode: employee.employeeCode,
+                        designation: employee.designation,
+                        department: employee.department,
+                        avatarUrl: employee.avatarUrl,
+                      }}
+                      issueDate={employee.idCardGeneratedAt ?? undefined}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No template available.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Roles</CardTitle>
@@ -785,6 +957,96 @@ const ProfilePage: React.FC = () => {
           </Card>
         </TabsContent> */}
       </Tabs>
+
+      <Dialog open={idDialogOpen} onOpenChange={setIdDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Generate ID card</DialogTitle>
+            <DialogDescription>
+              {employee
+                ? `Create an ID card for ${employee.firstName} ${employee.lastName}.`
+                : "Employee record not available."}
+            </DialogDescription>
+          </DialogHeader>
+          {employee ? (
+            <div className="grid gap-6 lg:grid-cols-[0.6fr_0.4fr]">
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label>Template</Label>
+                  <Select value={idTemplateId ?? ""} onValueChange={(value) => setIdTemplateId(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {idTemplates.map((tpl) => (
+                        <SelectItem key={tpl.id} value={tpl.id}>
+                          {tpl.name} {tpl.isDefault ? "(Default)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Issue date</Label>
+                    <Input type="date" value={idIssueDate} onChange={(e) => setIdIssueDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expiry date</Label>
+                    <Input type="date" value={idExpiryDate} onChange={(e) => setIdExpiryDate(e.target.value)} />
+                  </div>
+                </div>
+                <Button onClick={handleProfileGenerateId} disabled={idGenerating || !idTemplateId}>
+                  {idGenerating ? "Generating..." : "Generate ID"}
+                </Button>
+                {idResult && (
+                  <div className="space-y-2 rounded-lg border p-3 text-sm">
+                    <p className="font-medium text-foreground">ID card ready</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" asChild>
+                        <a href={resolveFileUrl(idResult.pdfUrl)} target="_blank" rel="noopener noreferrer">
+                          <Download className="mr-2 h-4 w-4" />
+                          PDF
+                        </a>
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleProfilePrintId}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        Print
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={resolveFileUrl(idResult.pngUrl)} target="_blank" rel="noopener noreferrer">
+                          Download PNG
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-center bg-muted/40 p-3">
+                {selectedProfileTemplate ? (
+                  <IdCardPreview
+                    template={selectedProfileTemplate.settings}
+                    employee={{
+                      firstName: employee.firstName,
+                      lastName: employee.lastName,
+                      employeeCode: employee.employeeCode,
+                      designation: employee.designation,
+                      department: employee.department,
+                      avatarUrl: employee.avatarUrl,
+                    }}
+                    issueDate={idIssueDate}
+                    expiryDate={idExpiryDate}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">No template available.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No employee record found.</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

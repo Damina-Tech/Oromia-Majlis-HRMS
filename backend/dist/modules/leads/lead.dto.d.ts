@@ -37,8 +37,8 @@ export declare const CreateLeadDto: z.ZodObject<{
     source: z.ZodOptional<z.ZodString>;
     companyName: z.ZodOptional<z.ZodString>;
     website: z.ZodOptional<z.ZodString>;
-    assignedDepartmentId: z.ZodOptional<z.ZodString>;
-    assignedToUserId: z.ZodOptional<z.ZodString>;
+    assignedDepartmentId: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>;
+    assignedToUserId: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>;
     priority: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
         LOW: "LOW";
         MEDIUM: "MEDIUM";
@@ -74,8 +74,8 @@ export declare const UpdateLeadDto: z.ZodObject<{
     source: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     companyName: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     website: z.ZodOptional<z.ZodOptional<z.ZodString>>;
-    assignedDepartmentId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
-    assignedToUserId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    assignedDepartmentId: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>>;
+    assignedToUserId: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>>;
     priority: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodEnum<{
         LOW: "LOW";
         MEDIUM: "MEDIUM";

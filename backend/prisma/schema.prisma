@@ -57,6 +57,9 @@ model User {
   leadHistories                   LeadHistory[]            @relation("LeadHistoryActor")
   leadImportJobs                  LeadImportJob[]          @relation("LeadImportJobUploader")
   leadDispositions                LeadDisposition[]        @relation("LeadDispositionActor")
+  employeeIdTemplatesCreated      EmployeeIdTemplate[]     @relation("EmployeeIdTemplateCreatedBy")
+  employeeIdTemplatesUpdated      EmployeeIdTemplate[]     @relation("EmployeeIdTemplateUpdatedBy")
+  employeeIdCardsGenerated        EmployeeIdCard[]
 }
 
 model Role {
@@ -143,6 +146,10 @@ model Employee {
   educationField                   String?
   gender                           String?
   marriageStatus                   String?
+  idCardGeneratedAt                DateTime?
+  idCardTemplateId                 String?
+  idCardPdfUrl                     String?
+  idCardPngUrl                     String?
   salaryGradeId                    String?
   salaryStepId                     String?
   lastIncrementDate                DateTime?
@@ -176,11 +183,58 @@ model Employee {
   taskAssignments                  TaskAssignment[]
   taskTimeLogs                     TaskTimeLog[]
   timesheets                       Timesheet[]
+  idCards                          EmployeeIdCard[]
+  idCardTemplate                   EmployeeIdTemplate? @relation("EmployeeIdTemplateCurrent", fields: [idCardTemplateId], references: [id])
 
   @@index([departmentId])
   @@index([joiningDate])
   @@index([lastName, firstName])
   @@index([salaryGradeId])
+}
+
+model EmployeeIdTemplate {
+  id           String            @id @default(cuid())
+  name         String
+  description  String?
+  settings     Json
+  isDefault    Boolean           @default(false)
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  employees    Employee[]        @relation("EmployeeIdTemplateCurrent")
+  idCards      EmployeeIdCard[]
+  createdBy    User?             @relation("EmployeeIdTemplateCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?             @relation("EmployeeIdTemplateUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([isDefault])
+  @@index([createdAt])
+}
+
+model EmployeeIdCard {
+  id             String                 @id @default(cuid())
+  employeeId     String
+  templateId     String
+  generatedById  String
+  pdfUrl         String
+  pngUrl         String
+  zipUrl         String?
+  metadata       Json?
+  codeType       String?
+  mode           IdCardGenerationMode   @default(SINGLE)
+  createdAt      DateTime               @default(now())
+  employee       Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  template       EmployeeIdTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  generatedBy    User                   @relation(fields: [generatedById], references: [id])
+
+  @@index([employeeId])
+  @@index([templateId])
+  @@index([createdAt])
+}
+
+enum IdCardGenerationMode {
+  SINGLE
+  BATCH
 }
 
 model SalaryGrade {

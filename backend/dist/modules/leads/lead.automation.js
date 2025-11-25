@@ -29,7 +29,7 @@ export class LeadAutomationService {
                 toStage,
                 actorId,
                 note,
-                metadata: metadata ?? undefined,
+                metadata: metadata ? metadata : undefined,
             },
         });
     }

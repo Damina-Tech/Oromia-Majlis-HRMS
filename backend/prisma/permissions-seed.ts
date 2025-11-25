@@ -11,6 +11,9 @@ const PERMISSIONS = [
   { name: "employees.read", module: "employees", action: "read", description: "View employees" },
   { name: "employees.write", module: "employees", action: "write", description: "Create/Edit employees" },
   { name: "employees.delete", module: "employees", action: "delete", description: "Delete employees" },
+  { name: "employees.id.manage", module: "employees", action: "id.manage", description: "Manage employee ID templates and branding" },
+  { name: "employees.id.generate", module: "employees", action: "id.generate", description: "Generate employee ID cards" },
+  { name: "employees.id.batch", module: "employees", action: "id.batch", description: "Batch generate employee ID cards" },
   
   // Departments/Organization
   { name: "departments.read", module: "departments", action: "read", description: "View departments" },
@@ -88,6 +91,9 @@ const ROLE_PERMISSIONS = {
     "employees.read",
     "employees.write",
     "employees.delete",
+    "employees.id.manage",
+    "employees.id.generate",
+    "employees.id.batch",
     "departments.read",
     "departments.write",
     "departments.delete",
@@ -126,6 +132,7 @@ const ROLE_PERMISSIONS = {
   MANAGER: [
     "dashboard.view",
     "employees.read",
+    "employees.id.generate",
     "departments.read",
     "attendance.mark",
     "attendance.view",

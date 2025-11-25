@@ -4,11 +4,18 @@ export const LeadStageSchema = z.nativeEnum(LeadStage);
 export const LeadStatusSchema = z.nativeEnum(LeadStatus);
 export const LeadPrioritySchema = z.nativeEnum(LeadPriority);
 export const LeadDispositionReasonSchema = z.nativeEnum(LeadDispositionReason);
-const contactField = z
+const optionalString = (min = 1, message = "This field is required") => z
     .string()
     .trim()
-    .min(1, "This field is required")
+    .min(min, message)
     .max(120)
+    .optional()
+    .or(z.literal("").transform(() => undefined));
+const contactField = optionalString();
+const optionalIdField = z
+    .string()
+    .trim()
+    .min(1)
     .optional()
     .or(z.literal("").transform(() => undefined));
 export const CreateLeadDto = z
@@ -21,8 +28,8 @@ export const CreateLeadDto = z
     source: z.string().optional(),
     companyName: z.string().optional(),
     website: z.string().url().optional(),
-    assignedDepartmentId: z.string().optional(),
-    assignedToUserId: z.string().optional(),
+    assignedDepartmentId: optionalIdField,
+    assignedToUserId: optionalIdField,
     priority: LeadPrioritySchema.optional().default(LeadPriority.MEDIUM),
     stage: LeadStageSchema.optional().default(LeadStage.NEW),
     status: LeadStatusSchema.optional().default(LeadStatus.ACTIVE),

@@ -9,12 +9,44 @@ import {
   bulkImportEmployees,
   downloadSampleTemplate
 } from "./employee.controller.js";
-import { hasPermission } from "../../middleware/auth.js";
+import { hasAnyPermission, hasPermission } from "../../middleware/auth.js";
+import {
+  batchGenerateEmployeeIdCards,
+  createIdCardTemplate,
+  deleteIdCardTemplate,
+  generateEmployeeIdCard,
+  listIdCardTemplates,
+  setDefaultIdCardTemplate,
+  updateIdCardTemplate,
+} from "./employee-id.controller.js";
 
 const router = Router();
 
 // NOTE: The /upload-document route is registered in routes/index.ts
 // before this router is mounted to ensure proper route matching
+
+// ID card template routes
+router.get(
+  "/id-templates",
+  hasAnyPermission("employees.id.generate", "employees.id.manage"),
+  listIdCardTemplates
+);
+router.post("/id-templates", hasPermission("employees.id.manage"), createIdCardTemplate);
+router.put("/id-templates/:templateId", hasPermission("employees.id.manage"), updateIdCardTemplate);
+router.delete("/id-templates/:templateId", hasPermission("employees.id.manage"), deleteIdCardTemplate);
+router.post(
+  "/id-templates/:templateId/default",
+  hasPermission("employees.id.manage"),
+  setDefaultIdCardTemplate
+);
+
+// ID generation routes
+router.post(
+  "/:id/id-card",
+  hasAnyPermission("employees.id.generate", "employees.id.manage"),
+  generateEmployeeIdCard
+);
+router.post("/id-cards/batch", hasPermission("employees.id.batch"), batchGenerateEmployeeIdCards);
 
 // GET /api/v1/employees - List employees with filtering and pagination
 router.get("/", listEmployees);

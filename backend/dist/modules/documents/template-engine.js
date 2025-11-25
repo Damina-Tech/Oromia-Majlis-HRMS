@@ -16,8 +16,6 @@ async function getEmployeeData(employeeId) {
                     lastName: true,
                 },
             },
-            salaryGrade: true,
-            salaryStep: true,
         },
     });
     if (!employee) {
@@ -49,8 +47,6 @@ async function getEmployeeData(employeeId) {
         manager: employee.manager
             ? `${employee.manager.firstName} ${employee.manager.lastName}`.trim()
             : "",
-        salaryGrade: employee.salaryGrade?.name || "",
-        salaryStep: employee.salaryStep?.salary?.toString() || "",
     };
 }
 /**

@@ -13,9 +13,9 @@ export declare const TaskStatusSchema: z.ZodEnum<{
     DONE: "DONE";
 }>;
 export declare const TaskRecurrenceTypeSchema: z.ZodEnum<{
+    NONE: "NONE";
     MONTHLY: "MONTHLY";
     WEEKLY: "WEEKLY";
-    NONE: "NONE";
     DAILY: "DAILY";
     YEARLY: "YEARLY";
 }>;
@@ -40,9 +40,9 @@ export declare const CreateTaskDto: z.ZodObject<{
     dueDate: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     estimatedHours: z.ZodNullable<z.ZodOptional<z.ZodCoercedNumber<unknown>>>;
     recurrenceType: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
+        NONE: "NONE";
         MONTHLY: "MONTHLY";
         WEEKLY: "WEEKLY";
-        NONE: "NONE";
         DAILY: "DAILY";
         YEARLY: "YEARLY";
     }>>>;
@@ -67,9 +67,9 @@ export declare const UpdateTaskDto: z.ZodObject<{
     dueDate: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodString>>>;
     estimatedHours: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodCoercedNumber<unknown>>>>;
     recurrenceType: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodEnum<{
+        NONE: "NONE";
         MONTHLY: "MONTHLY";
         WEEKLY: "WEEKLY";
-        NONE: "NONE";
         DAILY: "DAILY";
         YEARLY: "YEARLY";
     }>>>>;
