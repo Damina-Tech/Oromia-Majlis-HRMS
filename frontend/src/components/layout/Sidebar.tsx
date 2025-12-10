@@ -46,7 +46,7 @@ const menuItems = [
   permission: 'employees.read'
 },
 {
-  title: 'Organization',
+  title: 'Sectors',
   icon: Building2,
   href: '/organization',
   permission: 'organization.view'
@@ -69,12 +69,12 @@ const menuItems = [
   href: '/payroll',
   permission: 'payroll.view'
 },
-{
-  title: 'Leads',
-  icon: Handshake,
-  href: '/leads',
-  permission: 'leads.read'
-},
+// {
+//   title: 'Leads',
+//   icon: Handshake,
+//   href: '/leads',
+//   permission: 'leads.read'
+// },
 {
   title: 'Tasks',
   icon: CheckSquare,
