@@ -87,6 +87,9 @@ export interface LeadSummary {
 
 export interface LeadDetail extends LeadSummary {
   location?: string | null;
+  address?: string | null;
+  gender?: string | null;
+  education?: string | null;
   companyName?: string | null;
   website?: string | null;
   tags?: string[];
@@ -192,6 +195,20 @@ export async function importLeads(file: File) {
   return data;
 }
 
+export async function downloadLeadTemplate() {
+  const response = await api.get("/leads/import/template", {
+    responseType: "blob",
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "lead-import-template.csv");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export async function fetchLeadKanban(params?: { assignedToUserId?: string; priority?: LeadPriority }) {
   const { data } = await api.get("/leads/kanban", { params });
   return data as LeadKanbanResponse;
@@ -199,6 +216,11 @@ export async function fetchLeadKanban(params?: { assignedToUserId?: string; prio
 
 export async function fetchLeadDashboard(): Promise<LeadDashboardResponse> {
   const { data } = await api.get("/leads/dashboard");
+  return data;
+}
+
+export async function deleteAllLeads(): Promise<{ message: string; deletedCount: number }> {
+  const { data } = await api.delete("/leads");
   return data;
 }
 

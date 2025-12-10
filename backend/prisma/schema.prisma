@@ -1303,6 +1303,9 @@ model Lead {
   phone                 String?
   email                 String?
   location              String?
+  address               String?
+  gender                String?
+  education             String?
   interest              String?
   source                String?
   companyName           String?

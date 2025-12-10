@@ -11,6 +11,8 @@ import {
   importLeads,
   getLeadKanban,
   getLeadDashboard,
+  downloadSampleTemplate,
+  deleteAllLeads,
 } from "./lead.controller.js";
 import { requireAuth, hasAnyPermission, hasPermission } from "../../middleware/auth.js";
 import { uploadImport } from "../../lib/upload.js";
@@ -34,6 +36,12 @@ router.get(
   requireAuth,
   hasAnyPermission("leads.read", "leads.write"),
   getLeadKanban
+);
+router.get(
+  "/import/template",
+  requireAuth,
+  hasAnyPermission("leads.write", "leads.manage"),
+  downloadSampleTemplate
 );
 router.post(
   "/",
@@ -83,6 +91,12 @@ router.post(
   requireAuth,
   hasAnyPermission("leads.write", "leads.manage"),
   dispositionLead
+);
+router.delete(
+  "/",
+  requireAuth,
+  hasPermission("leads.manage"),
+  deleteAllLeads
 );
 
 export default router;

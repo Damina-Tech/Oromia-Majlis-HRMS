@@ -129,7 +129,7 @@ const SettingsPage: React.FC = () => {
     setEmployeeSettings({
       defaultCreateAccount: storedDefaultCreateAccount === "true",
       defaultPageSize: validatedPageSize,
-    });
+  });
   }, [user, applyTheme]);
   const loadNotificationPrefs = useCallback(async () => {
     if (!user) return;
@@ -302,17 +302,17 @@ const SettingsPage: React.FC = () => {
               <form className="grid gap-4 md:grid-cols-2" onSubmit={handleAccountSubmit}>
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First name</Label>
-                  <Input
+                <Input
                     id="firstName"
                     value={accountForm.firstName}
                     onChange={(event) =>
                       setAccountForm((prev) => ({
-                        ...prev,
+                      ...prev,
                         firstName: event.target.value,
                       }))
                     }
-                  />
-                </div>
+                />
+              </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last name</Label>
                   <Input
@@ -401,10 +401,10 @@ const SettingsPage: React.FC = () => {
                       },
                     ] as const
                   ).map(({ key, label, description, icon: Icon, disabled }) => (
-                    <div
+                <div
                       key={key}
                       className="flex items-start justify-between rounded-lg border bg-muted/30 p-4"
-                    >
+                >
                       <div className="flex items-start gap-3">
                         <Icon className="mt-1 h-4 w-4 text-primary" />
                         <div>
@@ -418,11 +418,11 @@ const SettingsPage: React.FC = () => {
                         onCheckedChange={(value) =>
                           handleNotificationToggle(key, value)
                         }
-                      />
-                    </div>
+                    />
+                  </div>
                   ))}
-                </div>
-              )}
+                    </div>
+                  )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -532,19 +532,19 @@ const SettingsPage: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <Icon className="h-4 w-4" />
                         <span>{label}</span>
-                    </div>
+                </div>
                     </button>
                   ))}
                 </div>
               </div>
               <Separator />
               <div className="flex items-center justify-between">
-                <div>
+              <div>
                   <p className="font-medium">Compact mode</p>
                     <p className="text-sm text-muted-foreground">
                     Reduce spacing and show more information at once.
                   </p>
-                </div>
+                  </div>
                 <Switch checked={compactMode} onCheckedChange={handleCompactToggle} />
               </div>
             </CardContent>
@@ -576,7 +576,7 @@ const SettingsPage: React.FC = () => {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+                  </div>
               <div className="space-y-2">
                 <Label>Timezone</Label>
                 <Select value={timezone} onValueChange={handleTimezoneChange}>
@@ -609,46 +609,46 @@ const SettingsPage: React.FC = () => {
             <CardContent>
               <form className="space-y-6" onSubmit={handleEmployeeSettingsSave}>
                 <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
+                <div>
                     <p className="font-medium">Default create user account</p>
-                    <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                       Automatically enable the “Create User Account” option when adding a new employee.
-                    </p>
-                  </div>
-                  <Switch
+                  </p>
+                </div>
+                <Switch
                     checked={employeeSettings.defaultCreateAccount}
                     onCheckedChange={(checked) =>
                       setEmployeeSettings((prev) => ({ ...prev, defaultCreateAccount: checked }))
                     }
-                  />
-                </div>
+                        />
+                      </div>
                 <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-[260px_auto] sm:items-center">
-                  <div>
+                      <div>
                     <p className="font-medium">Employees per page</p>
                     <p className="text-sm text-muted-foreground">
                       Choose how many employees appear in each page of the directory.
                     </p>
-                  </div>
-                  <Select
+                      </div>
+                      <Select
                     value={String(employeeSettings.defaultPageSize)}
                     onValueChange={(value) =>
                       setEmployeeSettings((prev) => ({
-                        ...prev,
+                            ...prev,
                         defaultPageSize: Number(value),
                       }))
                     }
-                  >
+                      >
                     <SelectTrigger className="w-full sm:w-48">
                       <SelectValue placeholder="Employees per page" />
-                    </SelectTrigger>
-                    <SelectContent>
+                        </SelectTrigger>
+                        <SelectContent>
                       <SelectItem value="10">10 per page</SelectItem>
                       <SelectItem value="20">20 per page</SelectItem>
                       <SelectItem value="50">50 per page</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Separator />
+                        </SelectContent>
+                      </Select>
+                    </div>
+              <Separator />
                 <div className="flex justify-end">
                   <Button type="submit" disabled={savingEmployeeSettings}>
                     {savingEmployeeSettings ? (

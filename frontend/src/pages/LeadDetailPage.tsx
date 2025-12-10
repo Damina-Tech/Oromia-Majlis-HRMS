@@ -261,10 +261,22 @@ const LeadDetailPage: React.FC = () => {
                   {lead.companyName}
                 </span>
               )}
-              {lead.location && (
+              {(lead.address || lead.location) && (
                 <span className="inline-flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
-                  {lead.location}
+                  {lead.address || lead.location}
+                </span>
+              )}
+              {lead.gender && (
+                <span className="inline-flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  {lead.gender}
+                </span>
+              )}
+              {lead.education && (
+                <span className="inline-flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  {lead.education}
                 </span>
               )}
               {lead.tags?.length ? (
@@ -361,6 +373,24 @@ const LeadDetailPage: React.FC = () => {
               <span className="text-muted-foreground">Source</span>
               <Badge variant="secondary">{lead.source ?? "Unknown"}</Badge>
             </div>
+            {lead.gender && (
+              <div className="flex items-center justify-between rounded-2xl border border-dashed border-border/60 p-3">
+                <span className="text-muted-foreground">Gender</span>
+                <span>{lead.gender}</span>
+              </div>
+            )}
+            {lead.education && (
+              <div className="flex items-center justify-between rounded-2xl border border-dashed border-border/60 p-3">
+                <span className="text-muted-foreground">Education</span>
+                <span>{lead.education}</span>
+              </div>
+            )}
+            {(lead.address || lead.location) && (
+              <div className="flex items-center justify-between rounded-2xl border border-dashed border-border/60 p-3">
+                <span className="text-muted-foreground">Address</span>
+                <span>{lead.address || lead.location}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-2xl border border-dashed border-border/60 p-3">
               <span className="text-muted-foreground">Status</span>
               <Badge variant="outline">{lead.status}</Badge>

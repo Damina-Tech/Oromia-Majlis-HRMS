@@ -32,6 +32,9 @@ export const CreateLeadDto = z
       "Invalid email address"
     ),
     location: z.string().optional(),
+    address: z.string().optional(),
+    gender: z.string().optional(),
+    education: z.string().optional(),
     interest: z.string().optional(),
     source: z.string().optional(),
     companyName: z.string().optional(),

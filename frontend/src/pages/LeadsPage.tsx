@@ -16,6 +16,8 @@ import {
   fetchLeadDashboard,
   dispositionLead,
   LeadDispositionReason,
+  downloadLeadTemplate,
+  deleteAllLeads,
 } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
 import { listDepartments, Department } from "@/services/departments";
@@ -88,8 +90,18 @@ import {
   KanbanSquare,
   Inbox,
   CalendarClock,
+  Download,
+  Trash2,
 } from "lucide-react";
-import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationLink,
+  PaginationEllipsis,
+} from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
 
 type LeadFormState = {
@@ -216,6 +228,9 @@ const LeadsPage: React.FC = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<{ total: number; created: number; duplicates: number; failed: number } | null>(null);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const stageFilterOptions = useMemo(() => STAGE_OPTIONS.filter((stage) => stage.value !== "ARCHIVED"), []);
 
@@ -420,21 +435,101 @@ const LeadsPage: React.FC = () => {
     }
     setImporting(true);
     setImportSummary(null);
+    setImportErrors([]);
     try {
       const result = await importLeads(importFile);
       setImportSummary(result.summary ?? result);
+      setImportErrors(result.errors ?? []);
       const createdCount = result.summary?.created ?? result.summary?.total ?? "";
-      toast.success("Import complete", {
-        description: createdCount ? `${createdCount} leads synced.` : "Lead import finished.",
-      });
+      const failedCount = result.summary?.failed ?? 0;
+      const duplicatesCount = result.summary?.duplicates ?? 0;
+      
+      if (failedCount > 0 || duplicatesCount > 0) {
+        toast.warning("Import completed with issues", {
+          description: `${createdCount} created, ${duplicatesCount} duplicates, ${failedCount} failed.`,
+        });
+      } else {
+        toast.success("Import complete", {
+          description: createdCount ? `${createdCount} leads synced successfully.` : "Lead import finished.",
+        });
+      }
       refreshAll();
     } catch (error: any) {
+      const errorMessage = error?.response?.data?.message ?? "Check your file and try again.";
+      const errorDetails = error?.response?.data?.errors;
+      setImportErrors(errorDetails ?? [errorMessage]);
       toast.error("Import failed", {
-        description: error?.response?.data?.message ?? "Check your file and try again.",
+        description: errorMessage,
       });
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadLeadTemplate();
+      toast.success("Template downloaded", {
+        description: "Sample CSV template saved to your downloads.",
+      });
+    } catch (error: any) {
+      toast.error("Failed to download template", {
+        description: error?.response?.data?.message ?? "Please try again.",
+      });
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      const result = await deleteAllLeads();
+      toast.success("All leads deleted", {
+        description: `${result.deletedCount} leads have been removed.`,
+      });
+      setDeleteAllDialogOpen(false);
+      refreshAll();
+    } catch (error: any) {
+      toast.error("Failed to delete leads", {
+        description: error?.response?.data?.message ?? "Please try again.",
+      });
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const totalPages = Math.ceil(total / pageSize);
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 7;
+    
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (page <= 4) {
+        for (let i = 1; i <= 5; i++) {
+          pages.push(i);
+        }
+        pages.push("ellipsis");
+        pages.push(totalPages);
+      } else if (page >= totalPages - 3) {
+        pages.push(1);
+        pages.push("ellipsis");
+        for (let i = totalPages - 4; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push("ellipsis");
+        for (let i = page - 1; i <= page + 1; i++) {
+          pages.push(i);
+        }
+        pages.push("ellipsis");
+        pages.push(totalPages);
+      }
+    }
+    return pages;
   };
 
   const groupedStageCounts = useMemo(() => {
@@ -594,6 +689,16 @@ const LeadsPage: React.FC = () => {
                     <Plus className="mr-2 h-4 w-4" />
                     Add Lead
                   </Button>
+                  {hasPermission("leads.manage") && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setDeleteAllDialogOpen(true)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete All
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -614,9 +719,10 @@ const LeadsPage: React.FC = () => {
               </div>
             ))}
           </div>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
+          <div className="rounded-lg border max-h-[600px] overflow-hidden">
+            <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead>Lead</TableHead>
                   <TableHead>Contact</TableHead>
@@ -759,25 +865,76 @@ const LeadsPage: React.FC = () => {
                   ))
                 )}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              Showing {(page - 1) * pageSize + 1} -{" "}
-              {Math.min(page * pageSize, total)} of {total} leads
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {(page - 1) * pageSize + 1} -{" "}
+                {Math.min(page * pageSize, total)} of {total} leads
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Per page:</span>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <Pagination>
               <PaginationContent>
                 <PaginationItem>
                   <PaginationPrevious
                     onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    className={cn(
+                      "cursor-pointer",
+                      page === 1 && "pointer-events-none opacity-50 cursor-not-allowed"
+                    )}
                     aria-disabled={page === 1}
                   />
                 </PaginationItem>
+                {getPageNumbers().map((pageNum, idx) => {
+                  if (pageNum === "ellipsis") {
+                    return (
+                      <PaginationItem key={`ellipsis-${idx}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+                  const pageNumber = pageNum as number;
+                  return (
+                    <PaginationItem key={pageNumber}>
+                      <PaginationLink
+                        onClick={() => setPage(pageNumber)}
+                        isActive={page === pageNumber}
+                        className="cursor-pointer"
+                      >
+                        {pageNumber}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
                 <PaginationItem>
                   <PaginationNext
-                    onClick={() => setPage((prev) => prev + 1)}
-                    aria-disabled={page * pageSize >= total}
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    className={cn(
+                      "cursor-pointer",
+                      page >= totalPages && "pointer-events-none opacity-50 cursor-not-allowed"
+                    )}
+                    aria-disabled={page >= totalPages}
                   />
                 </PaginationItem>
               </PaginationContent>
@@ -1353,39 +1510,119 @@ const LeadsPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Delete All Dialog */}
+      <Dialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete All Leads</DialogTitle>
+            <DialogDescription>
+              This action will permanently delete all leads from the database. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <p className="text-sm font-medium text-destructive">
+              Warning: You are about to delete {total} leads. This action is irreversible.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteAllDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteAll} disabled={deletingAll}>
+              {deletingAll && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete All Leads
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Import sheet */}
       <Sheet open={importSheetOpen} onOpenChange={setImportSheetOpen}>
-        <SheetContent className="w-full sm:max-w-lg">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Import leads</SheetTitle>
-            <SheetDescription>Upload CSV or Excel file to bulk create leads.</SheetDescription>
+            <SheetDescription>Upload CSV or Excel file to bulk create leads. Duplicate phone numbers are allowed.</SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-4">
-            <div className="rounded-lg border border-dashed p-4 text-center">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">CSV Template</p>
+              <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+                <Download className="mr-2 h-4 w-4" />
+                Download Template
+              </Button>
+            </div>
+            <div className="rounded-lg border border-dashed p-6 text-center">
               <input
                 type="file"
                 accept=".csv,.xlsx,.xls"
-                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => {
+                  setImportFile(event.target.files?.[0] ?? null);
+                  setImportErrors([]);
+                  setImportSummary(null);
+                }}
+                className="w-full"
               />
-              <p className="text-xs text-muted-foreground">Supported: CSV, XLSX</p>
+              <p className="mt-2 text-xs text-muted-foreground">Supported: CSV, XLSX</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Required fields: <strong>full_name</strong> (or fullName, name)
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Optional: phone, email, gender, education, address, interest, source, company_name, priority, stage
+              </p>
             </div>
+            {importFile && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <p className="font-medium">Selected file:</p>
+                <p className="text-muted-foreground">{importFile.name}</p>
+                <p className="text-xs text-muted-foreground">{(importFile.size / 1024).toFixed(2)} KB</p>
+              </div>
+            )}
+            {importErrors.length > 0 && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm">
+                <p className="font-medium text-destructive">Validation Errors:</p>
+                <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-destructive">
+                  {importErrors.map((error, idx) => (
+                    <li key={idx} className="list-disc list-inside">
+                      {error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {importSummary && (
               <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                <p className="font-medium">Last import summary</p>
-                <ul className="mt-2 list-disc pl-4">
-                  <li>Total rows: {importSummary.total}</li>
-                  <li>Created: {importSummary.created}</li>
-                  <li>Duplicates: {importSummary.duplicates}</li>
-                  <li>Failed: {importSummary.failed}</li>
+                <p className="font-medium">Import Summary</p>
+                <ul className="mt-2 space-y-1">
+                  <li className="flex justify-between">
+                    <span>Total rows:</span>
+                    <span className="font-medium">{importSummary.total}</span>
+                  </li>
+                  <li className="flex justify-between text-emerald-600">
+                    <span>Created:</span>
+                    <span className="font-medium">{importSummary.created}</span>
+                  </li>
+                  <li className="flex justify-between text-amber-600">
+                    <span>Duplicates:</span>
+                    <span className="font-medium">{importSummary.duplicates}</span>
+                  </li>
+                  <li className="flex justify-between text-destructive">
+                    <span>Failed:</span>
+                    <span className="font-medium">{importSummary.failed}</span>
+                  </li>
                 </ul>
               </div>
             )}
           </div>
           <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setImportSheetOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setImportSheetOpen(false);
+              setImportFile(null);
+              setImportErrors([]);
+              setImportSummary(null);
+            }}>
               Close
             </Button>
-            <Button onClick={handleImport} disabled={importing}>
+            <Button onClick={handleImport} disabled={importing || !importFile}>
               {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Import
             </Button>

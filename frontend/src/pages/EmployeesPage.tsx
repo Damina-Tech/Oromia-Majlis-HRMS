@@ -1564,7 +1564,7 @@ const EmployeesPage: React.FC = () => {
 
   const selectedTemplate = useMemo(() => {
     if (!idTemplates.length) return null;
-    return (
+  return (
       idTemplates.find((tpl) => tpl.id === idDialogTemplateId) ||
       idTemplates.find((tpl) => tpl.isDefault) ||
       idTemplates[0]
@@ -1835,7 +1835,7 @@ const EmployeesPage: React.FC = () => {
             }}
             canCreate={!!canWrite}
           />
-        </div>
+          </div>
       </div>
 
       {/* Stats Cards */}

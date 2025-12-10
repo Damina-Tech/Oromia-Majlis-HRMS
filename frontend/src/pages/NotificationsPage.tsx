@@ -157,7 +157,7 @@ export default function NotificationsPage() {
         listNotifications({
           page: 1,
           pageSize: 1,
-          isRead: false,
+        isRead: false,
         }),
       ]);
 
@@ -239,8 +239,8 @@ export default function NotificationsPage() {
       if (typeFilter !== "all" && notification.type !== typeFilter) {
         return false;
       }
-      return true;
-    });
+    return true;
+  });
   }, [inbox, typeFilter]);
 
   const stats = useMemo(() => {
@@ -426,16 +426,16 @@ export default function NotificationsPage() {
               <CardDescription>Review recent activity across modules.</CardDescription>
             </div>
             <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-              <div className="flex gap-2">
+            <div className="flex gap-2">
                 <Select value={statusFilter} onValueChange={(value: StatusFilter) => { setStatusFilter(value); setPage(1); }}>
                   <SelectTrigger className="w-[140px]">
-                    <Filter className="mr-2 h-4 w-4" />
+                  <Filter className="mr-2 h-4 w-4" />
                     <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="unread">Unread</SelectItem>
-                    <SelectItem value="read">Read</SelectItem>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="unread">Unread</SelectItem>
+                  <SelectItem value="read">Read</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={(value: TypeFilter) => setTypeFilter(value)}>
@@ -449,8 +449,8 @@ export default function NotificationsPage() {
                     <SelectItem value="SUCCESS">Success</SelectItem>
                     <SelectItem value="WARNING">Warning</SelectItem>
                     <SelectItem value="ERROR">Error</SelectItem>
-                  </SelectContent>
-                </Select>
+                </SelectContent>
+              </Select>
                 <Select
                   value={moduleFilter}
                   onValueChange={(value) => {
@@ -537,14 +537,14 @@ export default function NotificationsPage() {
                     : MODULE_LABEL_MAP[moduleFilter] ?? moduleFilter;
 
                 return (
-                  <div
-                    key={notification.id}
+                <div
+                  key={notification.id}
                     className={`border rounded-lg border-border/60 bg-card p-4 transition-all hover:shadow-sm ${
                       TYPE_COLOR[(notification.type as TypeFilter) ?? "all"]
                     } ${
                       !notification.isRead ? "bg-blue-50/60 dark:bg-blue-950/10" : ""
-                    }`}
-                  >
+                  }`}
+                >
                     <div className="flex items-start gap-3">
                       <div className="mt-1">
                         {TYPE_ICON[(notification.type as TypeFilter) ?? "all"]}
@@ -560,12 +560,12 @@ export default function NotificationsPage() {
                                 {badgeLabel}
                               </Badge>
                             )}
-                            {!notification.isRead && (
-                              <Badge variant="secondary" className="text-xs">
-                                New
-                              </Badge>
-                            )}
-                          </div>
+                          {!notification.isRead && (
+                            <Badge variant="secondary" className="text-xs">
+                              New
+                            </Badge>
+                          )}
+                        </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{format(createdAt, "MMM dd, yyyy HH:mm")}</span>
                             <Button
@@ -675,28 +675,28 @@ export default function NotificationsPage() {
                 rows={3}
               />
             </div>
-            <div>
+              <div>
               <Label htmlFor="test-channel">Channel</Label>
-              <Select
+                <Select
                 value={testNotification.channel}
-                onValueChange={(value) =>
+                  onValueChange={(value) =>
                   setTestNotification((prev) => ({
-                    ...prev,
+                      ...prev,
                     channel: value as typeof testNotification.channel,
-                  }))
-                }
-              >
-                <SelectTrigger>
+                    }))
+                  }
+                >
+                  <SelectTrigger>
                   <SelectValue placeholder="Select channel" />
-                </SelectTrigger>
-                <SelectContent>
+                  </SelectTrigger>
+                  <SelectContent>
                   <SelectItem value="IN_APP">In-App</SelectItem>
                   <SelectItem value="EMAIL">Email</SelectItem>
                   <SelectItem value="PUSH">Push</SelectItem>
                   <SelectItem value="SMS">SMS</SelectItem>
                   <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
-                </SelectContent>
-              </Select>
+                  </SelectContent>
+                </Select>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setSendDialogOpen(false)}>
@@ -731,7 +731,7 @@ export default function NotificationsPage() {
                     key={channel}
                     className="flex items-center justify-between border rounded-lg p-3"
                   >
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                       {channel === "inApp" && <Bell className="h-4 w-4" />}
                       {channel === "email" && <Mail className="h-4 w-4" />}
                       {channel === "push" && <Smartphone className="h-4 w-4" />}
@@ -744,14 +744,14 @@ export default function NotificationsPage() {
                           ? "In-App"
                           : channel}
                       </span>
-                    </div>
-                    <Switch
+                </div>
+                <Switch
                       disabled={channel === "inApp"}
                       checked={enabled}
                       onCheckedChange={(value) =>
                         handleChannelToggle(channel as keyof typeof channelPrefs, value)
-                      }
-                    />
+                              }
+                            />
                   </div>
                 ))}
               </div>
@@ -768,17 +768,17 @@ export default function NotificationsPage() {
                     key={module.value}
                     className="flex items-center justify-between border rounded-lg p-3"
                   >
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                       <module.icon className="h-4 w-4" />
                       <span className="text-sm font-medium">{module.label}</span>
-                    </div>
-                    <Switch
+                </div>
+                <Switch
                       checked={modulePrefs[module.value] ?? true}
                       onCheckedChange={(value) => handleModuleToggle(module.value, value)}
                     />
                   </div>
                 ))}
-              </div>
+                          </div>
             </section>
 
             <div className="flex justify-end">
