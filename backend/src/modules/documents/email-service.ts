@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { Transporter } from "nodemailer";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

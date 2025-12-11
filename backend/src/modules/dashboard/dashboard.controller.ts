@@ -234,7 +234,7 @@ export async function getDashboardStats(req: Request, res: Response) {
           recentActivity.push({
             id: `leave-${leave.id}`,
             type: "leave",
-            title: `${leave.employee.firstName} ${leave.employee.lastName} applied for ${leave.leaveType} leave`,
+            title: `${leave.employee.firstName} ${leave.employee.lastName} applied for ${leave.type} leave`,
             description: `${leave.days} day(s) starting ${new Date(leave.startDate).toLocaleDateString()}`,
             timestamp: leave.createdAt,
             status: leave.status,

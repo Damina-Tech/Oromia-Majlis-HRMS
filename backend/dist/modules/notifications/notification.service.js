@@ -55,7 +55,7 @@ export class NotificationService {
             else if (typeof incoming === "boolean") {
                 acc[upperKey] = incoming;
             }
-            else if (upperKey in currentModules) {
+            else if (currentModules && typeof currentModules === 'object' && upperKey in currentModules) {
                 const value = currentModules[upperKey];
                 acc[upperKey] =
                     typeof value === "boolean"
@@ -175,7 +175,7 @@ export class NotificationService {
                     type,
                     resourceType,
                     resourceId,
-                    data,
+                    data: data,
                     dedupKey,
                 },
             });

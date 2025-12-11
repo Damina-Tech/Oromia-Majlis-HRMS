@@ -53,7 +53,7 @@ else {
         }
     });
     app.use("/api", devLimiter);
-    console.log("⚠️  Development mode: Using lenient rate limiting (10000 requests/minute)");
+    console.log("ΓÜá∩╕Å  Development mode: Using lenient rate limiting (10000 requests/minute)");
 }
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
@@ -71,8 +71,8 @@ app.get("/health", (req, res) => {
 });
 // Debug: Log all incoming requests to /api (before routing)
 app.use("/api", (req, res, next) => {
-    console.log(`🔍 [SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
-    console.log(`🔍 [SERVER] Original URL: ${req.originalUrl}`);
+    console.log(`≡ƒöì [SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
+    console.log(`≡ƒöì [SERVER] Original URL: ${req.originalUrl}`);
     next();
 });
 // API routes
@@ -90,21 +90,21 @@ app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
 });
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    console.log(`🔗 API base URL: http://localhost:${PORT}/api/v1`);
+    console.log(`≡ƒÜÇ Server running on port ${PORT}`);
+    console.log(`≡ƒôè Health check: http://localhost:${PORT}/health`);
+    console.log(`≡ƒöù API base URL: http://localhost:${PORT}/api/v1`);
     // Start notification worker
     startNotificationWorker()
         .then((worker) => {
         if (worker) {
-            console.log("✅ Notification delivery worker started");
+            console.log("Γ£à Notification delivery worker started");
         }
         else {
-            console.log("⚠️ Notification delivery worker not started (Redis unavailable).");
+            console.log("ΓÜá∩╕Å Notification delivery worker not started (Redis unavailable).");
         }
     })
         .catch((err) => {
-        console.error("❌ Failed to start notification delivery worker:", err);
+        console.error("Γ¥î Failed to start notification delivery worker:", err);
     });
     // Start announcement scheduler
     // Process scheduled announcements every minute
@@ -117,6 +117,6 @@ app.listen(PORT, () => {
     }, 5 * 60 * 1000); // 5 minutes
     // Run immediately on startup
     processScheduledAnnouncements().catch(console.error);
-    console.log("✅ Announcement scheduler started");
+    console.log("Γ£à Announcement scheduler started");
 });
 //# sourceMappingURL=server.js.map

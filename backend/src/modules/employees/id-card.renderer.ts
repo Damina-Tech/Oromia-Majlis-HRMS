@@ -148,9 +148,19 @@ export async function generateIdCardAssets(options: RenderOptions): Promise<Gene
   const dims = getDimensions(settings);
   const canvas = createCanvas(dims.width, dims.height);
   const ctx = canvas.getContext("2d");
-  ctx.patternQuality = "best";
-  ctx.antialias = "subpixel";
-  ctx.textDrawingMode = "glyph";
+  // Canvas quality settings (if supported by canvas library)
+  // @ts-ignore - These properties may exist on some canvas implementations
+  if ('patternQuality' in ctx) {
+    (ctx as any).patternQuality = "best";
+  }
+  // @ts-ignore
+  if ('antialias' in ctx) {
+    (ctx as any).antialias = "subpixel";
+  }
+  // @ts-ignore
+  if ('textDrawingMode' in ctx) {
+    (ctx as any).textDrawingMode = "glyph";
+  }
 
   // Background
   if (settings.background?.type === "image" && settings.background.value) {

@@ -31,7 +31,7 @@ router.post("/v1/employees/upload-document", requireAuth, hasPermission("employe
 // Register bulk-import route BEFORE mounting employeesRoutes
 router.post("/v1/employees/bulk-import", requireAuth, hasPermission("employees.write"), uploadImport.single("file"), bulkImportEmployees);
 router.use("/v1/employees", (req, res, next) => {
-    console.log(`📋 [ROUTES] Employees route matched: ${req.method} ${req.path}`);
+    console.log(`≡ƒôï [ROUTES] Employees route matched: ${req.method} ${req.path}`);
     next();
 }, requireAuth, hasAnyPermission("employees.read", "employees.write"), employeesRoutes);
 router.use("/v1/leaves", requireAuth, hasAnyPermission("leave.apply", "leave.view", "leave.approve"), leavesRoutes);

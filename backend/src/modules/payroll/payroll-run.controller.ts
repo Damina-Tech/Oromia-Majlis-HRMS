@@ -68,8 +68,9 @@ export async function createPayrollRun(req: Request, res: Response) {
       where: whereClause,
       include: {
         department: true,
-        salaryStep: true,
+        user: true,
         salaryGrade: true,
+        salaryStep: true,
       },
     });
 
@@ -408,7 +409,7 @@ export async function updatePayrollRun(req: Request, res: Response) {
     // Create audit log
     if (dto.status) {
       await createAuditLog(prisma, {
-        action: dto.status === "APPROVED" ? "APPROVE" : dto.status === "REJECT" ? "REJECT" : "UPDATE",
+        action: dto.status === "APPROVED" ? "APPROVE" : "UPDATE",
         entityType: "PayrollRun",
         entityId: id,
         payrollRunId: id,
@@ -441,7 +442,7 @@ export async function reviewPayrollRun(req: Request, res: Response) {
     const payrollRun = await prisma.payrollRun.update({
       where: { id },
       data: {
-        status: "REVIEW",
+        status: "DRAFT",
         reviewedBy: userId,
         reviewedAt: new Date(),
         comments: dto.comments,
@@ -493,7 +494,7 @@ export async function approvePayrollRun(req: Request, res: Response) {
     const payrollRun = await prisma.payrollRun.update({
       where: { id },
       data: {
-        status: "APPROVED",
+        status: "PROCESSED",
         approvedBy: userId,
         approvedAt: new Date(),
         comments: dto.comments,
@@ -661,7 +662,6 @@ export async function processPayrollRun(req: Request, res: Response) {
                 data: {
                   remainingAmount: new Prisma.Decimal(newRemaining),
                   status: newRemaining <= 0 ? "REPAID" : "APPROVED",
-                  repaidDate: newRemaining <= 0 ? new Date() : undefined,
                 },
               });
             }
@@ -688,7 +688,11 @@ export async function processPayrollRun(req: Request, res: Response) {
       const employeeUserIds = Array.from(
         new Set(
           payrollRun.items
-            .map((item) => item.employee?.user?.id)
+            .map((item) => {
+              const emp = item.employee;
+              return (emp as any)?.user?.id || null;
+            })
+            .filter((id): id is string => id !== null)
             .filter((value): value is string => Boolean(value))
         )
       );

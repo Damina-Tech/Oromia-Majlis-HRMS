@@ -284,6 +284,19 @@ export declare const BulkUpdateAssetsDto: z.ZodObject<{
     locationId: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
+export declare const TransferAssetDto: z.ZodObject<{
+    toEmployeeId: z.ZodString;
+    note: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+export declare const UpdateAssetStatusDto: z.ZodObject<{
+    status: z.ZodEnum<{
+        IN_STOCK: "IN_STOCK";
+        ASSIGNED: "ASSIGNED";
+        IN_MAINTENANCE: "IN_MAINTENANCE";
+        DISPOSED: "DISPOSED";
+    }>;
+    note: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
 export type CreateAssetDto = z.infer<typeof CreateAssetDto>;
 export type UpdateAssetDto = z.infer<typeof UpdateAssetDto>;
 export type AssignAssetDto = z.infer<typeof AssignAssetDto>;
@@ -302,6 +315,8 @@ export type ListAssetsQuery = z.infer<typeof ListAssetsQuery>;
 export type AssetStatsQuery = z.infer<typeof AssetStatsQuery>;
 export type AssetHistoryQuery = z.infer<typeof AssetHistoryQuery>;
 export type BulkUpdateAssetsDto = z.infer<typeof BulkUpdateAssetsDto>;
+export type TransferAssetDto = z.infer<typeof TransferAssetDto>;
+export type UpdateAssetStatusDto = z.infer<typeof UpdateAssetStatusDto>;
 export type AssetStatus = z.infer<typeof AssetStatusSchema>;
 export type AssetCondition = z.infer<typeof AssetConditionSchema>;
 export type AssetLocationType = z.infer<typeof AssetLocationTypeSchema>;

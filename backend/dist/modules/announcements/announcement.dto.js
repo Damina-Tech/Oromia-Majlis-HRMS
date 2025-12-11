@@ -43,7 +43,7 @@ export const ListAnnouncementsQuery = z.object({
 // Acknowledge/Read Announcement DTO
 export const AcknowledgeAnnouncementDto = z.object({
     acknowledged: z.boolean().optional().default(true),
-    deviceInfo: z.record(z.any()).optional(),
+    deviceInfo: z.record(z.string(), z.any()).optional(),
 });
 // List Reads Query
 export const ListReadsQuery = z.object({

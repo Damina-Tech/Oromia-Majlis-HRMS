@@ -27,7 +27,7 @@ export const CreateDocumentTemplateDto = z.object({
   contentPlain: z.string().optional(),
   language: DocumentLanguageEnum.optional().default("EN"),
   tags: z.array(z.string()).optional().default([]),
-  mergeFields: z.record(z.any()).optional(),
+  mergeFields: z.record(z.string(), z.any()).optional(),
 });
 
 export type CreateDocumentTemplateDto = z.infer<typeof CreateDocumentTemplateDto>;
@@ -43,7 +43,7 @@ export const UpdateDocumentTemplateDto = z.object({
   language: DocumentLanguageEnum.optional(),
   tags: z.array(z.string()).optional(),
   active: z.boolean().optional(),
-  mergeFields: z.record(z.any()).optional(),
+  mergeFields: z.record(z.string(), z.any()).optional(),
 });
 
 export type UpdateDocumentTemplateDto = z.infer<typeof UpdateDocumentTemplateDto>;
@@ -70,7 +70,7 @@ export const GenerateDocumentDto = z.object({
   employeeId: z.string().optional(), // For single employee
   employeeIds: z.array(z.string()).optional(), // For bulk generation
   departmentId: z.string().optional(), // For department-wide generation
-  mergeData: z.record(z.any()).optional(), // Custom merge field values
+  mergeData: z.record(z.string(), z.any()).optional(), // Custom merge field values
   email: z.boolean().optional().default(false), // Send via email
   format: z.enum(["pdf", "docx", "html"]).optional().default("pdf"),
 });
@@ -81,7 +81,7 @@ export type GenerateDocumentDto = z.infer<typeof GenerateDocumentDto>;
 export const PreviewDocumentDto = z.object({
   templateId: z.string(),
   employeeId: z.string().optional(), // Use real employee data
-  mergeData: z.record(z.any()).optional(), // Custom merge data for preview
+  mergeData: z.record(z.string(), z.any()).optional(), // Custom merge data for preview
   useSampleData: z.boolean().optional().default(false), // Use sample data instead
 });
 

@@ -14,8 +14,8 @@ export async function createSalaryIncrement(req, res) {
         const employee = await prisma.employee.findUnique({
             where: { id: dto.employeeId },
             include: {
-                salaryStep: true,
                 salaryGrade: true,
+                salaryStep: true,
             },
         });
         if (!employee) {
@@ -53,7 +53,7 @@ export async function createSalaryIncrement(req, res) {
                     newSalary: new Prisma.Decimal(newSalary),
                     incrementAmount: new Prisma.Decimal(incrementAmount),
                     incrementPercentage: new Prisma.Decimal(incrementPercentage),
-                    incrementDate: new Date(dto.incrementDate),
+                    effectiveDate: new Date(dto.incrementDate),
                     reason: dto.reason,
                     approvedBy: userId,
                     notes: dto.notes,
@@ -110,8 +110,8 @@ export async function bulkIncrement(req, res) {
         const employees = await prisma.employee.findMany({
             where: whereClause,
             include: {
-                salaryStep: true,
                 salaryGrade: true,
+                salaryStep: true,
             },
         });
         const incrementDate = new Date(dto.incrementDate);
@@ -148,7 +148,7 @@ export async function bulkIncrement(req, res) {
                             newSalary: new Prisma.Decimal(newSalary),
                             incrementAmount: new Prisma.Decimal(incrementAmount),
                             incrementPercentage: new Prisma.Decimal(incrementPercentage),
-                            incrementDate,
+                            effectiveDate: incrementDate,
                             reason: dto.reason,
                             approvedBy: userId,
                             notes: dto.notes,
@@ -205,7 +205,7 @@ export async function listSalaryIncrements(req, res) {
             where.employeeId = query.employeeId;
         }
         if (query.year) {
-            where.incrementDate = {
+            where.effectiveDate = {
                 gte: new Date(query.year, 0, 1),
                 lte: new Date(query.year, 11, 31),
             };
@@ -226,7 +226,7 @@ export async function listSalaryIncrements(req, res) {
                         },
                     },
                 },
-                orderBy: { incrementDate: "desc" },
+                orderBy: { effectiveDate: "desc" },
             }),
             prisma.salaryIncrement.count({ where }),
         ]);

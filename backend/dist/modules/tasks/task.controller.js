@@ -1,4 +1,4 @@
-import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -51,7 +51,7 @@ export async function createTask(req, res) {
                 dueDate: data.dueDate ? new Date(data.dueDate) : null,
                 estimatedHours: data.estimatedHours,
                 recurrenceType: data.recurrenceType || "NONE",
-                recurrenceRule: data.recurrenceRule,
+                recurrenceRule: data.recurrenceRule ? data.recurrenceRule : Prisma.JsonNull,
                 parentTaskId: data.parentTaskId,
                 tags: data.tags || [],
                 createdBy: currentUserId,
@@ -173,8 +173,11 @@ export async function createTask(req, res) {
                 },
             },
         });
+        if (!fullTask) {
+            return res.status(404).json({ message: "Task not found" });
+        }
         try {
-            const assigneeUserIds = Array.from(new Set((fullTask?.assignments || [])
+            const assigneeUserIds = Array.from(new Set((fullTask.assignments || [])
                 .map((assignment) => assignment.employee?.userId)
                 .filter((id) => Boolean(id))));
             if (assigneeUserIds.length > 0) {
@@ -192,7 +195,7 @@ export async function createTask(req, res) {
                     },
                 });
             }
-            const watcherUserIds = Array.from(new Set((fullTask?.watchers || [])
+            const watcherUserIds = Array.from(new Set((fullTask.watchers || [])
                 .map((watcher) => watcher.user?.id)
                 .filter((id) => Boolean(id))));
             if (watcherUserIds.length > 0) {
@@ -714,22 +717,24 @@ export async function updateTask(req, res) {
             startDate: data.startDate ? new Date(data.startDate) : null,
             dueDate: data.dueDate ? new Date(data.dueDate) : null,
             estimatedHours: data.estimatedHours,
-            actualHours: data.actualHours,
+            ...(data.actualHours !== undefined && { actualHours: data.actualHours }),
             recurrenceType: data.recurrenceType,
-            recurrenceRule: data.recurrenceRule,
-            parentTaskId: data.parentTaskId,
+            recurrenceRule: data.recurrenceRule !== undefined ? (data.recurrenceRule ? data.recurrenceRule : Prisma.JsonNull) : undefined,
+            ...(data.parentTaskId !== undefined && { parentTaskId: data.parentTaskId }),
             tags: data.tags,
-            updatedBy: currentUserId,
+            ...(currentUserId && { updatedBy: currentUserId }),
         };
         // Handle status change
         if (data.status && data.status !== existingTask.status) {
             if (data.status === "DONE") {
-                updateData.completedBy = currentUserId;
                 updateData.completedAt = new Date();
+                if (currentUserId) {
+                    updateData.completedBy = currentUserId;
+                }
             }
-            else if (existingTask.status === "DONE" && data.status !== "DONE") {
-                updateData.completedBy = null;
+            else if (existingTask.status === "DONE") {
                 updateData.completedAt = null;
+                updateData.completedBy = null;
             }
         }
         // Update task
@@ -878,7 +883,7 @@ export async function updateTask(req, res) {
                 ? true
                 : false;
             const assignmentUserIds = Array.from(new Set((fullTask?.assignments || [])
-                .map((assignment) => assignment.employee?.userId)
+                .map((assignment) => assignment.employee?.user?.id)
                 .filter((id) => Boolean(id))));
             const watcherUserIds = Array.from(new Set((fullTask?.watchers || [])
                 .map((watcher) => watcher.user?.id)
@@ -1088,7 +1093,7 @@ export async function addTimeLog(req, res) {
             await prisma.task.update({
                 where: { id },
                 data: {
-                    actualHours: (task.actualHours || 0) + data.hours,
+                    actualHours: new Prisma.Decimal((task.actualHours ? parseFloat(task.actualHours.toString()) : 0) + data.hours),
                 },
             });
         }
@@ -1111,9 +1116,10 @@ export async function bulkUpdateTasks(req, res) {
         const currentUserId = getCurrentUserId(req);
         const data = BulkUpdateTasksDto.parse(req.body);
         const results = await Promise.all(data.taskIds.map(async (taskId) => {
-            const updateData = {
-                updatedBy: currentUserId,
-            };
+            const updateData = {};
+            if (currentUserId) {
+                updateData.updatedBy = currentUserId;
+            }
             if (data.status)
                 updateData.status = data.status;
             if (data.priority)

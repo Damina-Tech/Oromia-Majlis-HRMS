@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 /**
  * Create task
  */
-export declare function createTask(req: Request, res: Response): Promise<void>;
+export declare function createTask(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 /**
  * List tasks
  */

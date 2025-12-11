@@ -46,7 +46,7 @@ export declare const CreateTaskDto: z.ZodObject<{
         DAILY: "DAILY";
         YEARLY: "YEARLY";
     }>>>;
-    recurrenceRule: z.ZodNullable<z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>>;
+    recurrenceRule: z.ZodNullable<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>>;
     parentTaskId: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>>;
     assigneeIds: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>>;
@@ -73,7 +73,7 @@ export declare const UpdateTaskDto: z.ZodObject<{
         DAILY: "DAILY";
         YEARLY: "YEARLY";
     }>>>>;
-    recurrenceRule: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>>>;
+    recurrenceRule: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>>>;
     parentTaskId: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodString>>>;
     tags: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>>>;
     assigneeIds: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>>>;
@@ -86,6 +86,7 @@ export declare const UpdateTaskDto: z.ZodObject<{
         TODO: "TODO";
         DONE: "DONE";
     }>>;
+    actualHours: z.ZodNullable<z.ZodOptional<z.ZodCoercedNumber<unknown>>>;
 }, z.core.$strip>;
 export declare const ListTasksQuery: z.ZodObject<{
     page: z.ZodDefault<z.ZodOptional<z.ZodCoercedNumber<unknown>>>;
@@ -106,6 +107,9 @@ export declare const ListTasksQuery: z.ZodObject<{
     project: z.ZodOptional<z.ZodString>;
     assigneeId: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodOptional<z.ZodString>;
+    createdById: z.ZodOptional<z.ZodString>;
+    watcherId: z.ZodOptional<z.ZodString>;
+    parentTaskId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     dueDateFrom: z.ZodOptional<z.ZodString>;
     dueDateTo: z.ZodOptional<z.ZodString>;
     search: z.ZodOptional<z.ZodString>;

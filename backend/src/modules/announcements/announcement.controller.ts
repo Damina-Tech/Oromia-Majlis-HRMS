@@ -42,7 +42,7 @@ export async function createAnnouncement(req: Request, res: Response) {
         publishAtDate = now;
       }
       status = "PUBLISHED";
-    } else if (data.publishAt) {
+    } else if (data.publishAt && publishAtDate) {
       // Scheduled publish: determine status based on date
       if (publishAtDate <= now) {
         status = "PUBLISHED";

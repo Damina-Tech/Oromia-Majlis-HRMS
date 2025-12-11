@@ -34,9 +34,6 @@ export async function listSalaryGrades(req, res) {
                 steps: {
                     orderBy: { step: "asc" },
                 },
-                _count: {
-                    select: { employees: true },
-                },
             },
             orderBy: { code: "asc" },
         });
@@ -192,9 +189,6 @@ export async function listSalarySteps(req, res) {
             where,
             include: {
                 grade: true,
-                _count: {
-                    select: { employees: true },
-                },
             },
             orderBy: [
                 { grade: { code: "asc" } },

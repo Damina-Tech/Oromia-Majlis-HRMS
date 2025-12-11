@@ -44,7 +44,7 @@ export async function enqueueAnnouncementDelivery(announcementId: string) {
         userId: user.id,
         employeeId: user.employee?.id,
         email: user.employee?.email || user.email,
-        phone: user.employee?.phone,
+        phone: user.employee?.phone || undefined,
       }));
     } else if (target.type === "role" && target.ids) {
       // Get users by roles
@@ -72,7 +72,7 @@ export async function enqueueAnnouncementDelivery(announcementId: string) {
         userId: user.id,
         employeeId: user.employee?.id,
         email: user.employee?.email || user.email,
-        phone: user.employee?.phone,
+        phone: user.employee?.phone || undefined,
       }));
     } else if (target.type === "department" && target.ids) {
       // Get users by departments
@@ -97,7 +97,7 @@ export async function enqueueAnnouncementDelivery(announcementId: string) {
           userId: emp.user!.id,
           employeeId: emp.id,
           email: emp.email,
-          phone: emp.phone,
+          phone: emp.phone || undefined,
         }));
     } else if (target.type === "employees" && target.ids) {
       // Get specific employees
@@ -122,7 +122,7 @@ export async function enqueueAnnouncementDelivery(announcementId: string) {
           userId: emp.user!.id,
           employeeId: emp.id,
           email: emp.email,
-          phone: emp.phone,
+          phone: emp.phone || undefined,
         }));
     }
 

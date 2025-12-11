@@ -228,7 +228,11 @@ async function generateEmployeeReport(
       department: true,
       user: {
         include: {
-          roles: true,
+          userRoles: {
+            include: {
+              role: true,
+            },
+          },
         },
       },
     },
@@ -237,15 +241,15 @@ async function generateEmployeeReport(
   if (reportType === "SUMMARY") {
     return employees.map((emp) => ({
       id: emp.id,
-      employeeId: emp.employeeId,
+      employeeId: emp.employeeCode,
       firstName: emp.firstName,
       lastName: emp.lastName,
       email: emp.email,
       department: emp.department?.name,
-      position: emp.position,
+      designation: emp.designation,
       status: emp.status,
-      hireDate: emp.hireDate,
-      contractType: emp.contractType,
+      joiningDate: emp.joiningDate,
+      employmentType: emp.employmentType,
     }));
   }
 
@@ -253,7 +257,7 @@ async function generateEmployeeReport(
   return employees.map((emp) => ({
     ...emp,
     departmentName: emp.department?.name,
-    roles: emp.user?.roles?.map((r) => r.name) || [],
+    roles: emp.user?.userRoles?.map((ur) => ur.role.name) || [],
   }));
 }
 
@@ -285,8 +289,7 @@ async function generateDepartmentReport(
   return departments.map((dept) => ({
     id: dept.id,
     name: dept.name,
-    code: dept.code,
-    headEmployeeId: dept.headEmployeeId,
+    managerId: dept.managerId,
     employeeCount: dept._count.employees,
     activeEmployees: dept.employees.filter((e) => e.status === "ACTIVE").length,
     inactiveEmployees: dept.employees.filter((e) => e.status === "INACTIVE").length,
@@ -312,7 +315,7 @@ async function generateLeaveReport(
     ...(filters.status && { status: filters.status }),
   };
 
-  const leaves = await prisma.leave.findMany({
+  const leaves = await prisma.leaveRequest.findMany({
     where: leaveWhere,
     include: {
       employee: {
@@ -325,10 +328,10 @@ async function generateLeaveReport(
 
   return leaves.map((leave) => ({
     id: leave.id,
-    employeeId: leave.employee.employeeId,
+    employeeId: leave.employee.employeeCode,
     employeeName: `${leave.employee.firstName} ${leave.employee.lastName}`,
     department: leave.employee.department?.name,
-    leaveType: leave.leaveType,
+    leaveType: leave.type,
     status: leave.status,
     startDate: leave.startDate,
     endDate: leave.endDate,
@@ -369,14 +372,14 @@ async function generateAttendanceReport(
 
   return attendance.map((att) => ({
     id: att.id,
-    employeeId: att.employee.employeeId,
+    employeeId: att.employee.employeeCode,
     employeeName: `${att.employee.firstName} ${att.employee.lastName}`,
     department: att.employee.department?.name,
     date: att.date,
     status: att.status,
-    checkIn: att.checkIn,
-    checkOut: att.checkOut,
-    hoursWorked: att.hoursWorked,
+    checkIn: att.checkInTime,
+    checkOut: att.checkOutTime,
+    hoursWorked: att.workHours,
   }));
 }
 
@@ -411,13 +414,13 @@ async function generatePayrollReport(
 
   return payrolls.map((pay) => ({
     id: pay.id,
-    employeeId: pay.employee.employeeId,
+    employeeId: pay.employee.employeeCode,
     employeeName: `${pay.employee.firstName} ${pay.employee.lastName}`,
     department: pay.employee.department?.name,
-    payPeriodStart: pay.payPeriodStart,
-    payPeriodEnd: pay.payPeriodEnd,
+    payPeriodStart: pay.periodStart,
+    payPeriodEnd: pay.periodEnd,
     grossSalary: pay.grossSalary,
-    totalAllowances: pay.totalAllowances,
+    totalAllowances: pay.bonus, // Using bonus as allowance proxy
     totalDeductions: pay.totalDeductions,
     netSalary: pay.netSalary,
     status: pay.status,
@@ -451,7 +454,6 @@ async function generateTaskReport(
           employee: true,
         },
       },
-      project: true,
     },
   });
 
@@ -460,9 +462,9 @@ async function generateTaskReport(
     title: task.title,
     status: task.status,
     priority: task.priority,
-    project: task.project?.name,
+    project: task.project,
     dueDate: task.dueDate,
-    assignedTo: task.assignments.map((a) => a.employee.employeeId).join(", "),
+    assignedTo: task.assignments.map((a) => a.employee.employeeCode).join(", "),
     createdAt: task.createdAt,
     completedAt: task.completedAt,
   }));
@@ -487,17 +489,18 @@ async function generateAssetReport(
     where: assetWhere,
     include: {
       category: true,
-      location: true,
+      assetLocation: true,
       department: true,
     },
   });
 
   return assets.map((asset) => ({
     id: asset.id,
-    assetTag: asset.assetTag,
+    assetCode: asset.assetCode,
+    serialNumber: asset.serialNumber,
     name: asset.name,
     category: asset.category?.name,
-    location: asset.location?.name,
+    location: asset.assetLocation?.name,
     department: asset.department?.name,
     status: asset.status,
     purchaseDate: asset.purchaseDate,
@@ -571,24 +574,23 @@ async function generateDocumentReport(
     ...(filters.status && { status: filters.status }),
   };
 
-  const documents = await prisma.document.findMany({
+  const documents = await prisma.generatedDocument.findMany({
     where: documentWhere,
     include: {
       template: true,
-      requestedBy: {
-        include: {
-          employee: true,
-        },
-      },
+      employee: true,
+      generatedByUser: true,
     },
   });
 
   return documents.map((doc) => ({
     id: doc.id,
     templateName: doc.template?.name,
-    status: doc.status,
-    requestedBy: doc.requestedBy?.employee
-      ? `${doc.requestedBy.employee.firstName} ${doc.requestedBy.employee.lastName}`
+    employeeName: doc.employee
+      ? `${doc.employee.firstName} ${doc.employee.lastName}`
+      : null,
+    generatedBy: doc.generatedByUser
+      ? `${doc.generatedByUser.firstName} ${doc.generatedByUser.lastName}`
       : null,
     generatedAt: doc.createdAt,
   }));
@@ -624,12 +626,10 @@ async function generateTimesheetReport(
 
   return timesheets.map((ts) => ({
     id: ts.id,
-    employeeId: ts.employee.employeeId,
+    employeeId: ts.employee.employeeCode,
     employeeName: `${ts.employee.firstName} ${ts.employee.lastName}`,
     department: ts.employee.department?.name,
     date: ts.date,
-    regularHours: ts.regularHours,
-    overtimeHours: ts.overtimeHours,
     totalHours: ts.totalHours,
   }));
 }
@@ -755,7 +755,7 @@ export async function getDashboardWidgets(req: Request, res: Response) {
 
     if (!module || module === "LEAVES") {
       try {
-        const pendingLeaves = await prisma.leave.count({
+        const pendingLeaves = await prisma.leaveRequest.count({
           where: { status: "PENDING" },
         });
         widgets.push({

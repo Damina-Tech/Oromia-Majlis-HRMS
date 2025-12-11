@@ -187,7 +187,7 @@ export async function listLeads(req, res) {
         // Use raw SQL to efficiently sort and paginate at database level
         let sortedIds;
         if (whereParts.length > 0) {
-            const whereClause = Prisma.sql `WHERE ${Prisma.join(whereParts, Prisma.sql ` AND `)}`;
+            const whereClause = Prisma.sql `WHERE ${Prisma.join(whereParts, " AND ")}`;
             sortedIds = await prisma.$queryRaw `
         SELECT id 
         FROM "Lead" 

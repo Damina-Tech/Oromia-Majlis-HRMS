@@ -23,8 +23,8 @@ export async function createSalaryIncrement(req: Request, res: Response) {
     const employee = await prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
-        salaryStep: true,
         salaryGrade: true,
+        salaryStep: true,
       },
     });
 
@@ -67,7 +67,7 @@ export async function createSalaryIncrement(req: Request, res: Response) {
           newSalary: new Prisma.Decimal(newSalary),
           incrementAmount: new Prisma.Decimal(incrementAmount),
           incrementPercentage: new Prisma.Decimal(incrementPercentage),
-          incrementDate: new Date(dto.incrementDate),
+          effectiveDate: new Date(dto.incrementDate),
           reason: dto.reason,
           approvedBy: userId,
           notes: dto.notes,
@@ -132,8 +132,8 @@ export async function bulkIncrement(req: Request, res: Response) {
     const employees = await prisma.employee.findMany({
       where: whereClause,
       include: {
-        salaryStep: true,
         salaryGrade: true,
+        salaryStep: true,
       },
     });
 
@@ -175,7 +175,7 @@ export async function bulkIncrement(req: Request, res: Response) {
               newSalary: new Prisma.Decimal(newSalary),
               incrementAmount: new Prisma.Decimal(incrementAmount),
               incrementPercentage: new Prisma.Decimal(incrementPercentage),
-              incrementDate,
+              effectiveDate: incrementDate,
               reason: dto.reason,
               approvedBy: userId,
               notes: dto.notes,
@@ -235,7 +235,7 @@ export async function listSalaryIncrements(req: Request, res: Response) {
     }
 
     if (query.year) {
-      where.incrementDate = {
+      where.effectiveDate = {
         gte: new Date(query.year, 0, 1),
         lte: new Date(query.year, 11, 31),
       };
@@ -258,7 +258,7 @@ export async function listSalaryIncrements(req: Request, res: Response) {
             },
           },
         },
-        orderBy: { incrementDate: "desc" },
+        orderBy: { effectiveDate: "desc" },
       }),
       prisma.salaryIncrement.count({ where }),
     ]);

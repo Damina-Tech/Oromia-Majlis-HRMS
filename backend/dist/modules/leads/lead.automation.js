@@ -1,5 +1,5 @@
 import { addHours } from "date-fns";
-import { LeadStage, LeadHistoryAction, LeadStatus, NotificationModule, NotificationType, TaskPriority, TaskStatus, } from "@prisma/client";
+import { LeadStage, LeadHistoryAction, LeadStatus, NotificationModule, NotificationType, TaskPriority, TaskStatus, Prisma, } from "@prisma/client";
 import prisma from "../../db/client.js";
 import { NotificationService } from "../notifications/notification.service.js";
 const FOLLOW_UP_WINDOWS = {
@@ -29,7 +29,7 @@ export class LeadAutomationService {
                 toStage,
                 actorId,
                 note,
-                metadata: metadata ? metadata : undefined,
+                metadata: metadata ? metadata : Prisma.JsonNull,
             },
         });
     }

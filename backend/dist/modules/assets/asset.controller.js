@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma, NotificationModule, NotificationType, } from "@prisma/client";
-import { CreateAssetDto, UpdateAssetDto, AssignAssetDto, ReturnAssetDto, ListAssetsQuery, AssetStatsQuery, AssetHistoryQuery, BulkUpdateAssetsDto, } from "./asset.dto.js";
+import { CreateAssetDto, UpdateAssetDto, AssignAssetDto, ReturnAssetDto, ListAssetsQuery, AssetStatsQuery, AssetHistoryQuery, BulkUpdateAssetsDto, TransferAssetDto, UpdateAssetStatusDto, } from "./asset.dto.js";
 import { paginate } from "../../utils/pagination.js";
 import { NotificationService } from "../notifications/notification.service.js";
 import { generateAssetCode } from "./asset-utils.js";
@@ -64,7 +64,7 @@ export async function listAssets(req, res) {
                 where,
                 include: {
                     category: true,
-                    location: true,
+                    assetLocation: true,
                     vendor: true,
                     department: {
                         select: {
@@ -237,7 +237,7 @@ export async function createAsset(req, res) {
                     categoryId: data.categoryId,
                     brand: data.brand,
                     model: data.model,
-                    serialNumber: data.serialNumber || null,
+                    serialNumber: data.serialNumber || "",
                     purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
                     purchasePrice: data.purchasePrice ? new Prisma.Decimal(data.purchasePrice) : null,
                     currency: data.currency || "USD",
@@ -255,7 +255,7 @@ export async function createAsset(req, res) {
                 },
                 include: {
                     category: true,
-                    location: true,
+                    assetLocation: true,
                     vendor: true,
                     department: {
                         select: {
@@ -322,13 +322,13 @@ export async function updateAsset(req, res) {
         // Track changes for history
         const changes = [];
         if (data.name && data.name !== existingAsset.name) {
-            changes.push(`Name: ${existingAsset.name} → ${data.name}`);
+            changes.push(`Name: ${existingAsset.name} ΓåÆ ${data.name}`);
         }
         if (data.status && data.status !== existingAsset.status) {
-            changes.push(`Status: ${existingAsset.status} → ${data.status}`);
+            changes.push(`Status: ${existingAsset.status} ΓåÆ ${data.status}`);
         }
         if (data.condition && data.condition !== existingAsset.condition) {
-            changes.push(`Condition: ${existingAsset.condition} → ${data.condition}`);
+            changes.push(`Condition: ${existingAsset.condition} ΓåÆ ${data.condition}`);
         }
         if (!currentUserId) {
             return res.status(401).json({ message: "Unauthorized" });
@@ -376,7 +376,7 @@ export async function updateAsset(req, res) {
                 data: updateData,
                 include: {
                     category: true,
-                    location: true,
+                    assetLocation: true,
                     vendor: true,
                     department: {
                         select: {
@@ -507,7 +507,7 @@ export async function assignAsset(req, res) {
                         },
                     },
                     category: true,
-                    location: true,
+                    assetLocation: true,
                 },
             });
             // Create history entry
@@ -614,7 +614,7 @@ export async function returnAsset(req, res) {
                 },
                 include: {
                     category: true,
-                    location: true,
+                    assetLocation: true,
                 },
             });
             // Create history entry
@@ -658,7 +658,7 @@ export async function revokeAsset(req, res) {
             const updatedAsset = await tx.asset.update({
                 where: { id },
                 data: {
-                    status: "AVAILABLE",
+                    status: "IN_STOCK",
                     assignedTo: null,
                     assignedDate: null,
                     assignedBy: null,
@@ -743,7 +743,7 @@ export async function transferAsset(req, res) {
                             },
                         },
                     },
-                    assignedByUser: {
+                    User_Asset_assignedByToUser: {
                         select: {
                             id: true,
                             firstName: true,
@@ -757,7 +757,7 @@ export async function transferAsset(req, res) {
                 data: {
                     assetId: id,
                     action: "TRANSFERRED",
-                    description: data.notes || `Asset transferred from ${asset.assignedEmployee?.firstName} ${asset.assignedEmployee?.lastName} to ${targetEmployee.firstName} ${targetEmployee.lastName}`,
+                    description: data.note || `Asset transferred from ${asset.assignedEmployee?.firstName} ${asset.assignedEmployee?.lastName} to ${targetEmployee.firstName} ${targetEmployee.lastName}`,
                     fromEmployeeId: asset.assignedTo,
                     toEmployeeId: data.toEmployeeId,
                     performedBy: currentUserId,
@@ -815,7 +815,7 @@ export async function updateAssetStatus(req, res) {
                 data: {
                     assetId: id,
                     action: "STATUS_CHANGED",
-                    description: data.notes || `Status changed from ${asset.status} to ${data.status}`,
+                    description: data.note || `Status changed from ${asset.status} to ${data.status}`,
                     previousStatus: asset.status,
                     newStatus: data.status,
                     performedBy: currentUserId,
@@ -946,12 +946,12 @@ export async function getAssetStats(req, res) {
                 return acc;
             }, {}),
             categoryBreakdown: categoryBreakdown.reduce((acc, item) => {
-                const categoryName = categoryMap.get(item.categoryId) || "Unknown";
+                const categoryName = item.categoryId ? (categoryMap.get(item.categoryId) || "Unknown") : "Unknown";
                 acc[categoryName] = item._count.categoryId;
                 return acc;
             }, {}),
             locationBreakdown: locationBreakdown.reduce((acc, item) => {
-                const locationName = locationMap.get(item.locationId) || "Unknown";
+                const locationName = item.locationId ? (locationMap.get(item.locationId) || "Unknown") : "Unknown";
                 acc[locationName] = item._count.locationId;
                 return acc;
             }, {}),
@@ -1063,7 +1063,7 @@ export async function bulkUpdateAssets(req, res) {
                 data: {
                     ...(data.status && { status: data.status }),
                     ...(data.condition && { condition: data.condition }),
-                    ...(data.location && { location: data.location }),
+                    ...(data.locationId && { locationId: data.locationId }),
                     ...(data.notes && { notes: data.notes }),
                 },
             });

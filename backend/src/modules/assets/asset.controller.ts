@@ -14,6 +14,8 @@ import {
   AssetStatsQuery,
   AssetHistoryQuery,
   BulkUpdateAssetsDto,
+  TransferAssetDto,
+  UpdateAssetStatusDto,
 } from "./asset.dto.js";
 import { paginate } from "../../utils/pagination.js";
 import { NotificationService } from "../notifications/notification.service.js";
@@ -94,7 +96,7 @@ export async function listAssets(req: Request, res: Response) {
         where,
         include: {
           category: true,
-          location: true,
+          assetLocation: true,
           vendor: true,
           department: {
             select: {
@@ -275,7 +277,7 @@ export async function createAsset(req: Request, res: Response) {
           categoryId: data.categoryId,
           brand: data.brand,
           model: data.model,
-          serialNumber: data.serialNumber || null,
+          serialNumber: data.serialNumber || "",
           purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
           purchasePrice: data.purchasePrice ? new Prisma.Decimal(data.purchasePrice) : null,
           currency: data.currency || "USD",
@@ -293,7 +295,7 @@ export async function createAsset(req: Request, res: Response) {
         },
         include: {
           category: true,
-          location: true,
+          assetLocation: true,
           vendor: true,
           department: {
             select: {
@@ -407,7 +409,7 @@ export async function updateAsset(req: Request, res: Response) {
         data: updateData,
         include: {
           category: true,
-          location: true,
+          assetLocation: true,
           vendor: true,
           department: {
             select: {
@@ -551,7 +553,7 @@ export async function assignAsset(req: Request, res: Response) {
             },
           },
           category: true,
-          location: true,
+          assetLocation: true,
         },
       });
 
@@ -669,7 +671,7 @@ export async function returnAsset(req: Request, res: Response) {
         },
         include: {
           category: true,
-          location: true,
+          assetLocation: true,
         },
       });
 
@@ -720,7 +722,7 @@ export async function revokeAsset(req: Request, res: Response) {
       const updatedAsset = await tx.asset.update({
         where: { id },
         data: {
-          status: "AVAILABLE",
+          status: "IN_STOCK",
           assignedTo: null,
           assignedDate: null,
           assignedBy: null,
@@ -814,7 +816,7 @@ export async function transferAsset(req: Request, res: Response) {
               },
             },
           },
-          assignedByUser: {
+          User_Asset_assignedByToUser: {
             select: {
               id: true,
               firstName: true,
@@ -829,7 +831,7 @@ export async function transferAsset(req: Request, res: Response) {
         data: {
           assetId: id,
           action: "TRANSFERRED",
-          description: data.notes || `Asset transferred from ${asset.assignedEmployee?.firstName} ${asset.assignedEmployee?.lastName} to ${targetEmployee.firstName} ${targetEmployee.lastName}`,
+          description: data.note || `Asset transferred from ${asset.assignedEmployee?.firstName} ${asset.assignedEmployee?.lastName} to ${targetEmployee.firstName} ${targetEmployee.lastName}`,
           fromEmployeeId: asset.assignedTo,
           toEmployeeId: data.toEmployeeId,
           performedBy: currentUserId,
@@ -893,7 +895,7 @@ export async function updateAssetStatus(req: Request, res: Response) {
         data: {
           assetId: id,
           action: "STATUS_CHANGED",
-          description: data.notes || `Status changed from ${asset.status} to ${data.status}`,
+          description: data.note || `Status changed from ${asset.status} to ${data.status}`,
           previousStatus: asset.status,
           newStatus: data.status,
           performedBy: currentUserId,
@@ -1048,12 +1050,12 @@ export async function getAssetStats(req: Request, res: Response) {
         return acc;
       }, {} as Record<string, number>),
       categoryBreakdown: categoryBreakdown.reduce((acc, item) => {
-        const categoryName = categoryMap.get(item.categoryId) || "Unknown";
+        const categoryName = item.categoryId ? (categoryMap.get(item.categoryId) || "Unknown") : "Unknown";
         acc[categoryName] = item._count.categoryId;
         return acc;
       }, {} as Record<string, number>),
       locationBreakdown: locationBreakdown.reduce((acc, item) => {
-        const locationName = locationMap.get(item.locationId) || "Unknown";
+        const locationName = item.locationId ? (locationMap.get(item.locationId) || "Unknown") : "Unknown";
         acc[locationName] = item._count.locationId;
         return acc;
       }, {} as Record<string, number>),
@@ -1175,7 +1177,7 @@ export async function bulkUpdateAssets(req: Request, res: Response) {
         data: {
           ...(data.status && { status: data.status }),
           ...(data.condition && { condition: data.condition }),
-          ...(data.location && { location: data.location }),
+          ...(data.locationId && { locationId: data.locationId }),
           ...(data.notes && { notes: data.notes }),
         },
       });

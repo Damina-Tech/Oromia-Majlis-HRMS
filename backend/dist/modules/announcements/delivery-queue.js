@@ -37,7 +37,7 @@ export async function enqueueAnnouncementDelivery(announcementId) {
                 userId: user.id,
                 employeeId: user.employee?.id,
                 email: user.employee?.email || user.email,
-                phone: user.employee?.phone,
+                phone: user.employee?.phone || undefined,
             }));
         }
         else if (target.type === "role" && target.ids) {
@@ -65,7 +65,7 @@ export async function enqueueAnnouncementDelivery(announcementId) {
                 userId: user.id,
                 employeeId: user.employee?.id,
                 email: user.employee?.email || user.email,
-                phone: user.employee?.phone,
+                phone: user.employee?.phone || undefined,
             }));
         }
         else if (target.type === "department" && target.ids) {
@@ -90,7 +90,7 @@ export async function enqueueAnnouncementDelivery(announcementId) {
                 userId: emp.user.id,
                 employeeId: emp.id,
                 email: emp.email,
-                phone: emp.phone,
+                phone: emp.phone || undefined,
             }));
         }
         else if (target.type === "employees" && target.ids) {
@@ -115,7 +115,7 @@ export async function enqueueAnnouncementDelivery(announcementId) {
                 userId: emp.user.id,
                 employeeId: emp.id,
                 email: emp.email,
-                phone: emp.phone,
+                phone: emp.phone || undefined,
             }));
         }
         const userIds = Array.from(new Set(targetUsers

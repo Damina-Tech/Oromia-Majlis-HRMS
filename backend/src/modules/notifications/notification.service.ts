@@ -1,4 +1,5 @@
 import prisma from "../../db/client.js";
+import { Prisma } from "@prisma/client";
 import {
   NotificationChannel,
   NotificationDeliveryStatus,
@@ -97,8 +98,8 @@ export class NotificationService {
         acc[upperKey] = Boolean(incoming.inApp);
       } else if (typeof incoming === "boolean") {
         acc[upperKey] = incoming;
-      } else if (upperKey in currentModules) {
-        const value = currentModules[upperKey];
+      } else if (currentModules && typeof currentModules === 'object' && upperKey in currentModules) {
+        const value = (currentModules as Record<string, any>)[upperKey];
         acc[upperKey] =
           typeof value === "boolean"
             ? value
@@ -229,7 +230,7 @@ export class NotificationService {
               count: newCount,
               lastUpdatedAt: new Date().toISOString(),
               resourceId,
-            },
+            } as Prisma.InputJsonValue,
             updatedAt: new Date(),
           },
         });
@@ -246,12 +247,12 @@ export class NotificationService {
           type,
           resourceType,
           resourceId,
-          data,
+          data: data as Prisma.InputJsonValue,
           dedupKey,
         },
       });
 
-      const deliveries = [];
+      const deliveries: NotificationChannel[] = [];
 
       if (channelPrefs.email) {
         deliveries.push(NotificationChannel.EMAIL);

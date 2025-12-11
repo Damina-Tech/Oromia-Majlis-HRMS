@@ -51,7 +51,7 @@ export class LeadAutomationService {
         toStage,
         actorId,
         note,
-        metadata: metadata ? (metadata as Prisma.JsonValue) : undefined,
+        metadata: metadata ? (metadata as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
     });
   }

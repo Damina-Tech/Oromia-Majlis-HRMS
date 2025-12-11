@@ -67,7 +67,7 @@ export async function createTask(req: Request, res: Response) {
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         estimatedHours: data.estimatedHours,
         recurrenceType: data.recurrenceType || "NONE",
-        recurrenceRule: data.recurrenceRule,
+        recurrenceRule: data.recurrenceRule ? (data.recurrenceRule as Prisma.InputJsonValue) : Prisma.JsonNull,
         parentTaskId: data.parentTaskId,
         tags: data.tags || [],
         createdBy: currentUserId,
@@ -202,10 +202,14 @@ export async function createTask(req: Request, res: Response) {
       },
     });
 
+    if (!fullTask) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
     try {
       const assigneeUserIds = Array.from(
         new Set(
-          (fullTask?.assignments || [])
+          (fullTask.assignments || [])
             .map((assignment) => assignment.employee?.userId)
             .filter((id): id is string => Boolean(id))
         )
@@ -229,7 +233,7 @@ export async function createTask(req: Request, res: Response) {
 
       const watcherUserIds = Array.from(
         new Set(
-          (fullTask?.watchers || [])
+          (fullTask.watchers || [])
             .map((watcher) => watcher.user?.id)
             .filter((id): id is string => Boolean(id))
         )
@@ -790,22 +794,24 @@ export async function updateTask(req: Request, res: Response) {
       startDate: data.startDate ? new Date(data.startDate) : null,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       estimatedHours: data.estimatedHours,
-      actualHours: data.actualHours,
+      ...(data.actualHours !== undefined && { actualHours: data.actualHours }),
       recurrenceType: data.recurrenceType,
-      recurrenceRule: data.recurrenceRule,
-      parentTaskId: data.parentTaskId,
+      recurrenceRule: data.recurrenceRule !== undefined ? (data.recurrenceRule ? (data.recurrenceRule as Prisma.InputJsonValue) : Prisma.JsonNull) : undefined,
+      ...(data.parentTaskId !== undefined && { parentTaskId: data.parentTaskId }),
       tags: data.tags,
-      updatedBy: currentUserId,
+      ...(currentUserId && { updatedBy: currentUserId }),
     };
 
     // Handle status change
     if (data.status && data.status !== existingTask.status) {
       if (data.status === "DONE") {
-        updateData.completedBy = currentUserId;
         updateData.completedAt = new Date();
-      } else if (existingTask.status === "DONE" && data.status !== "DONE") {
-        updateData.completedBy = null;
+        if (currentUserId) {
+          (updateData as any).completedBy = currentUserId;
+        }
+      } else if (existingTask.status === "DONE") {
         updateData.completedAt = null;
+        (updateData as any).completedBy = null;
       }
     }
 
@@ -975,7 +981,7 @@ export async function updateTask(req: Request, res: Response) {
       const assignmentUserIds = Array.from(
         new Set(
           (fullTask?.assignments || [])
-            .map((assignment) => assignment.employee?.userId)
+            .map((assignment) => (assignment.employee as any)?.user?.id)
             .filter((id): id is string => Boolean(id))
         )
       );
@@ -1214,7 +1220,7 @@ export async function addTimeLog(req: Request, res: Response) {
       await prisma.task.update({
         where: { id },
         data: {
-          actualHours: (task.actualHours || 0) + data.hours,
+          actualHours: new Prisma.Decimal((task.actualHours ? parseFloat(task.actualHours.toString()) : 0) + data.hours),
         },
       });
     }
@@ -1240,9 +1246,10 @@ export async function bulkUpdateTasks(req: Request, res: Response) {
 
     const results = await Promise.all(
       data.taskIds.map(async (taskId) => {
-        const updateData: Prisma.TaskUpdateInput = {
-          updatedBy: currentUserId,
-        };
+        const updateData: any = {};
+        if (currentUserId) {
+          updateData.updatedBy = currentUserId;
+        }
 
         if (data.status) updateData.status = data.status;
         if (data.priority) updateData.priority = data.priority;

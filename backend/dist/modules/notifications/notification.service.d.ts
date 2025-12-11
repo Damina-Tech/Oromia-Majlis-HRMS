@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NotificationModule, NotificationType } from "@prisma/client";
 declare const DEFAULT_CHANNEL_PREFS: {
     inApp: boolean;
@@ -31,8 +32,8 @@ export declare class NotificationService {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        channels: import("@prisma/client/runtime/library.js").JsonValue;
-        modules: import("@prisma/client/runtime/library.js").JsonValue;
+        channels: Prisma.JsonValue;
+        modules: Prisma.JsonValue;
     }>;
     static updatePreferences(userId: string, data: Partial<{
         channels: Record<string, boolean>;
@@ -42,15 +43,15 @@ export declare class NotificationService {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        channels: import("@prisma/client/runtime/library.js").JsonValue;
-        modules: import("@prisma/client/runtime/library.js").JsonValue;
+        channels: Prisma.JsonValue;
+        modules: Prisma.JsonValue;
     }>;
     static resolveRecipients(targets: NotificationTargets): Promise<string[]>;
     static sendNotification(params: SendNotificationParams): Promise<{
         type: import(".prisma/client").$Enums.NotificationType;
         message: string;
         id: string;
-        data: import("@prisma/client/runtime/library.js").JsonValue | null;
+        data: Prisma.JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
         module: import(".prisma/client").$Enums.NotificationModule;

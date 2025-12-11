@@ -187,6 +187,18 @@ export const BulkUpdateAssetsDto = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+// Transfer Asset DTO
+export const TransferAssetDto = z.object({
+  toEmployeeId: z.string().min(1, "Employee ID is required"),
+  note: z.string().max(500).optional(),
+});
+
+// Update Asset Status DTO
+export const UpdateAssetStatusDto = z.object({
+  status: AssetStatusSchema,
+  note: z.string().max(500).optional(),
+});
+
 // Export types
 export type CreateAssetDto = z.infer<typeof CreateAssetDto>;
 export type UpdateAssetDto = z.infer<typeof UpdateAssetDto>;
@@ -206,6 +218,8 @@ export type ListAssetsQuery = z.infer<typeof ListAssetsQuery>;
 export type AssetStatsQuery = z.infer<typeof AssetStatsQuery>;
 export type AssetHistoryQuery = z.infer<typeof AssetHistoryQuery>;
 export type BulkUpdateAssetsDto = z.infer<typeof BulkUpdateAssetsDto>;
+export type TransferAssetDto = z.infer<typeof TransferAssetDto>;
+export type UpdateAssetStatusDto = z.infer<typeof UpdateAssetStatusDto>;
 export type AssetStatus = z.infer<typeof AssetStatusSchema>;
 export type AssetCondition = z.infer<typeof AssetConditionSchema>;
 export type AssetLocationType = z.infer<typeof AssetLocationTypeSchema>;

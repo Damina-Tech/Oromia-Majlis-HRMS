@@ -16,7 +16,7 @@ export const CreateTaskDto = z.object({
   dueDate: z.string().date().optional().nullable(),
   estimatedHours: z.coerce.number().positive().optional().nullable(),
   recurrenceType: TaskRecurrenceTypeSchema.optional().default("NONE"),
-  recurrenceRule: z.record(z.any()).optional().nullable(),
+  recurrenceRule: z.record(z.string(), z.any()).optional().nullable(),
   parentTaskId: z.string().optional().nullable(),
   tags: z.array(z.string()).optional().default([]),
   assigneeIds: z.array(z.string()).optional().default([]), // Employee IDs
@@ -27,6 +27,7 @@ export const CreateTaskDto = z.object({
 // Update Task DTO
 export const UpdateTaskDto = CreateTaskDto.partial().extend({
   status: TaskStatusSchema.optional(),
+  actualHours: z.coerce.number().positive().optional().nullable(),
 });
 
 // List Tasks Query
@@ -38,6 +39,9 @@ export const ListTasksQuery = z.object({
   project: z.string().optional(),
   assigneeId: z.string().optional(),
   createdBy: z.string().optional(),
+  createdById: z.string().optional(),
+  watcherId: z.string().optional(),
+  parentTaskId: z.string().nullable().optional(),
   dueDateFrom: z.string().date().optional(),
   dueDateTo: z.string().date().optional(),
   search: z.string().optional(),

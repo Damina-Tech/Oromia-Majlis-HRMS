@@ -39,7 +39,7 @@ export declare const CreateDocumentTemplateDto: z.ZodObject<{
         AM: "AM";
     }>>>;
     tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>>;
-    mergeFields: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    mergeFields: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, z.core.$strip>;
 export type CreateDocumentTemplateDto = z.infer<typeof CreateDocumentTemplateDto>;
 export declare const UpdateDocumentTemplateDto: z.ZodObject<{
@@ -68,7 +68,7 @@ export declare const UpdateDocumentTemplateDto: z.ZodObject<{
     }>>;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
     active: z.ZodOptional<z.ZodBoolean>;
-    mergeFields: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    mergeFields: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, z.core.$strip>;
 export type UpdateDocumentTemplateDto = z.infer<typeof UpdateDocumentTemplateDto>;
 export declare const ListTemplatesQuery: z.ZodObject<{
@@ -113,7 +113,7 @@ export declare const GenerateDocumentDto: z.ZodObject<{
     employeeId: z.ZodOptional<z.ZodString>;
     employeeIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
     departmentId: z.ZodOptional<z.ZodString>;
-    mergeData: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    mergeData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
     email: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     format: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
         pdf: "pdf";
@@ -125,7 +125,7 @@ export type GenerateDocumentDto = z.infer<typeof GenerateDocumentDto>;
 export declare const PreviewDocumentDto: z.ZodObject<{
     templateId: z.ZodString;
     employeeId: z.ZodOptional<z.ZodString>;
-    mergeData: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    mergeData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
     useSampleData: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, z.core.$strip>;
 export type PreviewDocumentDto = z.infer<typeof PreviewDocumentDto>;

@@ -167,4 +167,14 @@ export const BulkUpdateAssetsDto = z.object({
     locationId: z.string().optional(),
     notes: z.string().max(1000).optional(),
 });
+// Transfer Asset DTO
+export const TransferAssetDto = z.object({
+    toEmployeeId: z.string().min(1, "Employee ID is required"),
+    note: z.string().max(500).optional(),
+});
+// Update Asset Status DTO
+export const UpdateAssetStatusDto = z.object({
+    status: AssetStatusSchema,
+    note: z.string().max(500).optional(),
+});
 //# sourceMappingURL=asset.dto.js.map

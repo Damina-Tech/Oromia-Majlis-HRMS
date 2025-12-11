@@ -1,4 +1,4 @@
-import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
+import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -156,7 +156,7 @@ export async function createTemplate(req, res) {
             data: {
                 ...data,
                 createdBy: currentUserId,
-                mergeFields: mergeFields.length > 0 ? { fields: mergeFields } : null,
+                mergeFields: mergeFields.length > 0 ? { fields: mergeFields } : Prisma.JsonNull,
             },
             include: {
                 createdByUser: {
@@ -217,7 +217,7 @@ export async function updateTemplate(req, res) {
                 ...data,
                 updatedBy: currentUserId,
                 version: data.content ? existing.version + 1 : existing.version,
-                mergeFields,
+                mergeFields: mergeFields ? mergeFields : Prisma.JsonNull,
             },
             include: {
                 updatedByUser: {

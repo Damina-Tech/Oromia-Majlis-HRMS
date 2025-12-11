@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 const prisma = new PrismaClient();
 /**
  * Run annual salary increment job
@@ -32,8 +32,8 @@ export async function runAnnualIncrementJob(config) {
         const employees = await prisma.employee.findMany({
             where: whereClause,
             include: {
-                salaryStep: true,
                 salaryGrade: true,
+                salaryStep: true,
             },
         });
         const incrementDate = new Date();
@@ -64,7 +64,7 @@ export async function runAnnualIncrementJob(config) {
                             newSalary: new Prisma.Decimal(newSalary),
                             incrementAmount: new Prisma.Decimal(incrementAmount),
                             incrementPercentage: new Prisma.Decimal(config.incrementPercentage),
-                            incrementDate,
+                            effectiveDate: incrementDate,
                             reason: config.reason || "Annual salary increment",
                             approvedBy: "SYSTEM", // System-generated
                             notes: config.notes || "Automatic annual increment",

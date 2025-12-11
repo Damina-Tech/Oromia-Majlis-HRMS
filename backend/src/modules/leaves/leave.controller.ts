@@ -414,7 +414,7 @@ export async function updateLeaveStatus(req: Request, res: Response) {
               ? "Your leave request has been approved."
               : data.status === "REJECTED"
               ? `Your leave request was rejected${data.comment ? `: ${data.comment}` : ""}.`
-              : `Your leave request status changed to ${data.status.toLowerCase()}.`,
+              : `Your leave request status changed to ${String(data.status).toLowerCase()}.`,
           resourceType: "LEAVE_REQUEST",
           resourceId: updated.id,
           targets: {

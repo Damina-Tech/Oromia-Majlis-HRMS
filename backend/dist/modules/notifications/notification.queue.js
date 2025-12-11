@@ -121,7 +121,7 @@ export async function startNotificationWorker() {
         concurrency: 5,
     });
     worker.on("failed", (job, err) => {
-        console.error(`❌ Notification delivery failed for job ${job.id}:`, err?.message);
+        console.error(`❌ Notification delivery failed for job ${job?.id ?? 'unknown'}:`, err?.message);
     });
     worker.on("completed", (job) => {
         console.log(`✅ Notification delivery completed for job ${job.id}`);

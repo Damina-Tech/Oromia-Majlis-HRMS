@@ -66,7 +66,7 @@ export const GenerateReportDtoSchema = z.object({
   filters: ReportFilterSchema,
   columns: z.array(z.string()).optional(),
   groupBy: z.array(z.string()).optional(),
-  aggregations: z.record(z.string()).optional(), // e.g., { "amount": "sum", "count": "count" }
+  aggregations: z.record(z.string(), z.any()).optional(), // e.g., { "amount": "sum", "count": "count" }
   visualization: VisualizationTypeSchema.optional(),
   saveAsTemplate: z.boolean().optional().default(false),
   templateName: z.string().optional(),
@@ -106,13 +106,13 @@ export type ReportTemplate = z.infer<typeof ReportTemplateSchema>;
 
 // Report Data Response
 export const ReportDataSchema = z.object({
-  data: z.array(z.record(z.any())),
+  data: z.array(z.record(z.string(), z.any())),
   metadata: z.object({
     totalRows: z.number(),
     generatedAt: z.string(),
     filters: ReportFilterSchema.optional(),
     columns: z.array(z.string()).optional(),
-    aggregations: z.record(z.any()).optional(),
+    aggregations: z.record(z.string(), z.any()).optional(),
   }),
 });
 
@@ -157,7 +157,7 @@ export const DashboardWidgetSchema = z.object({
   type: z.enum(["KPI", "CHART", "TABLE"]),
   title: z.string(),
   module: z.string(),
-  config: z.record(z.any()),
+  config: z.record(z.string(), z.any()),
   position: z.object({
     x: z.number(),
     y: z.number(),

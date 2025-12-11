@@ -188,7 +188,7 @@ export async function createTemplate(req: Request, res: Response) {
       data: {
         ...data,
         createdBy: currentUserId,
-        mergeFields: mergeFields.length > 0 ? { fields: mergeFields } : null,
+        mergeFields: mergeFields.length > 0 ? ({ fields: mergeFields } as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
       include: {
         createdByUser: {
@@ -256,7 +256,7 @@ export async function updateTemplate(req: Request, res: Response) {
         ...data,
         updatedBy: currentUserId,
         version: data.content ? existing.version + 1 : existing.version,
-        mergeFields,
+        mergeFields: mergeFields ? (mergeFields as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
       include: {
         updatedByUser: {

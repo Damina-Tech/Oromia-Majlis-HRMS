@@ -170,7 +170,7 @@ export async function startNotificationWorker() {
 
   worker.on("failed", (job, err) => {
     console.error(
-      `❌ Notification delivery failed for job ${job.id}:`,
+      `❌ Notification delivery failed for job ${job?.id ?? 'unknown'}:`,
       err?.message
     );
   });

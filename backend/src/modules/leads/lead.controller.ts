@@ -219,7 +219,7 @@ export async function listLeads(req: Request, res: Response) {
     let sortedIds: Array<{ id: string }>;
     
     if (whereParts.length > 0) {
-      const whereClause = Prisma.sql`WHERE ${Prisma.join(whereParts, Prisma.sql` AND `)}`;
+      const whereClause = Prisma.sql`WHERE ${Prisma.join(whereParts, " AND ")}`;
       sortedIds = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT id 
         FROM "Lead" 

@@ -32,7 +32,7 @@ export async function generateBankExport(payrollRunId, format = "csv") {
     if (!payrollRun) {
         throw new Error("Payroll run not found");
     }
-    if (payrollRun.status !== "PROCESSED" && payrollRun.status !== "APPROVED") {
+    if (payrollRun.status !== "PROCESSED") {
         throw new Error("Payroll run must be processed or approved before exporting");
     }
     const rows = payrollRun.items.map((item) => ({

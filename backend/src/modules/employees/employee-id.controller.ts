@@ -97,7 +97,7 @@ async function recordGeneration({
         generatedById,
         pdfUrl,
         pngUrl,
-        metadata,
+        metadata: metadata as Prisma.InputJsonValue,
         mode,
         zipUrl,
       },
@@ -129,7 +129,7 @@ async function zipPdfFiles(entries: { filePath: string; name: string }[]) {
     });
     archive.finalize();
     output.on("close", () => resolve());
-    archive.on("error", (error) => reject(error));
+    archive.on("error", (error: Error) => reject(error));
   });
   return {
     zipUrl: `/uploads/id-cards/${zipName}`,
@@ -251,7 +251,7 @@ export async function generateEmployeeIdCard(req: Request, res: Response) {
     generatedById: user?.id ?? "system",
     pdfUrl: assets.pdfUrl,
     pngUrl: assets.pngUrl,
-    metadata: assets.metadata,
+    metadata: assets.metadata as unknown as Prisma.JsonValue,
     mode: "SINGLE",
   });
   res.json({
@@ -317,7 +317,7 @@ export async function batchGenerateEmployeeIdCards(req: Request, res: Response) 
       generatedById: user?.id ?? "system",
       pdfUrl: assets.pdfUrl,
       pngUrl: assets.pngUrl,
-      metadata: assets.metadata,
+      metadata: assets.metadata as unknown as Prisma.JsonValue,
       mode: "BATCH",
     });
     results.push({

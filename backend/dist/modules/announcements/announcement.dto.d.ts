@@ -146,7 +146,7 @@ export declare const ListAnnouncementsQuery: z.ZodObject<{
 }, z.core.$strip>;
 export declare const AcknowledgeAnnouncementDto: z.ZodObject<{
     acknowledged: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    deviceInfo: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    deviceInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, z.core.$strip>;
 export declare const ListReadsQuery: z.ZodObject<{
     page: z.ZodDefault<z.ZodOptional<z.ZodCoercedNumber<unknown>>>;

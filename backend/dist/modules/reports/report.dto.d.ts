@@ -103,7 +103,7 @@ export declare const GenerateReportDtoSchema: z.ZodObject<{
     }, z.core.$strip>;
     columns: z.ZodOptional<z.ZodArray<z.ZodString>>;
     groupBy: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    aggregations: z.ZodOptional<z.ZodRecord<z.ZodString, z.core.SomeType>>;
+    aggregations: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
     visualization: z.ZodOptional<z.ZodEnum<{
         TABLE: "TABLE";
         LINE_CHART: "LINE_CHART";
@@ -179,7 +179,7 @@ export declare const ReportTemplateSchema: z.ZodObject<{
 }, z.core.$strip>;
 export type ReportTemplate = z.infer<typeof ReportTemplateSchema>;
 export declare const ReportDataSchema: z.ZodObject<{
-    data: z.ZodArray<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+    data: z.ZodArray<z.ZodRecord<z.ZodString, z.ZodAny>>;
     metadata: z.ZodObject<{
         totalRows: z.ZodNumber;
         generatedAt: z.ZodString;
@@ -207,7 +207,7 @@ export declare const ReportDataSchema: z.ZodObject<{
             taskPriority: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         columns: z.ZodOptional<z.ZodArray<z.ZodString>>;
-        aggregations: z.ZodOptional<z.ZodRecord<z.ZodAny, z.core.SomeType>>;
+        aggregations: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
     }, z.core.$strip>;
 }, z.core.$strip>;
 export type ReportData = z.infer<typeof ReportDataSchema>;
@@ -280,7 +280,7 @@ export declare const DashboardWidgetSchema: z.ZodObject<{
     }>;
     title: z.ZodString;
     module: z.ZodString;
-    config: z.ZodRecord<z.ZodAny, z.core.SomeType>;
+    config: z.ZodRecord<z.ZodString, z.ZodAny>;
     position: z.ZodOptional<z.ZodObject<{
         x: z.ZodNumber;
         y: z.ZodNumber;
@@ -299,7 +299,7 @@ export declare const SaveDashboardConfigDtoSchema: z.ZodObject<{
         }>;
         title: z.ZodString;
         module: z.ZodString;
-        config: z.ZodRecord<z.ZodAny, z.core.SomeType>;
+        config: z.ZodRecord<z.ZodString, z.ZodAny>;
         position: z.ZodOptional<z.ZodObject<{
             x: z.ZodNumber;
             y: z.ZodNumber;
