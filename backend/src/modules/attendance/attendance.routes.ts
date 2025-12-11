@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import * as attendanceController from "./attendance.controller.js";
 
 const router = Router();
@@ -16,12 +16,9 @@ router.get("/stats", attendanceController.getAttendanceStats);
 // List attendance records
 router.get("/", attendanceController.listAttendance);
 
-<<<<<<< HEAD
-=======
 // Create attendance record (for HR/Admin)
 router.post("/", attendanceController.createAttendance);
 
->>>>>>> dev
 // Update/delete attendance (for HR/Admin)
 router.put("/:id", attendanceController.updateAttendance);
 router.delete("/:id", attendanceController.deleteAttendance);

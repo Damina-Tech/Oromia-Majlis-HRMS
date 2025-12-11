@@ -1,4 +1,4 @@
- "use client";
+﻿ "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
@@ -172,7 +172,7 @@ const formatStatusLabel = (status: Employee["status"]) =>
   status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
 const formatEmploymentType = (value?: string | null) =>
-  value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
+  value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "ΓÇö";
 
 const ADVANCED_EDUCATION_LEVELS = ["DEGREE", "MASTER", "PHD"] as const;
 const requiresEducationField = (level?: string | null) =>
@@ -2003,7 +2003,7 @@ const EmployeesPage: React.FC = () => {
                         </Avatar>
                         <div>
                           <p className="font-medium">{e.firstName} {e.lastName}</p>
-                          <p className="text-sm text-gray-500">{e.designation ?? "—"}</p>
+                          <p className="text-sm text-gray-500">{e.designation ?? "ΓÇö"}</p>
                           <p className="text-xs text-gray-400">{e.employeeCode}</p>
                           {e.userId && e.user?.status === "ACTIVE" && (
                             <Badge variant="outline" className="mt-1 text-xs bg-green-50 text-green-700 border-green-200">
@@ -2019,7 +2019,7 @@ const EmployeesPage: React.FC = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{e.department?.name ?? "—"}</Badge>
+                      <Badge variant="outline">{e.department?.name ?? "ΓÇö"}</Badge>
                     </TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(toUiStatus(e.status))}>
@@ -2027,7 +2027,7 @@ const EmployeesPage: React.FC = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}
+                      {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "ΓÇö"}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
@@ -2078,10 +2078,10 @@ const EmployeesPage: React.FC = () => {
                                       {e.firstName} {e.lastName}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                      {e.designation ?? "—"}
+                                      {e.designation ?? "ΓÇö"}
                                     </p>
                                     <div className="mt-2 flex flex-wrap gap-2">
-                                      <Badge variant="outline">{e.department?.name ?? "—"}</Badge>
+                                      <Badge variant="outline">{e.department?.name ?? "ΓÇö"}</Badge>
                                       <Badge className={getStatusColor(toUiStatus(e.status))}>
                                         {formatStatusLabel(e.status)}
                                       </Badge>
@@ -2092,7 +2092,7 @@ const EmployeesPage: React.FC = () => {
                                   <div className="flex items-center gap-2">
                                     <Calendar className="h-4 w-4" />
                                     <span>
-                                      Joined {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}
+                                      Joined {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "ΓÇö"}
                                     </span>
                                     </div>
                                   {e.manager && (
@@ -2120,17 +2120,17 @@ const EmployeesPage: React.FC = () => {
                                 </div>
                                 <div className="flex flex-col text-sm">
                                   <span className="text-xs uppercase text-muted-foreground">Phone</span>
-                                  <span className="font-medium text-foreground">{e.phone ?? "—"}</span>
+                                  <span className="font-medium text-foreground">{e.phone ?? "ΓÇö"}</span>
                                 </div>
                                 <div className="flex flex-col text-sm">
                                   <span className="text-xs uppercase text-muted-foreground">Emergency Contact</span>
-                                  <span className="font-medium text-foreground">{e.emergencyContact ?? "—"}</span>
+                                  <span className="font-medium text-foreground">{e.emergencyContact ?? "ΓÇö"}</span>
                                 </div>
                                 <div className="flex flex-col text-sm">
                                   <span className="text-xs uppercase text-muted-foreground">Education</span>
                                   <span className="font-medium text-foreground">
                                     {e.educationLevel === "OTHER"
-                                      ? e.educationOther ?? "—"
+                                      ? e.educationOther ?? "ΓÇö"
                                       : formatEmploymentType(e.educationLevel)}
                                     {e.educationField && (
                                       <span className="block text-xs text-muted-foreground mt-1">
@@ -2143,15 +2143,15 @@ const EmployeesPage: React.FC = () => {
                               <div className="grid gap-6 sm:grid-cols-2 text-sm text-muted-foreground">
                                 <div className="space-y-2">
                                   <h4 className="font-medium text-foreground">Personal</h4>
-                                  <p><span className="font-medium text-foreground">Address:</span> {e.address ?? "—"}</p>
-                                  <p><span className="font-medium text-foreground">Date of Birth:</span> {e.dateOfBirth ? new Date(e.dateOfBirth).toLocaleDateString() : "—"}</p>
-                                  <p><span className="font-medium text-foreground">Gender:</span> {e.gender ? formatEmploymentType(e.gender) : "—"}</p>
-                                  <p><span className="font-medium text-foreground">Marital Status:</span> {e.marriageStatus ? formatEmploymentType(e.marriageStatus) : "—"}</p>
+                                  <p><span className="font-medium text-foreground">Address:</span> {e.address ?? "ΓÇö"}</p>
+                                  <p><span className="font-medium text-foreground">Date of Birth:</span> {e.dateOfBirth ? new Date(e.dateOfBirth).toLocaleDateString() : "ΓÇö"}</p>
+                                  <p><span className="font-medium text-foreground">Gender:</span> {e.gender ? formatEmploymentType(e.gender) : "ΓÇö"}</p>
+                                  <p><span className="font-medium text-foreground">Marital Status:</span> {e.marriageStatus ? formatEmploymentType(e.marriageStatus) : "ΓÇö"}</p>
                                 </div>
                                 <div className="space-y-2">
                                   <h4 className="font-medium text-foreground">Professional</h4>
                                   <p><span className="font-medium text-foreground">Status:</span> {formatStatusLabel(e.status)}</p>
-                                  <p><span className="font-medium text-foreground">Salary:</span> {e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "—"}</p>
+                                  <p><span className="font-medium text-foreground">Salary:</span> {e.salary != null ? `ETB ${Number(e.salary).toLocaleString()}` : "ΓÇö"}</p>
                                   {e.document && (
                                     <p className="flex items-center gap-2">
                                       <Download className="h-3 w-3" />
@@ -2224,11 +2224,7 @@ const EmployeesPage: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               className="text-red-600 hover:text-red-700"
-<<<<<<< HEAD
-                              onClick={() => toast.info("Hook delete here (api DELETE /employees/:id)")}
-=======
                               onClick={() => setDeletingEmployee(e)}
->>>>>>> dev
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -2237,19 +2233,12 @@ const EmployeesPage: React.FC = () => {
                       </div>
                     </TableCell>
                   </TableRow>
-<<<<<<< HEAD
-                ))}
-=======
                   );
                 })}
->>>>>>> dev
               </TableBody>
             </Table>
           </div>
 
-<<<<<<< HEAD
-          {!loading && filteredEmployees.length === 0 && (
-=======
           {total > 0 && (
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-gray-600">
@@ -2280,15 +2269,12 @@ const EmployeesPage: React.FC = () => {
           )}
 
           {!loading && employees.length === 0 && (
->>>>>>> dev
             <div className="text-center py-8">
               <p className="text-gray-500">No employees found matching your criteria.</p>
             </div>
           )}
         </CardContent>
       </Card>
-<<<<<<< HEAD
-=======
 
       <Sheet open={templateSheetOpen} onOpenChange={setTemplateSheetOpen}>
         <SheetContent className="w-full space-y-6 overflow-y-auto sm:max-w-3xl">
@@ -3073,7 +3059,6 @@ const EmployeesPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
->>>>>>> dev
     </div>
   );
 };

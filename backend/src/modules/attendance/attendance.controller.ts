@@ -1,28 +1,16 @@
-import { Request, Response } from "express";
-<<<<<<< HEAD
-import { v4 as uuidv4 } from "uuid";
-import { AppDataSource } from "../../db/data-source.js";
-import { Attendance, AttendanceStatus } from "../../entities/Attendance.js";
-=======
+﻿import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
->>>>>>> dev
 import {
   CheckInDto,
   CheckOutDto,
   ListAttendanceQuery,
-<<<<<<< HEAD
-=======
   CreateAttendanceDto,
->>>>>>> dev
   UpdateAttendanceDto,
 } from "./attendance.dto.js";
 import { getLocationInfo, parseLocationString } from "../../utils/location.js";
 
-<<<<<<< HEAD
-=======
 const prisma = new PrismaClient();
 
->>>>>>> dev
 /**
  * Check in for the day
  */
@@ -37,15 +25,6 @@ export async function checkIn(req: Request, res: Response) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    
-    // Check if already checked in today
-    const existing = await attendanceRepo.findOne({
-      where: {
-        employeeId,
-        date: today,
-=======
     // Check if already checked in today
     const existing = await prisma.attendance.findUnique({
       where: {
@@ -53,7 +32,6 @@ export async function checkIn(req: Request, res: Response) {
           employeeId,
           date: today,
         },
->>>>>>> dev
       },
     });
 
@@ -70,65 +48,6 @@ export async function checkIn(req: Request, res: Response) {
     const locationInfo = getLocationInfo(body.location);
     
     // Determine status based on check-in time
-<<<<<<< HEAD
-    const workStartHour = 9;
-    const workStartMinute = 0;
-    let status: AttendanceStatus = AttendanceStatus.PRESENT;
-    
-    if (now.getHours() > workStartHour || 
-        (now.getHours() === workStartHour && now.getMinutes() > workStartMinute + 15)) {
-      status = AttendanceStatus.LATE;
-    }
-
-    // Create or update attendance record
-    if (existing) {
-      existing.checkInTime = now;
-      existing.checkInLocation = body.location;
-      existing.status = status;
-      await attendanceRepo.save(existing);
-      
-      const withRelations = await attendanceRepo.findOne({
-        where: { id: existing.id },
-        relations: ["employee"],
-      });
-      
-      return res.status(200).json({
-        ...withRelations,
-        locationInfo: {
-          type: locationInfo.type,
-          displayName: locationInfo.displayName,
-          isOffice: locationInfo.isOffice,
-          officeName: (locationInfo as any).officeName,
-          distanceMeters: (locationInfo as any).distanceMeters,
-        }
-      });
-    } else {
-      const attendance = new Attendance();
-      attendance.id = uuidv4();
-      attendance.employeeId = employeeId;
-      attendance.date = today;
-      attendance.checkInTime = now;
-      attendance.checkInLocation = body.location;
-      attendance.status = status;
-      
-      const saved = await attendanceRepo.save(attendance);
-      const withRelations = await attendanceRepo.findOne({
-        where: { id: saved.id },
-        relations: ["employee"],
-      });
-      
-      return res.status(200).json({
-        ...withRelations,
-        locationInfo: {
-          type: locationInfo.type,
-          displayName: locationInfo.displayName,
-          isOffice: locationInfo.isOffice,
-          officeName: (locationInfo as any).officeName,
-          distanceMeters: (locationInfo as any).distanceMeters,
-        }
-      });
-    }
-=======
     // Assuming work starts at 9:00 AM
     const workStartHour = 9;
     const workStartMinute = 0;
@@ -182,7 +101,6 @@ export async function checkIn(req: Request, res: Response) {
         distanceMeters: (locationInfo as any).distanceMeters,
       }
     });
->>>>>>> dev
   } catch (error: any) {
     console.error("Check-in error:", error);
     if (error.name === "ZodError") {
@@ -206,15 +124,6 @@ export async function checkOut(req: Request, res: Response) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    
-    // Find today's attendance record
-    const existing = await attendanceRepo.findOne({
-      where: {
-        employeeId,
-        date: today,
-=======
     // Find today's attendance record
     const existing = await prisma.attendance.findUnique({
       where: {
@@ -222,7 +131,6 @@ export async function checkOut(req: Request, res: Response) {
           employeeId,
           date: today,
         },
->>>>>>> dev
       },
     });
 
@@ -244,27 +152,11 @@ export async function checkOut(req: Request, res: Response) {
     if (existing.checkInTime) {
       const diffMs = now.getTime() - existing.checkInTime.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);
-<<<<<<< HEAD
-=======
       // Subtract break time (convert minutes to hours)
->>>>>>> dev
       workHours = diffHours - (existing.breakMinutes / 60);
     }
 
     // Update attendance record
-<<<<<<< HEAD
-    existing.checkOutTime = now;
-    existing.checkOutLocation = body.location;
-    existing.workHours = workHours.toFixed(2);
-    
-    const updated = await attendanceRepo.save(existing);
-    const withRelations = await attendanceRepo.findOne({
-      where: { id: updated.id },
-      relations: ["employee"],
-    });
-
-    return res.status(200).json(withRelations);
-=======
     const attendance = await prisma.attendance.update({
       where: {
         id: existing.id,
@@ -287,7 +179,6 @@ export async function checkOut(req: Request, res: Response) {
     });
 
     return res.status(200).json(attendance);
->>>>>>> dev
   } catch (error: any) {
     console.error("Check-out error:", error);
     if (error.name === "ZodError") {
@@ -310,15 +201,6 @@ export async function getTodayStatus(req: Request, res: Response) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    const attendance = await attendanceRepo.findOne({
-      where: {
-        employeeId,
-        date: today,
-      },
-      relations: ["employee"],
-=======
     const attendance = await prisma.attendance.findUnique({
       where: {
         employeeId_date: {
@@ -336,7 +218,6 @@ export async function getTodayStatus(req: Request, res: Response) {
           },
         },
       },
->>>>>>> dev
     });
 
     if (!attendance) {
@@ -380,35 +261,6 @@ export async function listAttendance(req: Request, res: Response) {
   try {
     const query = ListAttendanceQuery.parse(req.query);
     const currentUserEmployeeId = (req as any).user?.employeeId;
-<<<<<<< HEAD
-    
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    const queryBuilder = attendanceRepo.createQueryBuilder("attendance")
-      .leftJoinAndSelect("attendance.employee", "employee");
-
-    if (query.employeeId) {
-      queryBuilder.andWhere("attendance.employeeId = :employeeId", { employeeId: query.employeeId });
-    } else if (currentUserEmployeeId) {
-      queryBuilder.andWhere("attendance.employeeId = :employeeId", { employeeId: currentUserEmployeeId });
-    }
-
-    if (query.startDate) {
-      queryBuilder.andWhere("attendance.date >= :startDate", { startDate: new Date(query.startDate) });
-    }
-    if (query.endDate) {
-      queryBuilder.andWhere("attendance.date <= :endDate", { endDate: new Date(query.endDate) });
-    }
-    if (query.status) {
-      queryBuilder.andWhere("attendance.status = :status", { status: query.status });
-    }
-
-    const skip = (query.page - 1) * query.pageSize;
-    queryBuilder.orderBy("attendance.date", "DESC")
-      .skip(skip)
-      .take(query.pageSize);
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-=======
     const userPermissions = (req as any).user?.permissions || [];
     const hasManagePermission = userPermissions.includes("attendance.manage") || userPermissions.includes("attendance.read");
     
@@ -489,7 +341,6 @@ export async function listAttendance(req: Request, res: Response) {
       }),
       prisma.attendance.count({ where }),
     ]);
->>>>>>> dev
 
     // Enhance items with location info
     const enhancedItems = items.map(item => {
@@ -548,24 +399,6 @@ export async function getAttendanceStats(req: Request, res: Response) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    const records = await attendanceRepo
-      .createQueryBuilder("attendance")
-      .where("attendance.employeeId = :employeeId", { employeeId })
-      .andWhere("attendance.date >= :startOfMonth", { startOfMonth })
-      .andWhere("attendance.date <= :endOfMonth", { endOfMonth })
-      .getMany();
-
-    const stats = {
-      totalDays: records.length,
-      presentDays: records.filter(r => r.status === AttendanceStatus.PRESENT).length,
-      lateDays: records.filter(r => r.status === AttendanceStatus.LATE).length,
-      absentDays: records.filter(r => r.status === AttendanceStatus.ABSENT).length,
-      halfDays: records.filter(r => r.status === AttendanceStatus.HALF_DAY).length,
-      onLeaveDays: records.filter(r => r.status === AttendanceStatus.ON_LEAVE).length,
-      totalWorkHours: records.reduce((sum, r) => sum + (r.workHours ? parseFloat(r.workHours) : 0), 0),
-=======
     const records = await prisma.attendance.findMany({
       where: {
         employeeId,
@@ -584,7 +417,6 @@ export async function getAttendanceStats(req: Request, res: Response) {
       halfDays: records.filter(r => r.status === "HALF_DAY").length,
       onLeaveDays: records.filter(r => r.status === "ON_LEAVE").length,
       totalWorkHours: records.reduce((sum, r) => sum + (r.workHours ? parseFloat(r.workHours.toString()) : 0), 0),
->>>>>>> dev
     };
 
     return res.status(200).json(stats);
@@ -595,8 +427,6 @@ export async function getAttendanceStats(req: Request, res: Response) {
 }
 
 /**
-<<<<<<< HEAD
-=======
  * Create attendance record (for HR/Admin manual entry)
  */
 export async function createAttendance(req: Request, res: Response) {
@@ -676,7 +506,6 @@ export async function createAttendance(req: Request, res: Response) {
 }
 
 /**
->>>>>>> dev
  * Update attendance record (for HR/Admin manual corrections)
  */
 export async function updateAttendance(req: Request, res: Response) {
@@ -684,31 +513,6 @@ export async function updateAttendance(req: Request, res: Response) {
     const { id } = req.params;
     const body = UpdateAttendanceDto.parse(req.body);
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    const attendance = await attendanceRepo.findOne({ where: { id } });
-    
-    if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found" });
-    }
-
-    if (body.checkInTime !== undefined) attendance.checkInTime = new Date(body.checkInTime);
-    if (body.checkOutTime !== undefined) attendance.checkOutTime = body.checkOutTime ? new Date(body.checkOutTime) : undefined;
-    if (body.checkInLocation !== undefined) attendance.checkInLocation = body.checkInLocation;
-    if (body.checkOutLocation !== undefined) attendance.checkOutLocation = body.checkOutLocation;
-    if (body.status !== undefined) attendance.status = body.status as AttendanceStatus;
-    if (body.workHours !== undefined) attendance.workHours = body.workHours.toString();
-    if (body.breakMinutes !== undefined) attendance.breakMinutes = body.breakMinutes;
-    if (body.notes !== undefined) attendance.notes = body.notes;
-
-    const updated = await attendanceRepo.save(attendance);
-    const withRelations = await attendanceRepo.findOne({
-      where: { id: updated.id },
-      relations: ["employee"],
-    });
-
-    return res.status(200).json(withRelations);
-=======
     // Calculate work hours if both check-in and check-out are provided
     let workHours = undefined;
     const updateData: any = {};
@@ -751,18 +555,14 @@ export async function updateAttendance(req: Request, res: Response) {
     });
 
     return res.status(200).json(attendance);
->>>>>>> dev
   } catch (error: any) {
     console.error("Update attendance error:", error);
     if (error.name === "ZodError") {
       return res.status(400).json({ message: "Invalid input", errors: error.errors });
     }
-<<<<<<< HEAD
-=======
     if (error.code === "P2025") {
       return res.status(404).json({ message: "Attendance record not found" });
     }
->>>>>>> dev
     return res.status(500).json({ message: "Failed to update attendance" });
   }
 }
@@ -774,29 +574,13 @@ export async function deleteAttendance(req: Request, res: Response) {
   try {
     const { id } = req.params;
 
-<<<<<<< HEAD
-    const attendanceRepo = AppDataSource.getRepository(Attendance);
-    const attendance = await attendanceRepo.findOne({ where: { id } });
-    
-    if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found" });
-    }
-
-    await attendanceRepo.remove(attendance);
-=======
     await prisma.attendance.delete({
       where: { id },
     });
->>>>>>> dev
 
     return res.status(204).send();
   } catch (error: any) {
     console.error("Delete attendance error:", error);
-<<<<<<< HEAD
-    return res.status(500).json({ message: "Failed to delete attendance" });
-  }
-}
-=======
     if (error.code === "P2025") {
       return res.status(404).json({ message: "Attendance record not found" });
     }
@@ -804,4 +588,3 @@ export async function deleteAttendance(req: Request, res: Response) {
   }
 }
 
->>>>>>> dev

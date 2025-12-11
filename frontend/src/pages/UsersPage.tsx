@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import React, { useState } from "react";
-=======
-import React, { useState, useEffect } from "react";
->>>>>>> dev
+﻿import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -14,22 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-<<<<<<< HEAD
-=======
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
->>>>>>> dev
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-<<<<<<< HEAD
-  DialogTrigger,
-=======
   DialogFooter,
->>>>>>> dev
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -47,11 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-<<<<<<< HEAD
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-=======
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
->>>>>>> dev
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,10 +46,6 @@ import {
 import {
   UserPlus,
   Shield,
-<<<<<<< HEAD
-  Settings,
-=======
->>>>>>> dev
   Search,
   MoreHorizontal,
   Lock,
@@ -74,18 +55,6 @@ import {
   Eye,
   Users as UsersIcon,
   Crown,
-<<<<<<< HEAD
-  User,
-} from "lucide-react";
-import { format } from "date-fns";
-import { Checkbox } from '@/components/ui/checkbox';
-
-export default function UsersPage() {
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [permissions, setPermissions] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-=======
   User as UserIcon,
   Loader2,
   AlertCircle,
@@ -127,71 +96,11 @@ export default function UsersPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
->>>>>>> dev
   const [activeTab, setActiveTab] = useState("users");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [addUserDialog, setAddUserDialog] = useState(false);
-<<<<<<< HEAD
-  const [addRoleDialog, setAddRoleDialog] = useState(false);
-  const [editUserDialog, setEditUserDialog] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-
-  const [userForm, setUserForm] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    roleId: "",
-    department: "",
-    isActive: true,
-  });
-
-  const [roleForm, setRoleForm] = useState({
-    name: "",
-    description: "",
-    permissions: [],
-  });
-
-  const addNotification = ({ title, message, type }) => {
-    setNotifications([
-      ...notifications,
-      { title, message, type, id: Date.now() },
-    ]);
-  };
-
-  const addUser = (user) => {
-    const newUser = {
-      id: Date.now().toString(),
-      ...user,
-    };
-    setUsers([...users, newUser]);
-  };
-
-  const updateUserData = (userId, updates) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
-  };
-
-  const deleteUser = (userId) => {
-    setUsers(users.filter((u) => u.id !== userId));
-  };
-
-  const addRole = (role) => {
-    const newRole = {
-      id: Date.now().toString(),
-      ...role,
-    };
-    setRoles([...roles, newRole]);
-  };
-
-  const deleteRole = (roleId) => {
-    setRoles(roles.filter((r) => r.id !== roleId));
-  };
-
-  const getUsersByRole = (roleId) => users.filter((u) => u.role.id === roleId);
-  const getActiveUsers = () => users.filter((u) => u.isActive);
-
-=======
   const [editUserDialog, setEditUserDialog] = useState(false);
   const [viewUserDialog, setViewUserDialog] = useState(false);
   const [deleteUserDialog, setDeleteUserDialog] = useState(false);
@@ -284,132 +193,11 @@ export default function UsersPage() {
     }
   };
 
->>>>>>> dev
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
-<<<<<<< HEAD
-    const matchesRole = roleFilter === "all" || user.role.id === roleFilter;
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" && user.isActive) ||
-      (statusFilter === "inactive" && !user.isActive);
-    return matchesSearch && matchesRole && matchesStatus;
-  });
-
-  const handleAddUser = () => {
-    if (
-      !userForm.email ||
-      !userForm.firstName ||
-      !userForm.lastName ||
-      !userForm.roleId
-    ) {
-      return addNotification({
-        title: "Missing Information",
-        message: "Please fill in all required fields",
-        type: "error",
-      });
-    }
-    const selectedRole = roles.find((r) => r.id === userForm.roleId);
-    if (!selectedRole) {
-      return addNotification({
-        title: "Invalid Role",
-        message: "Please select a valid role",
-        type: "error",
-      });
-    }
-    addUser({
-      ...userForm,
-      role: selectedRole,
-      permissions: selectedRole.permissions || [],
-    });
-    addNotification({
-      title: "User Added",
-      message: `${userForm.firstName} ${userForm.lastName} added.`,
-      type: "success",
-    });
-    setUserForm({
-      email: "",
-      firstName: "",
-      lastName: "",
-      roleId: "",
-      department: "",
-      isActive: true,
-    });
-    setAddUserDialog(false);
-  };
-
-  const handleAddRole = () => {
-    if (!roleForm.name || !roleForm.description) {
-      return addNotification({
-        title: "Missing Info",
-        message: "Provide role name and description",
-        type: "error",
-      });
-    }
-    addRole({
-      ...roleForm,
-      permissions: permissions.filter((p) =>
-        roleForm.permissions.includes(p.id)
-      ),
-    });
-    addNotification({
-      title: "Role Created",
-      message: `Role '${roleForm.name}' created`,
-      type: "success",
-    });
-    setRoleForm({ name: "", description: "", permissions: [] });
-    setAddRoleDialog(false);
-  };
-
-  const handleToggleUserStatus = (userId) => {
-    const user = users.find((u) => u.id === userId);
-    if (user) {
-      updateUserData(userId, { isActive: !user.isActive });
-      addNotification({
-        title: "User Updated",
-        message: `User ${user.isActive ? "deactivated" : "activated"}`,
-        type: "success",
-      });
-    }
-  };
-
-  const handleDeleteUser = (userId) => {
-    const user = users.find((u) => u.id === userId);
-    deleteUser(userId);
-    addNotification({
-      title: "User Deleted",
-      message: `${user.firstName} ${user.lastName} deleted`,
-      type: "success",
-    });
-  };
-
-  const handleDeleteRole = (roleId) => {
-    const usersWithRole = getUsersByRole(roleId);
-    if (usersWithRole.length > 0) {
-      return addNotification({
-        title: "Cannot Delete",
-        message: "Role assigned to users",
-        type: "error",
-      });
-    }
-    deleteRole(roleId);
-    addNotification({
-      title: "Role Deleted",
-      message: `Role deleted`,
-      type: "success",
-    });
-  };
-
-  const getRoleIcon = (role) => {
-    if (role.toLowerCase().includes("admin"))
-      return <Crown className="h-4 w-4 text-yellow-500" />;
-    if (role.toLowerCase().includes("manager"))
-      return <Shield className="h-4 w-4 text-blue-500" />;
-    return <User className="h-4 w-4 text-gray-500" />;
-=======
     // Show all users when "all" is selected, or users with the selected role
     // Users without roles will show when roleFilter is "all"
     const matchesRole = roleFilter === "all" || (user.roles && user.roles.length > 0 && user.roles.some((r) => r.id === roleFilter));
@@ -573,20 +361,10 @@ export default function UsersPage() {
     if (roleName.toLowerCase().includes("manager"))
       return <Shield className="h-4 w-4 text-blue-500" />;
     return <UserIcon className="h-4 w-4 text-gray-500" />;
->>>>>>> dev
   };
 
   const stats = {
     total: users.length,
-<<<<<<< HEAD
-    active: getActiveUsers().length,
-    inactive: users.filter((u) => !u.isActive).length,
-    admins: users.filter((u) => u.role.name.toLowerCase().includes("admin"))
-      .length,
-    roles: roles.length,
-  };
-
-=======
     active: users.filter((u) => u.status === "ACTIVE").length,
     inactive: users.filter((u) => u.status === "INACTIVE").length,
     admins: users.filter((u) => u.roles.some((r) => r.name.toLowerCase().includes("admin"))).length,
@@ -738,7 +516,6 @@ export default function UsersPage() {
     return acc;
   }, {} as Record<string, Permission[]>);
 
->>>>>>> dev
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -748,26 +525,6 @@ export default function UsersPage() {
             Manage users, roles, and permissions for the system
           </p>
         </div>
-<<<<<<< HEAD
-        <div className="flex gap-2">
-          <Dialog open={addRoleDialog} onOpenChange={setAddRoleDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Shield className="mr-2 h-4 w-4" />
-                New Role
-              </Button>
-            </DialogTrigger>
-          </Dialog>
-          <Dialog open={addUserDialog} onOpenChange={setAddUserDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Add User
-              </Button>
-            </DialogTrigger>
-          </Dialog>
-        </div>
-=======
         {canManage && (
         <div className="flex gap-2">
             <Button onClick={() => {
@@ -789,7 +546,6 @@ export default function UsersPage() {
               </Button>
         </div>
         )}
->>>>>>> dev
       </div>
 
       {/* Stats Cards */}
@@ -806,37 +562,19 @@ export default function UsersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active</CardTitle>
-<<<<<<< HEAD
-            <User className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {stats.active}
-            </div>
-=======
             <UserIcon className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats.active}</div>
->>>>>>> dev
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Inactive</CardTitle>
-<<<<<<< HEAD
-            <User className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {stats.inactive}
-            </div>
-=======
             <UserIcon className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{stats.inactive}</div>
->>>>>>> dev
           </CardContent>
         </Card>
         <Card>
@@ -845,13 +583,7 @@ export default function UsersPage() {
             <Crown className="h-4 w-4 text-yellow-600" />
           </CardHeader>
           <CardContent>
-<<<<<<< HEAD
-            <div className="text-2xl font-bold text-yellow-600">
-              {stats.admins}
-            </div>
-=======
             <div className="text-2xl font-bold text-yellow-600">{stats.admins}</div>
->>>>>>> dev
           </CardContent>
         </Card>
         <Card>
@@ -878,13 +610,7 @@ export default function UsersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>System Users</CardTitle>
-<<<<<<< HEAD
-                  <CardDescription>
-                    Manage user accounts and access
-                  </CardDescription>
-=======
                   <CardDescription>Manage user accounts and access</CardDescription>
->>>>>>> dev
                 </div>
                 <div className="flex gap-2">
                   <div className="relative">
@@ -923,34 +649,22 @@ export default function UsersPage() {
               </div>
             </CardHeader>
             <CardContent>
-<<<<<<< HEAD
-=======
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 </div>
               ) : (
->>>>>>> dev
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>User</TableHead>
-<<<<<<< HEAD
-                    <TableHead>Role</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Last Login</TableHead>
-=======
                       <TableHead>Roles</TableHead>
                       <TableHead>Employee</TableHead>
->>>>>>> dev
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-<<<<<<< HEAD
-                  {filteredUsers.map((user) => (
-=======
                     {filteredUsers.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-gray-500 py-8">
@@ -959,17 +673,10 @@ export default function UsersPage() {
                       </TableRow>
                     ) : (
                       filteredUsers.map((user) => (
->>>>>>> dev
                     <TableRow key={user.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
-<<<<<<< HEAD
-                            <AvatarImage
-                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`}
-                            />
-=======
->>>>>>> dev
                             <AvatarFallback>
                               {user.firstName.charAt(0)}
                               {user.lastName.charAt(0)}
@@ -979,29 +686,11 @@ export default function UsersPage() {
                             <div className="font-medium">
                               {user.firstName} {user.lastName}
                             </div>
-<<<<<<< HEAD
-                            <div className="text-sm text-muted-foreground">
-                              {user.email}
-                            </div>
-=======
                                 <div className="text-sm text-muted-foreground">{user.email}</div>
->>>>>>> dev
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-<<<<<<< HEAD
-                        <div className="flex items-center gap-2">
-                          {getRoleIcon(user.role.name)}
-                          <Badge variant="outline">{user.role.name}</Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>{user.department}</TableCell>
-                      <TableCell>
-                        {user.lastLogin
-                          ? format(user.lastLogin, "MMM dd, HH:mm")
-                          : "Never"}
-=======
                             <div className="flex flex-wrap gap-1">
                               {user.roles && user.roles.length > 0 ? (
                                 user.roles.map((role) => (
@@ -1031,27 +720,18 @@ export default function UsersPage() {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground">—</span>
+                              <span className="text-muted-foreground">ΓÇö</span>
                             )}
->>>>>>> dev
                       </TableCell>
                       <TableCell>
                         <Badge
                           className={
-<<<<<<< HEAD
-                            user.isActive
-=======
                                 user.status === "ACTIVE"
->>>>>>> dev
                               ? "bg-green-100 text-green-800"
                               : "bg-red-100 text-red-800"
                           }
                         >
-<<<<<<< HEAD
-                          {user.isActive ? "Active" : "Inactive"}
-=======
                               {user.status === "ACTIVE" ? "Active" : "Inactive"}
->>>>>>> dev
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -1062,12 +742,6 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-<<<<<<< HEAD
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedUser(user.id);
-                                setEditUserDialog(true);
-=======
                                 <DropdownMenuItem onClick={() => openViewDialog(user)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
@@ -1078,21 +752,13 @@ export default function UsersPage() {
                                       onSelect={(e) => {
                                         e.preventDefault();
                                         openEditDialog(user);
->>>>>>> dev
                               }}
                             >
                               <Edit className="mr-2 h-4 w-4" />
                               Edit User
                             </DropdownMenuItem>
-<<<<<<< HEAD
-                            <DropdownMenuItem
-                              onClick={() => handleToggleUserStatus(user.id)}
-                            >
-                              {user.isActive ? (
-=======
                                     <DropdownMenuItem onClick={() => handleToggleUserStatus(user)}>
                                       {user.status === "ACTIVE" ? (
->>>>>>> dev
                                 <>
                                   <Lock className="mr-2 h-4 w-4" />
                                   Deactivate
@@ -1104,10 +770,6 @@ export default function UsersPage() {
                                 </>
                               )}
                             </DropdownMenuItem>
-<<<<<<< HEAD
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteUser(user.id)}
-=======
                                   </>
                                 )}
                                 {canManage && user._isUserAccount === false && (
@@ -1128,31 +790,21 @@ export default function UsersPage() {
                                       setUserToDelete(user);
                                       setDeleteUserDialog(true);
                                     }}
->>>>>>> dev
                               className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete User
                             </DropdownMenuItem>
-<<<<<<< HEAD
-=======
                                 )}
->>>>>>> dev
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-<<<<<<< HEAD
-                  ))}
-                </TableBody>
-              </Table>
-=======
                       ))
                     )}
                 </TableBody>
               </Table>
               )}
->>>>>>> dev
             </CardContent>
           </Card>
         </TabsContent>
@@ -1160,12 +812,6 @@ export default function UsersPage() {
         <TabsContent value="roles" className="space-y-4">
           <Card>
             <CardHeader>
-<<<<<<< HEAD
-              <CardTitle>Roles & Permissions</CardTitle>
-              <CardDescription>
-                Define roles and assign permissions to control system access
-              </CardDescription>
-=======
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Roles & Permissions</CardTitle>
@@ -1180,7 +826,6 @@ export default function UsersPage() {
                   </Button>
                 )}
               </div>
->>>>>>> dev
             </CardHeader>
             <CardContent>
               <Table>
@@ -1189,85 +834,10 @@ export default function UsersPage() {
                     <TableHead>Role</TableHead>
                     <TableHead>Users</TableHead>
                     <TableHead>Permissions</TableHead>
-<<<<<<< HEAD
-                    <TableHead>System Role</TableHead>
-=======
->>>>>>> dev
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-<<<<<<< HEAD
-                  {roles.map((role) => (
-                    <TableRow key={role.id}>
-                      <TableCell>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            {getRoleIcon(role.name)}
-                            <span className="font-medium">{role.name}</span>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {role.description}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {getUsersByRole(role.id).length} users
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {role.permissions.slice(0, 2).map((permission) => (
-                            <Badge
-                              key={permission.id}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {permission.name}
-                            </Badge>
-                          ))}
-                          {role.permissions.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{role.permissions.length - 2} more
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {role.isSystemRole ? (
-                          <Badge className="bg-blue-100 text-blue-800">
-                            System
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Custom</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="outline">
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                          {!role.isSystemRole && (
-                            <>
-                              <Button size="sm" variant="outline">
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteRole(role.id)}
-                                disabled={getUsersByRole(role.id).length > 0}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-=======
                   {roles.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center text-gray-500 py-8">
@@ -1343,7 +913,6 @@ export default function UsersPage() {
                       </TableRow>
                     ))
                   )}
->>>>>>> dev
                 </TableBody>
               </Table>
             </CardContent>
@@ -1352,16 +921,6 @@ export default function UsersPage() {
       </Tabs>
 
       {/* Add User Dialog */}
-<<<<<<< HEAD
-      <Dialog open={addUserDialog} onOpenChange={setAddUserDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-            <DialogDescription>
-              Create a new user account with role and permissions
-            </DialogDescription>
-          </DialogHeader>
-=======
       <Dialog open={addUserDialog} onOpenChange={(open) => {
         setAddUserDialog(open);
         if (!open) setError("");
@@ -1379,7 +938,6 @@ export default function UsersPage() {
             </Alert>
           )}
 
->>>>>>> dev
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1387,16 +945,7 @@ export default function UsersPage() {
                 <Input
                   id="first-name"
                   value={userForm.firstName}
-<<<<<<< HEAD
-                  onChange={(e) =>
-                    setUserForm((prev) => ({
-                      ...prev,
-                      firstName: e.target.value,
-                    }))
-                  }
-=======
                   onChange={(e) => setUserForm({ ...userForm, firstName: e.target.value })}
->>>>>>> dev
                   placeholder="John"
                 />
               </div>
@@ -1405,16 +954,7 @@ export default function UsersPage() {
                 <Input
                   id="last-name"
                   value={userForm.lastName}
-<<<<<<< HEAD
-                  onChange={(e) =>
-                    setUserForm((prev) => ({
-                      ...prev,
-                      lastName: e.target.value,
-                    }))
-                  }
-=======
                   onChange={(e) => setUserForm({ ...userForm, lastName: e.target.value })}
->>>>>>> dev
                   placeholder="Doe"
                 />
               </div>
@@ -1425,32 +965,12 @@ export default function UsersPage() {
                 id="email"
                 type="email"
                 value={userForm.email}
-<<<<<<< HEAD
-                onChange={(e) =>
-                  setUserForm((prev) => ({ ...prev, email: e.target.value }))
-                }
-=======
                 onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
->>>>>>> dev
                 placeholder="john.doe@company.com"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-<<<<<<< HEAD
-                <Label htmlFor="role">Role *</Label>
-                <Select
-                  value={userForm.roleId}
-                  onValueChange={(value) =>
-                    setUserForm((prev) => ({ ...prev, roleId: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((role) => (
-=======
                 <Label htmlFor="password">Password *</Label>
                 <Input
                   id="password"
@@ -1488,33 +1008,12 @@ export default function UsersPage() {
                   {roles
                     .filter((role) => !userForm.roleIds.includes(role.id))
                     .map((role) => (
->>>>>>> dev
                       <SelectItem key={role.id} value={role.id}>
                         {role.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-<<<<<<< HEAD
-              </div>
-              <div>
-                <Label htmlFor="department">Department</Label>
-                <Select
-                  value={userForm.department}
-                  onValueChange={(value) =>
-                    setUserForm((prev) => ({ ...prev, department: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Engineering">Engineering</SelectItem>
-                    <SelectItem value="Sales">Sales</SelectItem>
-                    <SelectItem value="Marketing">Marketing</SelectItem>
-                    <SelectItem value="HR">HR</SelectItem>
-                    <SelectItem value="Finance">Finance</SelectItem>
-=======
               {userForm.roleIds.length > 0 && (
                 <div className="mt-2 space-y-2">
                   <div className="flex flex-wrap gap-1">
@@ -1532,7 +1031,7 @@ export default function UsersPage() {
                             }}
                             className="ml-1 hover:text-red-600"
                           >
-                            ×
+                            ├ù
                           </button>
                         </Badge>
                       ) : null;
@@ -1582,30 +1081,10 @@ export default function UsersPage() {
                   <SelectContent>
                   <SelectItem value="ACTIVE">Active</SelectItem>
                   <SelectItem value="INACTIVE">Inactive</SelectItem>
->>>>>>> dev
                   </SelectContent>
                 </Select>
               </div>
             </div>
-<<<<<<< HEAD
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="active"
-                checked={userForm.isActive}
-                onCheckedChange={(checked) =>
-                  setUserForm((prev) => ({ ...prev, isActive: !!checked }))
-                }
-              />
-              <Label htmlFor="active">Active user account</Label>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAddUserDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddUser}>Add User</Button>
-            </div>
-          </div>
-=======
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddUserDialog(false)} disabled={submitting}>
@@ -1732,7 +1211,7 @@ export default function UsersPage() {
                             }}
                             className="ml-1 hover:text-red-600"
                           >
-                            ×
+                            ├ù
                           </button>
                         </Badge>
                       ) : null;
@@ -1852,7 +1331,7 @@ export default function UsersPage() {
                     </div>
                     <div>
                       <Label>Designation</Label>
-                      <p className="font-medium">{selectedUser.employee.designation || "—"}</p>
+                      <p className="font-medium">{selectedUser.employee.designation || "ΓÇö"}</p>
                     </div>
                     {selectedUser.employee.department && (
                       <div>
@@ -1941,21 +1420,10 @@ export default function UsersPage() {
               Delete User
             </Button>
           </DialogFooter>
->>>>>>> dev
         </DialogContent>
       </Dialog>
 
       {/* Add Role Dialog */}
-<<<<<<< HEAD
-      <Dialog open={addRoleDialog} onOpenChange={setAddRoleDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create New Role</DialogTitle>
-            <DialogDescription>
-              Define a new role with specific permissions
-            </DialogDescription>
-          </DialogHeader>
-=======
       <Dialog open={addRoleDialog} onOpenChange={(open) => {
         setAddRoleDialog(open);
         if (!open) setRoleError("");
@@ -1973,79 +1441,12 @@ export default function UsersPage() {
             </Alert>
           )}
 
->>>>>>> dev
           <div className="space-y-4">
             <div>
               <Label htmlFor="role-name">Role Name *</Label>
               <Input
                 id="role-name"
                 value={roleForm.name}
-<<<<<<< HEAD
-                onChange={(e) =>
-                  setRoleForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                placeholder="e.g., Team Lead"
-              />
-            </div>
-            <div>
-              <Label htmlFor="role-description">Description *</Label>
-              <Input
-                id="role-description"
-                value={roleForm.description}
-                onChange={(e) =>
-                  setRoleForm((prev) => ({
-                    ...prev,
-                    description: e.target.value,
-                  }))
-                }
-                placeholder="Brief description of the role"
-              />
-            </div>
-            <div>
-              <Label>Permissions</Label>
-              <div className="grid grid-cols-2 gap-4 mt-2 max-h-60 overflow-y-auto">
-                {permissions.map((permission) => (
-                  <div
-                    key={permission.id}
-                    className="flex items-center space-x-2"
-                  >
-                    <Checkbox
-                      id={permission.id}
-                      checked={roleForm.permissions.includes(permission.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setRoleForm((prev) => ({
-                            ...prev,
-                            permissions: [...prev.permissions, permission.id],
-                          }));
-                        } else {
-                          setRoleForm((prev) => ({
-                            ...prev,
-                            permissions: prev.permissions.filter(
-                              (p) => p !== permission.id
-                            ),
-                          }));
-                        }
-                      }}
-                    />
-                    <Label htmlFor={permission.id} className="text-sm">
-                      <div className="font-medium">{permission.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {permission.description}
-                      </div>
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAddRoleDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddRole}>Create Role</Button>
-            </div>
-          </div>
-=======
                 onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
                 placeholder="e.g., HR Manager"
               />
@@ -2239,7 +1640,7 @@ export default function UsersPage() {
                 </div>
                 <div>
                   <Label>Description</Label>
-                  <p className="font-medium">{selectedRole.description || "—"}</p>
+                  <p className="font-medium">{selectedRole.description || "ΓÇö"}</p>
                 </div>
                 <div>
                   <Label>Assigned Users</Label>
@@ -2324,7 +1725,6 @@ export default function UsersPage() {
               Delete Role
             </Button>
           </DialogFooter>
->>>>>>> dev
         </DialogContent>
       </Dialog>
     </div>

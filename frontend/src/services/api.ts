@@ -1,11 +1,7 @@
-import axios from "axios";
+﻿import axios from "axios";
 
 const api = axios.create({
-<<<<<<< HEAD
-  baseURL: `${import.meta.env.VITE_API_URL || "https://hrms-api.ciroocity.com"}/api/v1`,
-=======
   baseURL: `${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/v1`,
->>>>>>> dev
   withCredentials: true,
 });
 
@@ -42,8 +38,6 @@ api.interceptors.response.use(
   }
 );
 
-<<<<<<< HEAD
-=======
 // Document upload helper
 export async function uploadDocument(file: File): Promise<{ url: string; filename: string; originalName: string; size: number }> {
   const formData = new FormData();
@@ -88,5 +82,4 @@ export async function downloadSampleTemplate(): Promise<void> {
   window.URL.revokeObjectURL(url);
 }
 
->>>>>>> dev
 export default api;

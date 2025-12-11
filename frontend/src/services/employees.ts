@@ -1,4 +1,4 @@
-import api from "./api";
+﻿import api from "./api";
 
 export type Employee = {
   id: string;
@@ -16,8 +16,6 @@ export type Employee = {
   departmentId?: string | null;
   department?: { id: string; name: string } | null;
   manager?: { id: string; firstName: string; lastName: string } | null;
-<<<<<<< HEAD
-=======
   userId?: string | null;
   user?: {
     id: string;
@@ -26,7 +24,6 @@ export type Employee = {
     lastName: string;
     status: string;
   } | null;
->>>>>>> dev
 };
 
 export async function listEmployees(params: {

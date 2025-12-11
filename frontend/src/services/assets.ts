@@ -1,25 +1,6 @@
-import api from "./api";
+﻿import api from "./api";
 
 // Types
-<<<<<<< HEAD
-export interface Asset {
-  id: string;
-  name: string;
-  category: "LAPTOP" | "DESKTOP" | "MONITOR" | "KEYBOARD" | "MOUSE" | "PHONE" | "TABLET" | "HEADSET" | "PRINTER" | "NETWORK_EQUIPMENT" | "OTHER";
-  serialNumber: string;
-  model?: string;
-  brand?: string;
-  purchaseDate?: string;
-  purchasePrice?: number | string;
-  currentValue?: number | string;
-  condition: "EXCELLENT" | "GOOD" | "FAIR" | "POOR" | "DAMAGED";
-  status: "AVAILABLE" | "ASSIGNED" | "MAINTENANCE" | "RETIRED" | "LOST" | "DAMAGED";
-  location?: string;
-  notes?: string;
-  assignedTo?: string;
-  assignedDate?: string;
-  assignedBy?: string;
-=======
 export interface AssetCategory {
   id: string;
   name: string;
@@ -92,7 +73,6 @@ export interface Asset {
     firstName: string;
     lastName: string;
   };
->>>>>>> dev
   createdAt: string;
   updatedAt: string;
   assignedEmployee?: {
@@ -108,8 +88,6 @@ export interface Asset {
       name: string;
     };
   };
-<<<<<<< HEAD
-=======
   assignments?: AssetAssignment[];
   maintenance?: AssetMaintenance[];
   depreciation?: AssetDepreciation[];
@@ -135,17 +113,11 @@ export interface AssetAssignment {
   };
   assignedAt: string;
   assignedBy: string;
->>>>>>> dev
   assignedByUser?: {
     id: string;
     firstName: string;
     lastName: string;
   };
-<<<<<<< HEAD
-  _count?: {
-    history: number;
-  };
-=======
   returnedAt?: string;
   note?: string;
   createdAt: string;
@@ -215,17 +187,12 @@ export interface AssetDepreciation {
   accumulatedDepr: number | string;
   bookValue: number | string;
   createdAt: string;
->>>>>>> dev
 }
 
 export interface AssetHistory {
   id: string;
   assetId: string;
-<<<<<<< HEAD
-  action: "CREATED" | "ASSIGNED" | "REVOKED" | "TRANSFERRED" | "MAINTENANCE_STARTED" | "MAINTENANCE_COMPLETED" | "STATUS_CHANGED" | "CONDITION_UPDATED" | "RETIRED" | "LOST" | "FOUND";
-=======
   action: "CREATED" | "ASSIGNED" | "REVOKED" | "TRANSFERRED" | "MAINTENANCE_STARTED" | "MAINTENANCE_COMPLETED" | "STATUS_CHANGED" | "CONDITION_UPDATED" | "RETIRED" | "DISPOSED";
->>>>>>> dev
   description?: string;
   fromEmployeeId?: string;
   toEmployeeId?: string;
@@ -234,18 +201,10 @@ export interface AssetHistory {
   previousCondition?: string;
   newCondition?: string;
   performedBy: string;
-<<<<<<< HEAD
-  createdAt: string;
-  asset?: {
-    id: string;
-    name: string;
-    serialNumber: string;
-=======
   performedByUser?: {
     id: string;
     firstName: string;
     lastName: string;
->>>>>>> dev
   };
   fromEmployee?: {
     id: string;
@@ -259,9 +218,6 @@ export interface AssetHistory {
     lastName: string;
     employeeCode: string;
   };
-<<<<<<< HEAD
-  performedByUser?: {
-=======
   createdAt: string;
 }
 
@@ -270,40 +226,18 @@ export interface AssetAuditLog {
   assetId: string;
   changedBy: string;
   changedByUser?: {
->>>>>>> dev
     id: string;
     firstName: string;
     lastName: string;
   };
-<<<<<<< HEAD
-=======
   changeSummary: string;
   timestamp: string;
->>>>>>> dev
 }
 
 export interface AssetStats {
   totalAssets: number;
   totalValue: number;
   averageValue: number;
-<<<<<<< HEAD
-  statusBreakdown: Record<string, number>;
-  conditionBreakdown: Record<string, number>;
-  categoryBreakdown: Record<string, number>;
-}
-
-export interface ListAssetsParams {
-  search?: string;
-  category?: string;
-  status?: string;
-  condition?: string;
-  location?: string;
-  assignedTo?: string;
-  assignedBy?: string;
-  page?: number;
-  pageSize?: number;
-  sortBy?: "name" | "serialNumber" | "category" | "status" | "condition" | "purchaseDate" | "createdAt";
-=======
   assignedCount: number;
   maintenanceCount: number;
   disposedCount: number;
@@ -325,19 +259,13 @@ export interface ListAssetsParams {
   page?: number;
   pageSize?: number;
   sortBy?: "name" | "assetCode" | "categoryId" | "status" | "condition" | "purchaseDate" | "createdAt";
->>>>>>> dev
   sortOrder?: "asc" | "desc";
 }
 
 export interface AssetStatsParams {
-<<<<<<< HEAD
-  category?: string;
-  location?: string;
-=======
   categoryId?: string;
   locationId?: string;
   departmentId?: string;
->>>>>>> dev
   dateFrom?: string;
   dateTo?: string;
 }
@@ -354,17 +282,6 @@ export interface AssetHistoryParams {
 
 export interface CreateAssetData {
   name: string;
-<<<<<<< HEAD
-  category: string;
-  serialNumber: string;
-  model?: string;
-  brand?: string;
-  purchaseDate?: string;
-  purchasePrice?: number;
-  currentValue?: number;
-  condition?: string;
-  location?: string;
-=======
   categoryId: string;
   brand?: string;
   model?: string;
@@ -380,24 +297,11 @@ export interface CreateAssetData {
   depreciationMethod?: "STRAIGHT_LINE" | "DECLINING_BALANCE";
   depreciationRate?: number;
   lifeYears?: number;
->>>>>>> dev
   notes?: string;
 }
 
 export interface UpdateAssetData {
   name?: string;
-<<<<<<< HEAD
-  category?: string;
-  serialNumber?: string;
-  model?: string;
-  brand?: string;
-  purchaseDate?: string;
-  purchasePrice?: number;
-  currentValue?: number;
-  condition?: string;
-  status?: string;
-  location?: string;
-=======
   categoryId?: string;
   brand?: string;
   model?: string;
@@ -414,39 +318,11 @@ export interface UpdateAssetData {
   depreciationMethod?: "STRAIGHT_LINE" | "DECLINING_BALANCE";
   depreciationRate?: number;
   lifeYears?: number;
->>>>>>> dev
   notes?: string;
 }
 
 export interface AssignAssetData {
   employeeId: string;
-<<<<<<< HEAD
-  notes?: string;
-}
-
-export interface TransferAssetData {
-  toEmployeeId: string;
-  notes?: string;
-}
-
-export interface UpdateAssetStatusData {
-  status: string;
-  notes?: string;
-}
-
-export interface BulkUpdateAssetsData {
-  assetIds: string[];
-  status?: string;
-  condition?: string;
-  location?: string;
-  notes?: string;
-}
-
-// API Functions
-export const listAssets = async (params?: ListAssetsParams) => {
-  const response = await api.get("/assets", { params });
-  return response.data;
-=======
   note?: string;
 }
 
@@ -481,7 +357,6 @@ export interface RunDepreciationParams {
 export const listAssets = async (params?: ListAssetsParams) => {
   const response = await api.get("/assets", { params });
   return response.data as { items: Asset[]; total: number; page: number; pageSize: number; totalPages: number };
->>>>>>> dev
 };
 
 export const getAsset = async (id: string): Promise<Asset> => {
@@ -503,32 +378,12 @@ export const deleteAsset = async (id: string): Promise<void> => {
   await api.delete(`/assets/${id}`);
 };
 
-<<<<<<< HEAD
-=======
 // Asset Assignment API Functions
->>>>>>> dev
 export const assignAsset = async (id: string, data: AssignAssetData): Promise<Asset> => {
   const response = await api.post(`/assets/${id}/assign`, data);
   return response.data;
 };
 
-<<<<<<< HEAD
-export const revokeAsset = async (id: string, notes?: string): Promise<Asset> => {
-  const response = await api.post(`/assets/${id}/revoke`, { notes });
-  return response.data;
-};
-
-export const transferAsset = async (id: string, data: TransferAssetData): Promise<Asset> => {
-  const response = await api.post(`/assets/${id}/transfer`, data);
-  return response.data;
-};
-
-export const updateAssetStatus = async (id: string, data: UpdateAssetStatusData): Promise<Asset> => {
-  const response = await api.put(`/assets/${id}/status`, data);
-  return response.data;
-};
-
-=======
 export const returnAsset = async (id: string, data?: ReturnAssetData): Promise<Asset> => {
   const response = await api.post(`/assets/${id}/return`, data || {});
   return response.data;
@@ -673,7 +528,6 @@ export const runDepreciation = async (params: RunDepreciationParams) => {
 };
 
 // Asset Stats and History API Functions
->>>>>>> dev
 export const getAssetStats = async (params?: AssetStatsParams): Promise<AssetStats> => {
   const response = await api.get("/assets/stats", { params });
   return response.data;
@@ -681,17 +535,10 @@ export const getAssetStats = async (params?: AssetStatsParams): Promise<AssetSta
 
 export const getAssetHistory = async (params?: AssetHistoryParams) => {
   const response = await api.get("/assets/history", { params });
-<<<<<<< HEAD
-  return response.data;
-};
-
-export const bulkUpdateAssets = async (data: BulkUpdateAssetsData) => {
-=======
   return response.data as { items: AssetHistory[]; total: number; page: number; pageSize: number; totalPages: number };
 };
 
 export const bulkUpdateAssets = async (data: { assetIds: string[]; status?: string; condition?: string; locationId?: string; notes?: string }) => {
->>>>>>> dev
   const response = await api.put("/assets/bulk/update", data);
   return response.data;
 };
@@ -699,20 +546,6 @@ export const bulkUpdateAssets = async (data: { assetIds: string[]; status?: stri
 // Helper functions
 export const getStatusColor = (status: string): string => {
   switch (status) {
-<<<<<<< HEAD
-    case "AVAILABLE":
-      return "bg-green-100 text-green-800";
-    case "ASSIGNED":
-      return "bg-blue-100 text-blue-800";
-    case "MAINTENANCE":
-      return "bg-yellow-100 text-yellow-800";
-    case "RETIRED":
-      return "bg-gray-100 text-gray-800";
-    case "LOST":
-      return "bg-red-100 text-red-800";
-    case "DAMAGED":
-      return "bg-red-100 text-red-800";
-=======
     case "IN_STOCK":
       return "bg-green-100 text-green-800";
     case "ASSIGNED":
@@ -721,7 +554,6 @@ export const getStatusColor = (status: string): string => {
       return "bg-yellow-100 text-yellow-800";
     case "DISPOSED":
       return "bg-gray-100 text-gray-800";
->>>>>>> dev
     default:
       return "bg-gray-100 text-gray-800";
   }
@@ -729,17 +561,6 @@ export const getStatusColor = (status: string): string => {
 
 export const getConditionColor = (condition: string): string => {
   switch (condition) {
-<<<<<<< HEAD
-    case "EXCELLENT":
-      return "bg-green-100 text-green-800";
-    case "GOOD":
-      return "bg-blue-100 text-blue-800";
-    case "FAIR":
-      return "bg-yellow-100 text-yellow-800";
-    case "POOR":
-      return "bg-orange-100 text-orange-800";
-    case "DAMAGED":
-=======
     case "NEW":
       return "bg-green-100 text-green-800";
     case "GOOD":
@@ -747,7 +568,6 @@ export const getConditionColor = (condition: string): string => {
     case "NEEDS_REPAIR":
       return "bg-yellow-100 text-yellow-800";
     case "RETIRED":
->>>>>>> dev
       return "bg-red-100 text-red-800";
     default:
       return "bg-gray-100 text-gray-800";
@@ -756,20 +576,6 @@ export const getConditionColor = (condition: string): string => {
 
 export const getStatusLabel = (status: string): string => {
   switch (status) {
-<<<<<<< HEAD
-    case "AVAILABLE":
-      return "Available";
-    case "ASSIGNED":
-      return "Assigned";
-    case "MAINTENANCE":
-      return "Maintenance";
-    case "RETIRED":
-      return "Retired";
-    case "LOST":
-      return "Lost";
-    case "DAMAGED":
-      return "Damaged";
-=======
     case "IN_STOCK":
       return "In Stock";
     case "ASSIGNED":
@@ -778,7 +584,6 @@ export const getStatusLabel = (status: string): string => {
       return "In Maintenance";
     case "DISPOSED":
       return "Disposed";
->>>>>>> dev
     default:
       return status;
   }
@@ -786,18 +591,6 @@ export const getStatusLabel = (status: string): string => {
 
 export const getConditionLabel = (condition: string): string => {
   switch (condition) {
-<<<<<<< HEAD
-    case "EXCELLENT":
-      return "Excellent";
-    case "GOOD":
-      return "Good";
-    case "FAIR":
-      return "Fair";
-    case "POOR":
-      return "Poor";
-    case "DAMAGED":
-      return "Damaged";
-=======
     case "NEW":
       return "New";
     case "GOOD":
@@ -806,41 +599,11 @@ export const getConditionLabel = (condition: string): string => {
       return "Needs Repair";
     case "RETIRED":
       return "Retired";
->>>>>>> dev
     default:
       return condition;
   }
 };
 
-<<<<<<< HEAD
-export const getCategoryLabel = (category: string): string => {
-  switch (category) {
-    case "LAPTOP":
-      return "Laptop";
-    case "DESKTOP":
-      return "Desktop";
-    case "MONITOR":
-      return "Monitor";
-    case "KEYBOARD":
-      return "Keyboard";
-    case "MOUSE":
-      return "Mouse";
-    case "PHONE":
-      return "Phone";
-    case "TABLET":
-      return "Tablet";
-    case "HEADSET":
-      return "Headset";
-    case "PRINTER":
-      return "Printer";
-    case "NETWORK_EQUIPMENT":
-      return "Network Equipment";
-    case "OTHER":
-      return "Other";
-    default:
-      return category;
-  }
-=======
 export const formatCurrency = (value: number | string, currency: string = "USD"): string => {
   const numValue = typeof value === "string" ? parseFloat(value) : value;
   if (isNaN(numValue)) return "$0.00";
@@ -848,7 +611,6 @@ export const formatCurrency = (value: number | string, currency: string = "USD")
     style: "currency",
     currency: currency,
   }).format(numValue);
->>>>>>> dev
 };
 
 export const getActionLabel = (action: string): string => {
@@ -858,11 +620,7 @@ export const getActionLabel = (action: string): string => {
     case "ASSIGNED":
       return "Assigned";
     case "REVOKED":
-<<<<<<< HEAD
-      return "Revoked";
-=======
       return "Returned";
->>>>>>> dev
     case "TRANSFERRED":
       return "Transferred";
     case "MAINTENANCE_STARTED":
@@ -875,57 +633,9 @@ export const getActionLabel = (action: string): string => {
       return "Condition Updated";
     case "RETIRED":
       return "Retired";
-<<<<<<< HEAD
-    case "LOST":
-      return "Lost";
-    case "FOUND":
-      return "Found";
-    default:
-      return action;
-  }
-};
-
-export const formatCurrency = (value: number | string): string => {
-  const numValue = typeof value === "string" ? parseFloat(value) : value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(numValue);
-};
-
-export const getAssetIcon = (category: string): string => {
-  switch (category) {
-    case "LAPTOP":
-      return "💻";
-    case "DESKTOP":
-      return "🖥️";
-    case "MONITOR":
-      return "🖥️";
-    case "KEYBOARD":
-      return "⌨️";
-    case "MOUSE":
-      return "🖱️";
-    case "PHONE":
-      return "📱";
-    case "TABLET":
-      return "📱";
-    case "HEADSET":
-      return "🎧";
-    case "PRINTER":
-      return "🖨️";
-    case "NETWORK_EQUIPMENT":
-      return "🌐";
-    case "OTHER":
-      return "📦";
-    default:
-      return "📦";
-  }
-};
-=======
     case "DISPOSED":
       return "Disposed";
     default:
       return action;
   }
 };
->>>>>>> dev

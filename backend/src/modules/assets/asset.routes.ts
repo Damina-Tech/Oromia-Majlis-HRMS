@@ -1,31 +1,16 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import {
   listAssets,
   getAsset,
   createAsset,
   updateAsset,
   assignAsset,
-<<<<<<< HEAD
-  revokeAsset,
-  transferAsset,
-  updateAssetStatus,
-=======
   returnAsset,
->>>>>>> dev
   deleteAsset,
   getAssetStats,
   getAssetHistory,
   bulkUpdateAssets,
 } from "./asset.controller.js";
-<<<<<<< HEAD
-
-const router = Router();
-
-// Asset CRUD routes
-router.get("/", listAssets); // GET /api/v1/assets
-router.get("/stats", getAssetStats); // GET /api/v1/assets/stats
-router.get("/history", getAssetHistory); // GET /api/v1/assets/history
-=======
 import {
   listAssetCategories,
   getAssetCategory,
@@ -118,25 +103,9 @@ router.post("/:id/assign", assignAsset); // POST /api/v1/assets/:id/assign
 router.post("/:id/return", returnAsset); // POST /api/v1/assets/:id/return
 
 // Generic asset routes (must come last)
->>>>>>> dev
 router.get("/:id", getAsset); // GET /api/v1/assets/:id
 router.post("/", createAsset); // POST /api/v1/assets
 router.put("/:id", updateAsset); // PUT /api/v1/assets/:id
 router.delete("/:id", deleteAsset); // DELETE /api/v1/assets/:id
 
-<<<<<<< HEAD
-// Asset assignment routes
-router.post("/:id/assign", assignAsset); // POST /api/v1/assets/:id/assign
-router.post("/:id/revoke", revokeAsset); // POST /api/v1/assets/:id/revoke
-router.post("/:id/transfer", transferAsset); // POST /api/v1/assets/:id/transfer
-
-// Asset status and condition routes
-router.put("/:id/status", updateAssetStatus); // PUT /api/v1/assets/:id/status
-
-// Bulk operations
-router.put("/bulk/update", bulkUpdateAssets); // PUT /api/v1/assets/bulk/update
-
 export default router;
-=======
-export default router;
->>>>>>> dev

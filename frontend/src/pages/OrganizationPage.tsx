@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,6 @@ import {
 '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { 
-<<<<<<< HEAD
-=======
   Select,
   SelectContent,
   SelectItem,
@@ -25,7 +23,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { 
->>>>>>> dev
   listDepartments, 
   getDepartment, 
   createDepartment, 
@@ -34,10 +31,7 @@ import {
   type Department 
 } from '@/services/departments';
 import { listEmployees, type Employee } from '@/services/employees';
-<<<<<<< HEAD
-=======
 import { listUsers, type User } from '@/services/users';
->>>>>>> dev
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -60,21 +54,12 @@ const OrganizationPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
-<<<<<<< HEAD
-=======
   const [allUsers, setAllUsers] = useState<User[]>([]);
->>>>>>> dev
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
   const [selectedDeptEmployees, setSelectedDeptEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-<<<<<<< HEAD
-  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
-  const [newDeptName, setNewDeptName] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-=======
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [deletingDepartment, setDeletingDepartment] = useState<Department | null>(null);
@@ -83,7 +68,6 @@ const OrganizationPage: React.FC = () => {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
->>>>>>> dev
 
   const canWrite = hasPermission("departments.write");
 
@@ -95,14 +79,6 @@ const OrganizationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-<<<<<<< HEAD
-      const [depts, emps] = await Promise.all([
-        listDepartments(),
-        listEmployees({ page: 1, pageSize: 1000 })
-      ]);
-      setDepartments(depts);
-      setAllEmployees(emps.items);
-=======
       const [depts, emps, usersResponse] = await Promise.all([
         listDepartments(),
         listEmployees({ page: 1, pageSize: 1000 }),
@@ -119,7 +95,6 @@ const OrganizationPage: React.FC = () => {
         ...user,
         isManager: managerIds.has(user.id)
       })));
->>>>>>> dev
     } catch (err) {
       toast.error('Failed to load organization data');
       console.error(err);
@@ -152,15 +127,6 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
-<<<<<<< HEAD
-    try {
-      setSubmitting(true);
-      setError('');
-      await createDepartment({ name: newDeptName.trim() });
-      toast.success(`Department "${newDeptName}" created successfully!`);
-      setShowAddDialog(false);
-      setNewDeptName('');
-=======
     if (!selectedManagerId) {
       setError('Department manager is required');
       return;
@@ -177,7 +143,6 @@ const OrganizationPage: React.FC = () => {
       setShowAddDialog(false);
       setNewDeptName('');
       setSelectedManagerId('');
->>>>>>> dev
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to create department';
@@ -194,16 +159,6 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
-<<<<<<< HEAD
-    try {
-      setSubmitting(true);
-      setError('');
-      await updateDepartment(editingDepartment.id, { name: newDeptName.trim() });
-      toast.success(`Department renamed to "${newDeptName}" successfully!`);
-      setShowEditDialog(false);
-      setEditingDepartment(null);
-      setNewDeptName('');
-=======
     if (!selectedManagerId) {
       setError('Department manager is required');
       return;
@@ -221,7 +176,6 @@ const OrganizationPage: React.FC = () => {
       setEditingDepartment(null);
       setNewDeptName('');
       setSelectedManagerId('');
->>>>>>> dev
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to update department';
@@ -232,11 +186,7 @@ const OrganizationPage: React.FC = () => {
     }
   };
 
-<<<<<<< HEAD
-  const handleDeleteDepartment = async (dept: Department) => {
-=======
   const handleDeleteClick = (dept: Department) => {
->>>>>>> dev
     const employeeCount = getDepartmentEmployees(dept.id).length;
     
     if (employeeCount > 0) {
@@ -244,15 +194,6 @@ const OrganizationPage: React.FC = () => {
       return;
     }
 
-<<<<<<< HEAD
-    if (!confirm(`Are you sure you want to delete the "${dept.name}" department?`)) {
-      return;
-    }
-
-    try {
-      await deleteDepartment(dept.id);
-      toast.success(`Department "${dept.name}" deleted successfully!`);
-=======
     setDeletingDepartment(dept);
     setShowDeleteDialog(true);
   };
@@ -266,26 +207,19 @@ const OrganizationPage: React.FC = () => {
       toast.success(`Department "${deletingDepartment.name}" deleted successfully!`);
       setShowDeleteDialog(false);
       setDeletingDepartment(null);
->>>>>>> dev
       await loadData();
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to delete department';
       toast.error(message);
-<<<<<<< HEAD
-=======
     } finally {
       setDeleting(false);
->>>>>>> dev
     }
   };
 
   const openEditDialog = (dept: Department) => {
     setEditingDepartment(dept);
     setNewDeptName(dept.name);
-<<<<<<< HEAD
-=======
     setSelectedManagerId(dept.managerId || '');
->>>>>>> dev
     setShowEditDialog(true);
     setError('');
   };
@@ -316,16 +250,12 @@ const OrganizationPage: React.FC = () => {
         </div>
         
         {canWrite && (
-<<<<<<< HEAD
-          <Button onClick={() => { setShowAddDialog(true); setError(''); setNewDeptName(''); }}>
-=======
           <Button onClick={() => { 
             setShowAddDialog(true); 
             setError(''); 
             setNewDeptName(''); 
             setSelectedManagerId(''); 
           }}>
->>>>>>> dev
             <Plus className="h-4 w-4 mr-2" />
             Add Department
           </Button>
@@ -447,9 +377,6 @@ const OrganizationPage: React.FC = () => {
             <Card key={department.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-center justify-between">
-<<<<<<< HEAD
-                  <CardTitle className="text-lg">{department.name}</CardTitle>
-=======
                   <div>
                   <CardTitle className="text-lg">{department.name}</CardTitle>
                     {department.manager && (
@@ -458,7 +385,6 @@ const OrganizationPage: React.FC = () => {
                       </p>
                     )}
                   </div>
->>>>>>> dev
                   <Badge variant="outline">{employees.length} member{employees.length !== 1 ? 's' : ''}</Badge>
                 </div>
               </CardHeader>
@@ -508,11 +434,7 @@ const OrganizationPage: React.FC = () => {
                       <Button 
                         variant="outline" 
                         size="sm"
-<<<<<<< HEAD
-                        onClick={() => handleDeleteDepartment(department)}
-=======
                         onClick={() => handleDeleteClick(department)}
->>>>>>> dev
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -547,8 +469,6 @@ const OrganizationPage: React.FC = () => {
                       <p className="font-semibold">{selectedDeptEmployees.length} employee{selectedDeptEmployees.length !== 1 ? 's' : ''}</p>
                     </div>
                     <div>
-<<<<<<< HEAD
-=======
                       <p className="text-sm font-medium text-gray-600">Department Manager</p>
                       {selectedDepartment.manager ? (
                         <div>
@@ -563,7 +483,6 @@ const OrganizationPage: React.FC = () => {
                       )}
                     </div>
                     <div>
->>>>>>> dev
                       <p className="text-sm font-medium text-gray-600">Status</p>
                       <Badge className="bg-green-100 text-green-800">Active</Badge>
                     </div>
@@ -634,8 +553,6 @@ const OrganizationPage: React.FC = () => {
                 disabled={submitting}
               />
             </div>
-<<<<<<< HEAD
-=======
             <div>
               <Label htmlFor="dept-manager">Department Manager *</Label>
               <Select
@@ -673,7 +590,6 @@ const OrganizationPage: React.FC = () => {
                 <p className="text-sm text-red-500 mt-1">This field is required</p>
               )}
             </div>
->>>>>>> dev
           </div>
 
           <DialogFooter>
@@ -714,8 +630,6 @@ const OrganizationPage: React.FC = () => {
                 disabled={submitting}
               />
             </div>
-<<<<<<< HEAD
-=======
             <div>
               <Label htmlFor="edit-dept-manager">Department Manager *</Label>
               <Select
@@ -754,7 +668,6 @@ const OrganizationPage: React.FC = () => {
                 <p className="text-sm text-red-500 mt-1">This field is required</p>
               )}
             </div>
->>>>>>> dev
           </div>
 
           <DialogFooter>
@@ -768,8 +681,6 @@ const OrganizationPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-<<<<<<< HEAD
-=======
 
       {/* Delete Department Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={(open) => { 
@@ -815,7 +726,6 @@ const OrganizationPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
->>>>>>> dev
     </div>
   );
 };

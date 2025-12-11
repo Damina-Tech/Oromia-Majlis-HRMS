@@ -1,4 +1,4 @@
-{
+﻿{
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -6,12 +6,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowJs": true,
-<<<<<<< HEAD
-    "strict": false,
-    "noImplicitAny": false,
-=======
     "strict": true,
->>>>>>> dev
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
@@ -21,11 +16,7 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "experimentalDecorators": true,
-<<<<<<< HEAD
-    "emitDecoratorMetadata": false,
-=======
     "emitDecoratorMetadata": true,
->>>>>>> dev
     "types": ["node"]
   },
   "include": ["src/**/*"],

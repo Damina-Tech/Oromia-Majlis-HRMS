@@ -1,17 +1,4 @@
-import { Request, Response } from "express";
-<<<<<<< HEAD
-import { v4 as uuidv4 } from "uuid";
-import { AppDataSource } from "../../db/data-source.js";
-import { LeaveRequest, LeaveStatus, LeaveType } from "../../entities/LeaveRequest.js";
-import { LeaveBalance } from "../../entities/LeaveBalance.js";
-import { Employee } from "../../entities/Employee.js";
-import {
-  CreateLeaveRequestDto,
-  UpdateLeaveStatusDto,
-  ListLeaveRequestsQuery,
-} from "./leave.dto.js";
-
-=======
+﻿import { Request, Response } from "express";
 import {
   PrismaClient,
   Prisma,
@@ -29,7 +16,6 @@ import { NotificationService } from "../notifications/notification.service.js";
 
 const prisma = new PrismaClient();
 
->>>>>>> dev
 // Helper function to calculate days between two dates
 function calculateDays(startDate: Date, endDate: Date): number {
   const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
@@ -41,34 +27,6 @@ function calculateDays(startDate: Date, endDate: Date): number {
 export async function listLeaveRequests(req: Request, res: Response) {
   try {
     const query = ListLeaveRequestsQuery.parse(req.query);
-<<<<<<< HEAD
-    const { status, employeeId, page, pageSize } = query;
-
-    const leaveRepo = AppDataSource.getRepository(LeaveRequest);
-    const userEmployeeId = (req as any).user?.employeeId;
-
-    const queryBuilder = leaveRepo.createQueryBuilder("leave")
-      .leftJoinAndSelect("leave.employee", "employee")
-      .leftJoinAndSelect("leave.approver", "approver");
-
-    if (status) {
-      queryBuilder.andWhere("leave.status = :status", { status });
-    }
-
-    if (employeeId) {
-      queryBuilder.andWhere("leave.employeeId = :employeeId", { employeeId });
-    } else if (userEmployeeId) {
-      queryBuilder.andWhere("leave.employeeId = :userEmployeeId", { userEmployeeId });
-    }
-
-    queryBuilder.orderBy("leave.createdAt", "DESC")
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-
-    res.json({ items, total, page, pageSize });
-=======
     const { status, employeeId, search, startDate, endDate, type, sortBy, sortOrder, page, pageSize } = query;
     const user = (req as any).user;
     const userRoles = user?.roles || [];
@@ -162,7 +120,6 @@ export async function listLeaveRequests(req: Request, res: Response) {
       page,
       pageSize,
     });
->>>>>>> dev
   } catch (error) {
     console.error("List leave requests error:", error);
     res.status(500).json({ message: "Failed to fetch leave requests" });
@@ -172,12 +129,6 @@ export async function listLeaveRequests(req: Request, res: Response) {
 // GET /api/v1/leaves/:id - Get specific leave request
 export async function getLeaveRequest(req: Request, res: Response) {
   try {
-<<<<<<< HEAD
-    const leaveRepo = AppDataSource.getRepository(LeaveRequest);
-    const leave = await leaveRepo.findOne({
-      where: { id: req.params.id },
-      relations: ["employee", "approver"],
-=======
     const leave = await prisma.leaveRequest.findUnique({
       where: { id: req.params.id },
       include: {
@@ -198,7 +149,6 @@ export async function getLeaveRequest(req: Request, res: Response) {
           },
         },
       },
->>>>>>> dev
     });
 
     if (!leave) {
@@ -216,12 +166,6 @@ export async function getLeaveRequest(req: Request, res: Response) {
 export async function createLeaveRequest(req: Request, res: Response) {
   try {
     const data = CreateLeaveRequestDto.parse(req.body);
-<<<<<<< HEAD
-    const userEmployeeId = (req as any).user?.employeeId;
-
-    if (!userEmployeeId) {
-      return res.status(403).json({ message: "Employee record not found for user" });
-=======
     const user = (req as any).user;
     const userRoles = user?.roles || [];
     const userPermissions = user?.permissions || [];
@@ -243,32 +187,10 @@ export async function createLeaveRequest(req: Request, res: Response) {
         return res.status(403).json({ message: "Employee record not found for user" });
       }
       targetEmployeeId = userEmployeeId;
->>>>>>> dev
     }
 
     const startDate = new Date(data.startDate);
     const endDate = new Date(data.endDate);
-<<<<<<< HEAD
-    const days = calculateDays(startDate, endDate);
-
-    const leaveBalanceRepo = AppDataSource.getRepository(LeaveBalance);
-    const balance = await leaveBalanceRepo.findOne({
-      where: { employeeId: userEmployeeId },
-    });
-
-    if (balance) {
-      const leaveTypeMap: Record<string, keyof LeaveBalance> = {
-        CASUAL: "casualLeave",
-        SICK: "sickLeave",
-        VACATION: "vacationLeave",
-        PERSONAL: "personalLeave",
-      };
-
-      const balanceField = leaveTypeMap[data.type];
-      if (balanceField && (balance[balanceField] as number) < days) {
-        return res.status(400).json({
-          message: `Insufficient leave balance. Available: ${balance[balanceField]} days, Requested: ${days} days`,
-=======
     let days = calculateDays(startDate, endDate);
     
     // If half day is enabled and startDate === endDate, reduce to 0.5
@@ -292,31 +214,10 @@ export async function createLeaveRequest(req: Request, res: Response) {
       if (availableDays < days) {
         return res.status(400).json({
           message: `Insufficient leave balance. Available: ${availableDays} days, Requested: ${days} days`,
->>>>>>> dev
         });
       }
     }
 
-<<<<<<< HEAD
-    const leaveRepo = AppDataSource.getRepository(LeaveRequest);
-    const leave = new LeaveRequest();
-    leave.id = uuidv4();
-    leave.employeeId = userEmployeeId;
-    leave.type = data.type as LeaveType;
-    leave.startDate = startDate;
-    leave.endDate = endDate;
-    leave.days = days;
-    leave.reason = data.reason;
-    leave.status = LeaveStatus.PENDING;
-
-    const saved = await leaveRepo.save(leave);
-    const withRelations = await leaveRepo.findOne({
-      where: { id: saved.id },
-      relations: ["employee"],
-    });
-
-    res.status(201).json(withRelations);
-=======
     const leave = await prisma.leaveRequest.create({
       data: {
         employeeId: targetEmployeeId,
@@ -369,7 +270,6 @@ export async function createLeaveRequest(req: Request, res: Response) {
     }
 
     res.status(201).json(leave);
->>>>>>> dev
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       return res.status(400).json({ message: "Invalid input data", errors: error });
@@ -383,14 +283,6 @@ export async function createLeaveRequest(req: Request, res: Response) {
 export async function updateLeaveStatus(req: Request, res: Response) {
   try {
     const data = UpdateLeaveStatusDto.parse(req.body);
-<<<<<<< HEAD
-    const approverId = (req as any).user?.employeeId || null;
-
-    const leaveRepo = AppDataSource.getRepository(LeaveRequest);
-    const leave = await leaveRepo.findOne({
-      where: { id: req.params.id },
-      relations: ["employee"],
-=======
     const user = (req as any).user;
     // For approval, we need an approver. If admin doesn't have employeeId, we'll use their userId
     // But first, try to find if they have an employee record
@@ -414,57 +306,12 @@ export async function updateLeaveStatus(req: Request, res: Response) {
     const leave = await prisma.leaveRequest.findUnique({
       where: { id: req.params.id },
       include: { employee: true },
->>>>>>> dev
     });
 
     if (!leave) {
       return res.status(404).json({ message: "Leave request not found" });
     }
 
-<<<<<<< HEAD
-    if (leave.status !== LeaveStatus.PENDING) {
-      return res.status(400).json({ message: "Leave request already processed" });
-    }
-
-    const leaveBalanceRepo = AppDataSource.getRepository(LeaveBalance);
-    if (data.status === "APPROVED") {
-      const balance = await leaveBalanceRepo.findOne({
-        where: { employeeId: leave.employeeId },
-      });
-
-      if (balance) {
-        const leaveTypeMap: Record<string, keyof LeaveBalance> = {
-          CASUAL: "casualLeave",
-          SICK: "sickLeave",
-          VACATION: "vacationLeave",
-          PERSONAL: "personalLeave",
-        };
-
-        const balanceField = leaveTypeMap[leave.type];
-        if (balanceField) {
-          const currentBalance = balance[balanceField] as number;
-          if (balanceField === "casualLeave") balance.casualLeave = currentBalance - leave.days;
-          else if (balanceField === "sickLeave") balance.sickLeave = currentBalance - leave.days;
-          else if (balanceField === "vacationLeave") balance.vacationLeave = currentBalance - leave.days;
-          else if (balanceField === "personalLeave") balance.personalLeave = currentBalance - leave.days;
-          await leaveBalanceRepo.save(balance);
-        }
-      }
-    }
-
-    leave.status = data.status as LeaveStatus;
-    leave.approverId = approverId || undefined;
-    leave.approvedAt = new Date();
-    leave.rejectionReason = data.rejectionReason || undefined;
-
-    const updated = await leaveRepo.save(leave);
-    const withRelations = await leaveRepo.findOne({
-      where: { id: updated.id },
-      relations: ["employee", "approver"],
-    });
-
-    res.json(withRelations);
-=======
     if (leave.status !== "PENDING") {
       return res.status(400).json({ message: "Leave request already processed" });
     }
@@ -580,7 +427,6 @@ export async function updateLeaveStatus(req: Request, res: Response) {
     }
 
     res.json(updated);
->>>>>>> dev
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       return res.status(400).json({ message: "Invalid input data", errors: error });
@@ -594,31 +440,6 @@ export async function updateLeaveStatus(req: Request, res: Response) {
 export async function getLeaveBalance(req: Request, res: Response) {
   try {
     const { employeeId } = req.params;
-<<<<<<< HEAD
-    const userEmployeeId = (req as any).user?.employeeId;
-
-    if (employeeId !== userEmployeeId) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const leaveBalanceRepo = AppDataSource.getRepository(LeaveBalance);
-    let balance = await leaveBalanceRepo.findOne({
-      where: { employeeId },
-    });
-
-    if (!balance) {
-      balance = new LeaveBalance();
-      balance.id = uuidv4();
-      balance.employeeId = employeeId;
-      balance.casualLeave = 12;
-      balance.sickLeave = 10;
-      balance.vacationLeave = 21;
-      balance.personalLeave = 5;
-      balance = await leaveBalanceRepo.save(balance);
-    }
-
-    res.json(balance);
-=======
     const { year } = req.query;
     const userEmployeeId = (req as any).user?.employeeId;
 
@@ -710,22 +531,12 @@ export async function getLeaveBalance(req: Request, res: Response) {
     }
 
     res.json(aggregated);
->>>>>>> dev
   } catch (error) {
     console.error("Get leave balance error:", error);
     res.status(500).json({ message: "Failed to fetch leave balance" });
   }
 }
 
-<<<<<<< HEAD
-// DELETE /api/v1/leaves/:id - Cancel leave request
-export async function cancelLeaveRequest(req: Request, res: Response) {
-  try {
-    const userEmployeeId = (req as any).user?.employeeId;
-
-    const leaveRepo = AppDataSource.getRepository(LeaveRequest);
-    const leave = await leaveRepo.findOne({
-=======
 // PUT /api/v1/leaves/:id - Update leave request (for admins/managers)
 export async function updateLeaveRequest(req: Request, res: Response) {
   try {
@@ -819,7 +630,6 @@ export async function cancelLeaveRequest(req: Request, res: Response) {
                        userPermissions.includes("leave.manage");
 
     const leave = await prisma.leaveRequest.findUnique({
->>>>>>> dev
       where: { id: req.params.id },
     });
 
@@ -827,18 +637,6 @@ export async function cancelLeaveRequest(req: Request, res: Response) {
       return res.status(404).json({ message: "Leave request not found" });
     }
 
-<<<<<<< HEAD
-    if (leave.employeeId !== userEmployeeId) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    if (leave.status !== LeaveStatus.PENDING) {
-      return res.status(400).json({ message: "Can only cancel pending requests" });
-    }
-
-    leave.status = LeaveStatus.CANCELLED;
-    await leaveRepo.save(leave);
-=======
     // Only the employee who created the request or admin/manager can cancel it
     if (leave.employeeId !== userEmployeeId && !isAdminOrHR) {
       return res.status(403).json({ message: "Access denied" });
@@ -852,7 +650,6 @@ export async function cancelLeaveRequest(req: Request, res: Response) {
       where: { id: req.params.id },
       data: { status: "CANCELLED" },
     });
->>>>>>> dev
 
     res.status(204).send();
   } catch (error) {
@@ -860,7 +657,4 @@ export async function cancelLeaveRequest(req: Request, res: Response) {
     res.status(500).json({ message: "Failed to cancel leave request" });
   }
 }
-<<<<<<< HEAD
-=======
 
->>>>>>> dev

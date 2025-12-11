@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 // Check-in DTO
 export const CheckInDto = z.object({
@@ -16,10 +16,6 @@ export const ListAttendanceQuery = z.object({
   startDate: z.string().optional(), // YYYY-MM-DD
   endDate: z.string().optional(),   // YYYY-MM-DD
   status: z.enum(["PRESENT", "LATE", "ABSENT", "HALF_DAY", "ON_LEAVE"]).optional(),
-<<<<<<< HEAD
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(1000).default(50),
-=======
   search: z.string().optional(), // Search by employee name or email
   sortBy: z.enum(["date", "checkInTime", "checkOutTime", "status", "createdAt"]).optional().default("date"),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
@@ -38,7 +34,6 @@ export const CreateAttendanceDto = z.object({
   checkOutLocation: z.string().optional(),
   status: z.enum(["PRESENT", "LATE", "ABSENT", "HALF_DAY", "ON_LEAVE"]).default("PRESENT"),
   notes: z.string().optional(),
->>>>>>> dev
 });
 
 // Update attendance DTO (for manual corrections by HR/Admin)
@@ -48,20 +43,12 @@ export const UpdateAttendanceDto = z.object({
   checkOutTime: z.string().optional(),
   checkInLocation: z.string().optional(),
   checkOutLocation: z.string().optional(),
-<<<<<<< HEAD
-  workHours: z.number().optional(),
-  breakMinutes: z.number().int().optional(),
-=======
->>>>>>> dev
   notes: z.string().optional(),
 });
 
 export type CheckInDtoType = z.infer<typeof CheckInDto>;
 export type CheckOutDtoType = z.infer<typeof CheckOutDto>;
 export type ListAttendanceQueryType = z.infer<typeof ListAttendanceQuery>;
-<<<<<<< HEAD
-=======
 export type CreateAttendanceDtoType = z.infer<typeof CreateAttendanceDto>;
->>>>>>> dev
 export type UpdateAttendanceDtoType = z.infer<typeof UpdateAttendanceDto>;
 

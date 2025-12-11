@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -61,25 +61,19 @@ import {
   type CreateTimesheetSessionData,
   type ManualTimeEntryData,
 } from "@/services/timesheet";
-<<<<<<< HEAD
-=======
 import {
   listTasks,
   getRemainingDays,
   isOverdue,
   type Task,
 } from "@/services/tasks";
->>>>>>> dev
 
 export default function TimesheetPage() {
   const { user } = useAuth();
   
   // State
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
-<<<<<<< HEAD
-=======
   const [tasks, setTasks] = useState<Task[]>([]);
->>>>>>> dev
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,18 +122,11 @@ export default function TimesheetPage() {
     return () => clearInterval(interval);
   }, []);
 
-<<<<<<< HEAD
-  // Load timesheets
-  useEffect(() => {
-    if (employeeId && canView) {
-      loadTimesheets();
-=======
   // Load timesheets and tasks
   useEffect(() => {
     if (employeeId && canView) {
       loadTimesheets();
       loadTasks();
->>>>>>> dev
     } else {
       setLoading(false);
     }
@@ -164,8 +151,6 @@ export default function TimesheetPage() {
     }
   };
 
-<<<<<<< HEAD
-=======
   const loadTasks = async () => {
     try {
       const response = await listTasks({
@@ -178,7 +163,6 @@ export default function TimesheetPage() {
     }
   };
 
->>>>>>> dev
   const getCurrentTimerDuration = () => {
     if (!activeTimer) return 0;
     return Math.floor(
@@ -240,11 +224,7 @@ export default function TimesheetPage() {
         const updatedTimesheet = {
           ...existingTimesheet,
           sessions: updatedSessions,
-<<<<<<< HEAD
-          totalHours: existingTimesheet.totalHours + duration / 60,
-=======
           totalHours: Number(existingTimesheet.totalHours) + duration / 60,
->>>>>>> dev
         };
         
         await createTimesheet({
@@ -713,18 +693,12 @@ export default function TimesheetPage() {
                 const endOfWeek = new Date(now.setDate(now.getDate() - now.getDay() + 6));
                 return timesheetDate >= startOfWeek && timesheetDate <= endOfWeek;
               })
-<<<<<<< HEAD
-              .reduce((total, t) => total + Number(t.totalHours), 0)
-=======
               .reduce((total: number, t) => total + Number(t.totalHours), 0)
->>>>>>> dev
               .toFixed(1)} hours
           </CardDescription>
         </CardHeader>
       </Card>
 
-<<<<<<< HEAD
-=======
       {/* Tasks with Countdown */}
       {tasks.length > 0 && (
         <Card>
@@ -801,7 +775,6 @@ export default function TimesheetPage() {
         </Card>
       )}
 
->>>>>>> dev
       {/* Timesheet Entries */}
       <Card>
         <CardHeader>
@@ -849,7 +822,7 @@ export default function TimesheetPage() {
                           <div key={index} className="text-sm">
                             <div className="font-medium">{session.taskName}</div>
                             <div className="text-muted-foreground">
-                              {session.projectName} •{" "}
+                              {session.projectName} ΓÇó{" "}
                               {formatDuration(session.duration)}
                             </div>
                           </div>

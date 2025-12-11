@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
-<<<<<<< HEAD
-=======
 import { Switch } from '@/components/ui/switch';
->>>>>>> dev
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
@@ -41,12 +38,6 @@ import {
   listLeaveRequests,
   createLeaveRequest,
   updateLeaveStatus,
-<<<<<<< HEAD
-  getLeaveBalance,
-  type LeaveRequest,
-  type LeaveBalance,
-  type LeaveType,
-=======
   updateLeaveRequest,
   getLeaveRequest,
   getLeaveBalance,
@@ -55,7 +46,6 @@ import {
   type LeaveBalance,
   type LeaveType,
   type LeaveStatus,
->>>>>>> dev
 } from '@/services/leaves';
 import {
   Calendar as CalendarIcon,
@@ -65,10 +55,6 @@ import {
   Clock,
   FileText,
   AlertCircle,
-<<<<<<< HEAD
-  Loader2 } from
-'lucide-react';
-=======
   Loader2,
   Eye,
   Edit,
@@ -82,7 +68,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
->>>>>>> dev
 
 const LeaveManagement: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -96,8 +81,6 @@ const LeaveManagement: React.FC = () => {
   const [error, setError] = useState('');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
-<<<<<<< HEAD
-=======
   
   // Filter states
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom'>('all');
@@ -125,7 +108,6 @@ const LeaveManagement: React.FC = () => {
     halfDay: false,
   });
   const [editAvailableDays, setEditAvailableDays] = useState<number>(0);
->>>>>>> dev
 
   const leaveTypes: { value: LeaveType; label: string }[] = [
     { value: 'CASUAL', label: 'Casual Leave' },
@@ -137,15 +119,6 @@ const LeaveManagement: React.FC = () => {
 
   const employeeId = user?.employeeId;
 
-<<<<<<< HEAD
-  // Debug logging
-  useEffect(() => {
-    console.log('LeaveManagement - User:', user);
-    console.log('LeaveManagement - EmployeeId:', employeeId);
-  }, [user, employeeId]);
-
-  // Load data on mount
-=======
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -157,16 +130,12 @@ const LeaveManagement: React.FC = () => {
   }, [searchTerm]);
 
   // Load data on mount and when filters change
->>>>>>> dev
   useEffect(() => {
     if (employeeId) {
       loadData();
     } else {
       setLoading(false);
     }
-<<<<<<< HEAD
-  }, [employeeId]);
-=======
   }, [employeeId, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter, typeFilter]);
 
   // Calculate date range based on filter
@@ -240,7 +209,6 @@ const LeaveManagement: React.FC = () => {
         return {};
     }
   };
->>>>>>> dev
 
   const loadData = async () => {
     if (!employeeId) {
@@ -250,13 +218,6 @@ const LeaveManagement: React.FC = () => {
 
     try {
       setLoading(true);
-<<<<<<< HEAD
-      const [requests, leaveBalance] = await Promise.all([
-        listLeaveRequests({ page: 1, pageSize: 100 }),
-        getLeaveBalance(employeeId),
-      ]);
-      setLeaveRequests(requests.items);
-=======
       const dateRange = getDateRange();
       const [requests, leaveBalance] = await Promise.all([
         listLeaveRequests({ 
@@ -292,7 +253,6 @@ const LeaveManagement: React.FC = () => {
       }
       
       setLeaveRequests(filteredRequests);
->>>>>>> dev
       setBalance(leaveBalance);
     } catch (err) {
       console.error('Load data error:', err);
@@ -409,8 +369,6 @@ const LeaveManagement: React.FC = () => {
     return found?.label || type;
   };
 
-<<<<<<< HEAD
-=======
   const handleViewRequest = async (request: LeaveRequest) => {
     try {
       const fullRequest = await getLeaveRequest(request.id);
@@ -534,7 +492,6 @@ const LeaveManagement: React.FC = () => {
     return 0;
   };
 
->>>>>>> dev
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -755,21 +712,6 @@ const LeaveManagement: React.FC = () => {
       {/* Leave Requests */}
       <Card data-id="lru4h97kd" data-path="src/pages/LeaveManagement.tsx">
         <CardHeader data-id="rr4di7p4x" data-path="src/pages/LeaveManagement.tsx">
-<<<<<<< HEAD
-          <CardTitle data-id="p34mbb747" data-path="src/pages/LeaveManagement.tsx">Leave Requests</CardTitle>
-          <CardDescription data-id="sf6pro3jt" data-path="src/pages/LeaveManagement.tsx">
-            {hasPermission('leave.approve') ?
-            'Manage leave requests from your team' :
-            'Track your leave request status'
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent data-id="j9udllfh2" data-path="src/pages/LeaveManagement.tsx">
-          <Table data-id="dfdgdssx6" data-path="src/pages/LeaveManagement.tsx">
-            <TableHeader data-id="a05syyzv3" data-path="src/pages/LeaveManagement.tsx">
-              <TableRow data-id="z6wt21qb0" data-path="src/pages/LeaveManagement.tsx">
-                <TableHead data-id="y98nq2uc3" data-path="src/pages/LeaveManagement.tsx">Employee</TableHead>
-=======
           <CardTitle data-id="p34mbb747" data-path="src/pages/LeaveManagement.tsx">My Leave Requests</CardTitle>
           <CardDescription data-id="sf6pro3jt" data-path="src/pages/LeaveManagement.tsx">
             Track your leave request history and status
@@ -963,41 +905,26 @@ const LeaveManagement: React.FC = () => {
           <Table data-id="dfdgdssx6" data-path="src/pages/LeaveManagement.tsx">
             <TableHeader data-id="a05syyzv3" data-path="src/pages/LeaveManagement.tsx">
               <TableRow data-id="z6wt21qb0" data-path="src/pages/LeaveManagement.tsx">
->>>>>>> dev
                 <TableHead data-id="zo3fl877y" data-path="src/pages/LeaveManagement.tsx">Type</TableHead>
                 <TableHead data-id="za6qnrf2j" data-path="src/pages/LeaveManagement.tsx">Period</TableHead>
                 <TableHead data-id="xc4mn810v" data-path="src/pages/LeaveManagement.tsx">Days</TableHead>
                 <TableHead data-id="xyvfadbic" data-path="src/pages/LeaveManagement.tsx">Status</TableHead>
                 <TableHead data-id="baeh3xuvo" data-path="src/pages/LeaveManagement.tsx">Applied Date</TableHead>
-<<<<<<< HEAD
-                {hasPermission('leave.approve') && <TableHead data-id="uxczbqrwa" data-path="src/pages/LeaveManagement.tsx">Actions</TableHead>}
-=======
                 <TableHead>Actions</TableHead>
->>>>>>> dev
               </TableRow>
             </TableHeader>
             <TableBody>
               {leaveRequests.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-gray-500 py-8">
-<<<<<<< HEAD
-                    No leave requests found
-=======
                     {searchTerm || dateFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' 
                       ? 'No leave requests found matching your filters.' 
                       : 'No leave requests found. Click "Apply Leave" to submit your first request.'}
->>>>>>> dev
                   </TableCell>
                 </TableRow>
               ) : (
                 leaveRequests.map((request) => (
                   <TableRow key={request.id}>
-<<<<<<< HEAD
-                    <TableCell className="font-medium">
-                      {request.employee.firstName} {request.employee.lastName}
-                    </TableCell>
-=======
->>>>>>> dev
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
                         {getLeaveTypeLabel(request.type)}
@@ -1021,32 +948,6 @@ const LeaveManagement: React.FC = () => {
                     <TableCell>
                       {new Date(request.createdAt).toLocaleDateString()}
                     </TableCell>
-<<<<<<< HEAD
-                    {hasPermission('leave.approve') && (
-                      <TableCell>
-                        {request.status === 'PENDING' && (
-                          <div className="flex space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-700"
-                              onClick={() => handleApprove(request.id)}
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={() => handleReject(request.id)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    )}
-=======
                       <TableCell>
                       <div className="flex items-center space-x-2">
                         <Button
@@ -1077,7 +978,6 @@ const LeaveManagement: React.FC = () => {
                         )}
                       </div>
                       </TableCell>
->>>>>>> dev
                   </TableRow>
                 ))
               )}
@@ -1122,18 +1022,16 @@ const LeaveManagement: React.FC = () => {
             <div data-id="aebpevy5z" data-path="src/pages/LeaveManagement.tsx">
               <h4 className="font-semibold mb-3" data-id="0mzytt8fi" data-path="src/pages/LeaveManagement.tsx">Important Notes</h4>
               <div className="space-y-2 text-sm text-gray-600" data-id="r6hel4acm" data-path="src/pages/LeaveManagement.tsx">
-                <p data-id="742jwdkgw" data-path="src/pages/LeaveManagement.tsx">• Leave requests must be submitted at least 2 days in advance</p>
-                <p data-id="zhf3ga3o5" data-path="src/pages/LeaveManagement.tsx">• Sick leave requires medical certificate for more than 3 days</p>
-                <p data-id="h06hdssk6" data-path="src/pages/LeaveManagement.tsx">• Vacation leave requires manager approval</p>
-                <p data-id="s6i86xsx9" data-path="src/pages/LeaveManagement.tsx">• Unused casual leave can be carried forward up to 5 days</p>
-                <p data-id="ezmu63dsd" data-path="src/pages/LeaveManagement.tsx">• Maternity leave is as per company policy</p>
+                <p data-id="742jwdkgw" data-path="src/pages/LeaveManagement.tsx">ΓÇó Leave requests must be submitted at least 2 days in advance</p>
+                <p data-id="zhf3ga3o5" data-path="src/pages/LeaveManagement.tsx">ΓÇó Sick leave requires medical certificate for more than 3 days</p>
+                <p data-id="h06hdssk6" data-path="src/pages/LeaveManagement.tsx">ΓÇó Vacation leave requires manager approval</p>
+                <p data-id="s6i86xsx9" data-path="src/pages/LeaveManagement.tsx">ΓÇó Unused casual leave can be carried forward up to 5 days</p>
+                <p data-id="ezmu63dsd" data-path="src/pages/LeaveManagement.tsx">ΓÇó Maternity leave is as per company policy</p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
-<<<<<<< HEAD
-=======
 
       {/* View Leave Request Dialog */}
       {selectedRequest && (
@@ -1358,7 +1256,6 @@ const LeaveManagement: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
->>>>>>> dev
     </div>);
 
 };
