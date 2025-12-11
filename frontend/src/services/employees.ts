@@ -16,6 +16,17 @@ export type Employee = {
   departmentId?: string | null;
   department?: { id: string; name: string } | null;
   manager?: { id: string; firstName: string; lastName: string } | null;
+<<<<<<< HEAD
+=======
+  userId?: string | null;
+  user?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    status: string;
+  } | null;
+>>>>>>> dev
 };
 
 export async function listEmployees(params: {

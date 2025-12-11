@@ -1,8 +1,12 @@
 import { Request, Response } from "express";
+<<<<<<< HEAD
 import { v4 as uuidv4 } from "uuid";
 import { AppDataSource } from "../../db/data-source.js";
 import { Timesheet, TimesheetStatus } from "../../entities/Timesheet.js";
 import { TimesheetSession } from "../../entities/TimesheetSession.js";
+=======
+import { PrismaClient, Prisma } from "@prisma/client";
+>>>>>>> dev
 import {
   CreateTimesheetDto,
   UpdateTimesheetDto,
@@ -17,6 +21,11 @@ import {
 import { paginate } from "../../utils/pagination.js";
 import { getWeekDates, getMonthDates, getYearDates } from "../../utils/date-utils.js";
 
+<<<<<<< HEAD
+=======
+const prisma = new PrismaClient();
+
+>>>>>>> dev
 // Helper function to get current user's employee ID
 function getCurrentUserEmployeeId(req: Request): string | null {
   return (req as any).user?.employeeId || null;
@@ -36,6 +45,7 @@ export async function listTimesheets(req: Request, res: Response) {
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
     const userRoles = getCurrentUserRoles(req);
     
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const queryBuilder = timesheetRepo.createQueryBuilder("timesheet")
       .leftJoinAndSelect("timesheet.employee", "employee")
@@ -47,15 +57,29 @@ export async function listTimesheets(req: Request, res: Response) {
     if (!userRoles.includes("ADMIN") && !userRoles.includes("HR") && !userRoles.includes("MANAGER")) {
       if (currentUserEmployeeId) {
         queryBuilder.andWhere("timesheet.employeeId = :employeeId", { employeeId: currentUserEmployeeId });
+=======
+    // Build where clause
+    const where: Prisma.TimesheetWhereInput = {};
+    
+    // Access control: Non-admin users can only see their own timesheets
+    if (!userRoles.includes("ADMIN") && !userRoles.includes("HR") && !userRoles.includes("MANAGER")) {
+      if (currentUserEmployeeId) {
+        where.employeeId = currentUserEmployeeId;
+>>>>>>> dev
       } else {
         return res.status(403).json({ message: "Employee record not found for user" });
       }
     } else if (query.employeeId) {
+<<<<<<< HEAD
       queryBuilder.andWhere("timesheet.employeeId = :employeeId", { employeeId: query.employeeId });
+=======
+      where.employeeId = query.employeeId;
+>>>>>>> dev
     }
 
     // Date filtering
     if (query.date) {
+<<<<<<< HEAD
       queryBuilder.andWhere("timesheet.date = :date", { date: new Date(query.date) });
     } else if (query.startDate || query.endDate) {
       if (query.startDate) {
@@ -76,10 +100,27 @@ export async function listTimesheets(req: Request, res: Response) {
       const { startDate, endDate } = getYearDates(query.year);
       queryBuilder.andWhere("timesheet.date >= :startDate", { startDate })
         .andWhere("timesheet.date <= :endDate", { endDate });
+=======
+      where.date = new Date(query.date);
+    } else if (query.startDate || query.endDate) {
+      where.date = {};
+      if (query.startDate) where.date.gte = new Date(query.startDate);
+      if (query.endDate) where.date.lte = new Date(query.endDate);
+    } else if (query.week) {
+      const { startDate, endDate } = getWeekDates(query.week);
+      where.date = { gte: startDate, lte: endDate };
+    } else if (query.month) {
+      const { startDate, endDate } = getMonthDates(query.month);
+      where.date = { gte: startDate, lte: endDate };
+    } else if (query.year) {
+      const { startDate, endDate } = getYearDates(query.year);
+      where.date = { gte: startDate, lte: endDate };
+>>>>>>> dev
     }
 
     // Status filtering
     if (query.status) {
+<<<<<<< HEAD
       queryBuilder.andWhere("timesheet.status = :status", { status: query.status });
     }
 
@@ -90,6 +131,49 @@ export async function listTimesheets(req: Request, res: Response) {
       .take(take);
 
     const [timesheets, total] = await queryBuilder.getManyAndCount();
+=======
+      where.status = query.status;
+    }
+
+    const { skip, take } = paginate(query.page, query.pageSize);
+
+    const [timesheets, total] = await Promise.all([
+      prisma.timesheet.findMany({
+        where,
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeCode: true,
+              designation: true,
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          sessions: {
+            orderBy: { startTime: "asc" },
+          },
+          approver: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        orderBy: { date: "desc" },
+        skip,
+        take,
+      }),
+      prisma.timesheet.count({ where }),
+    ]);
+>>>>>>> dev
 
     return res.status(200).json({
       items: timesheets,
@@ -113,28 +197,69 @@ export async function getTimesheet(req: Request, res: Response) {
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
     const userRoles = getCurrentUserRoles(req);
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const timesheet = await timesheetRepo.findOne({
       where: { id },
       relations: ["employee", "employee.department", "sessions", "approver"],
+=======
+    const timesheet = await prisma.timesheet.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            designation: true,
+            email: true,
+            phone: true,
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        sessions: {
+          orderBy: { startTime: "asc" },
+        },
+        approver: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+>>>>>>> dev
     });
 
     if (!timesheet) {
       return res.status(404).json({ message: "Timesheet not found" });
     }
 
+<<<<<<< HEAD
     // Access control
+=======
+    // Access control: Non-admin users can only view their own timesheets
+>>>>>>> dev
     if (!userRoles.includes("ADMIN") && !userRoles.includes("HR") && !userRoles.includes("MANAGER")) {
       if (currentUserEmployeeId && timesheet.employeeId !== currentUserEmployeeId) {
         return res.status(403).json({ message: "Access denied" });
       }
     }
 
+<<<<<<< HEAD
     // Sort sessions by startTime
     if (timesheet.sessions) {
       timesheet.sessions.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
     }
 
+=======
+>>>>>>> dev
     return res.status(200).json(timesheet);
   } catch (error: any) {
     console.error("Get timesheet error:", error);
@@ -154,6 +279,7 @@ export async function createTimesheet(req: Request, res: Response) {
       return res.status(403).json({ message: "Employee record not found for user" });
     }
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const sessionRepo = AppDataSource.getRepository(TimesheetSession);
     const date = new Date(data.date);
@@ -164,6 +290,15 @@ export async function createTimesheet(req: Request, res: Response) {
       where: {
         employeeId: currentUserEmployeeId,
         date,
+=======
+    // Check if timesheet already exists for this date
+    const existingTimesheet = await prisma.timesheet.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: currentUserEmployeeId,
+          date: new Date(data.date),
+        },
+>>>>>>> dev
       },
     });
 
@@ -175,6 +310,7 @@ export async function createTimesheet(req: Request, res: Response) {
     const totalHours = data.sessions.reduce((total, session) => total + session.duration, 0) / 60;
 
     // Create timesheet with sessions in a transaction
+<<<<<<< HEAD
     const result = await AppDataSource.transaction(async (manager) => {
       const timesheet = new Timesheet();
       timesheet.id = uuidv4();
@@ -218,6 +354,52 @@ export async function createTimesheet(req: Request, res: Response) {
     console.error("Create timesheet error:", error);
     if (error.code === "23505") {
       return res.status(409).json({ message: "Timesheet already exists for this date" });
+=======
+    const timesheet = await prisma.$transaction(async (tx) => {
+      const newTimesheet = await tx.timesheet.create({
+        data: {
+          employeeId: currentUserEmployeeId,
+          date: new Date(data.date),
+          totalHours: new Prisma.Decimal(totalHours),
+          notes: data.notes,
+          sessions: {
+            create: data.sessions.map((session) => ({
+              taskName: session.taskName,
+              projectName: session.projectName,
+              description: session.description,
+              startTime: new Date(session.startTime),
+              endTime: new Date(session.endTime),
+              duration: session.duration,
+            })),
+          },
+        },
+        include: {
+          sessions: {
+            orderBy: { startTime: "asc" },
+          },
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeCode: true,
+              designation: true,
+            },
+          },
+        },
+      });
+
+      return newTimesheet;
+    });
+
+    return res.status(201).json(timesheet);
+  } catch (error: any) {
+    console.error("Create timesheet error:", error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return res.status(409).json({ message: "Timesheet already exists for this date" });
+      }
+>>>>>>> dev
     }
     return res.status(500).json({ message: "Failed to create timesheet" });
   }
@@ -233,19 +415,29 @@ export async function updateTimesheet(req: Request, res: Response) {
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
     const userRoles = getCurrentUserRoles(req);
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const sessionRepo = AppDataSource.getRepository(TimesheetSession);
     
     const existingTimesheet = await timesheetRepo.findOne({
       where: { id },
       relations: ["sessions"],
+=======
+    const existingTimesheet = await prisma.timesheet.findUnique({
+      where: { id },
+      include: { sessions: true },
+>>>>>>> dev
     });
 
     if (!existingTimesheet) {
       return res.status(404).json({ message: "Timesheet not found" });
     }
 
+<<<<<<< HEAD
     // Access control
+=======
+    // Access control: Only owner or admin/HR can update
+>>>>>>> dev
     if (!userRoles.includes("ADMIN") && !userRoles.includes("HR")) {
       if (currentUserEmployeeId && existingTimesheet.employeeId !== currentUserEmployeeId) {
         return res.status(403).json({ message: "Access denied" });
@@ -253,16 +445,25 @@ export async function updateTimesheet(req: Request, res: Response) {
     }
 
     // Can only update draft timesheets
+<<<<<<< HEAD
     if (existingTimesheet.status !== TimesheetStatus.DRAFT) {
+=======
+    if (existingTimesheet.status !== "DRAFT") {
+>>>>>>> dev
       return res.status(400).json({ message: "Can only update draft timesheets" });
     }
 
     // Calculate total hours if sessions are provided
+<<<<<<< HEAD
     let totalHours = parseFloat(existingTimesheet.totalHours);
+=======
+    let totalHours = parseFloat(existingTimesheet.totalHours.toString());
+>>>>>>> dev
     if (data.sessions) {
       totalHours = data.sessions.reduce((total, session) => total + session.duration, 0) / 60;
     }
 
+<<<<<<< HEAD
     // Update in transaction
     const result = await AppDataSource.transaction(async (manager) => {
       if (data.date) existingTimesheet.date = new Date(data.date);
@@ -270,10 +471,23 @@ export async function updateTimesheet(req: Request, res: Response) {
       if (data.notes !== undefined) existingTimesheet.notes = data.notes;
 
       await manager.save(existingTimesheet);
+=======
+    const timesheet = await prisma.$transaction(async (tx) => {
+      // Update timesheet
+      const updatedTimesheet = await tx.timesheet.update({
+        where: { id },
+        data: {
+          ...(data.date && { date: new Date(data.date) }),
+          totalHours: new Prisma.Decimal(totalHours),
+          ...(data.notes !== undefined && { notes: data.notes }),
+        },
+      });
+>>>>>>> dev
 
       // Update sessions if provided
       if (data.sessions) {
         // Delete existing sessions
+<<<<<<< HEAD
         await manager.delete(TimesheetSession, { timesheetId: id });
 
         // Create new sessions
@@ -305,6 +519,46 @@ export async function updateTimesheet(req: Request, res: Response) {
     }
 
     return res.status(200).json(result);
+=======
+        await tx.timesheetSession.deleteMany({
+          where: { timesheetId: id },
+        });
+
+        // Create new sessions
+        await tx.timesheetSession.createMany({
+          data: data.sessions.map((session) => ({
+            timesheetId: id,
+            taskName: session.taskName,
+            projectName: session.projectName,
+            description: session.description,
+            startTime: new Date(session.startTime),
+            endTime: new Date(session.endTime),
+            duration: session.duration,
+          })),
+        });
+      }
+
+      return tx.timesheet.findUnique({
+        where: { id },
+        include: {
+          sessions: {
+            orderBy: { startTime: "asc" },
+          },
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeCode: true,
+              designation: true,
+            },
+          },
+        },
+      });
+    });
+
+    return res.status(200).json(timesheet);
+>>>>>>> dev
   } catch (error: any) {
     console.error("Update timesheet error:", error);
     return res.status(500).json({ message: "Failed to update timesheet" });
@@ -324,8 +578,14 @@ export async function submitTimesheet(req: Request, res: Response) {
       return res.status(403).json({ message: "Employee record not found for user" });
     }
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const timesheet = await timesheetRepo.findOne({ where: { id } });
+=======
+    const timesheet = await prisma.timesheet.findUnique({
+      where: { id },
+    });
+>>>>>>> dev
 
     if (!timesheet) {
       return res.status(404).json({ message: "Timesheet not found" });
@@ -337,6 +597,7 @@ export async function submitTimesheet(req: Request, res: Response) {
     }
 
     // Can only submit draft timesheets
+<<<<<<< HEAD
     if (timesheet.status !== TimesheetStatus.DRAFT) {
       return res.status(400).json({ message: "Can only submit draft timesheets" });
     }
@@ -356,6 +617,36 @@ export async function submitTimesheet(req: Request, res: Response) {
     }
 
     return res.status(200).json(withRelations);
+=======
+    if (timesheet.status !== "DRAFT") {
+      return res.status(400).json({ message: "Can only submit draft timesheets" });
+    }
+
+    const updatedTimesheet = await prisma.timesheet.update({
+      where: { id },
+      data: {
+        status: "SUBMITTED",
+        submittedAt: new Date(),
+        ...(data.notes && { notes: data.notes }),
+      },
+      include: {
+        sessions: {
+          orderBy: { startTime: "asc" },
+        },
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            designation: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(updatedTimesheet);
+>>>>>>> dev
   } catch (error: any) {
     console.error("Submit timesheet error:", error);
     return res.status(500).json({ message: "Failed to submit timesheet" });
@@ -377,14 +668,21 @@ export async function updateTimesheetStatus(req: Request, res: Response) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const timesheet = await timesheetRepo.findOne({ where: { id } });
+=======
+    const timesheet = await prisma.timesheet.findUnique({
+      where: { id },
+    });
+>>>>>>> dev
 
     if (!timesheet) {
       return res.status(404).json({ message: "Timesheet not found" });
     }
 
     // Can only update submitted timesheets
+<<<<<<< HEAD
     if (timesheet.status !== TimesheetStatus.SUBMITTED) {
       return res.status(400).json({ message: "Can only update submitted timesheets" });
     }
@@ -410,6 +708,49 @@ export async function updateTimesheetStatus(req: Request, res: Response) {
     }
 
     return res.status(200).json(withRelations);
+=======
+    if (timesheet.status !== "SUBMITTED") {
+      return res.status(400).json({ message: "Can only update submitted timesheets" });
+    }
+
+    const updatedTimesheet = await prisma.timesheet.update({
+      where: { id },
+      data: {
+        status: data.status,
+        ...(data.status === "APPROVED" && {
+          approvedAt: new Date(),
+          approvedBy: currentUserId,
+        }),
+        ...(data.status === "REJECTED" && {
+          rejectionReason: data.rejectionReason,
+        }),
+        ...(data.notes && { notes: data.notes }),
+      },
+      include: {
+        sessions: {
+          orderBy: { startTime: "asc" },
+        },
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            designation: true,
+          },
+        },
+        approver: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(updatedTimesheet);
+>>>>>>> dev
   } catch (error: any) {
     console.error("Update timesheet status error:", error);
     return res.status(500).json({ message: "Failed to update timesheet status" });
@@ -425,14 +766,24 @@ export async function deleteTimesheet(req: Request, res: Response) {
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
     const userRoles = getCurrentUserRoles(req);
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const timesheet = await timesheetRepo.findOne({ where: { id } });
+=======
+    const timesheet = await prisma.timesheet.findUnique({
+      where: { id },
+    });
+>>>>>>> dev
 
     if (!timesheet) {
       return res.status(404).json({ message: "Timesheet not found" });
     }
 
+<<<<<<< HEAD
     // Access control
+=======
+    // Access control: Only owner or admin/HR can delete
+>>>>>>> dev
     if (!userRoles.includes("ADMIN") && !userRoles.includes("HR")) {
       if (currentUserEmployeeId && timesheet.employeeId !== currentUserEmployeeId) {
         return res.status(403).json({ message: "Access denied" });
@@ -440,11 +791,21 @@ export async function deleteTimesheet(req: Request, res: Response) {
     }
 
     // Can only delete draft timesheets
+<<<<<<< HEAD
     if (timesheet.status !== TimesheetStatus.DRAFT) {
       return res.status(400).json({ message: "Can only delete draft timesheets" });
     }
 
     await timesheetRepo.remove(timesheet);
+=======
+    if (timesheet.status !== "DRAFT") {
+      return res.status(400).json({ message: "Can only delete draft timesheets" });
+    }
+
+    await prisma.timesheet.delete({
+      where: { id },
+    });
+>>>>>>> dev
 
     return res.status(204).send();
   } catch (error: any) {
@@ -462,6 +823,7 @@ export async function getTimesheetSummary(req: Request, res: Response) {
     const currentUserEmployeeId = getCurrentUserEmployeeId(req);
     const userRoles = getCurrentUserRoles(req);
 
+<<<<<<< HEAD
     const timesheetRepo = AppDataSource.getRepository(Timesheet);
     const queryBuilder = timesheetRepo.createQueryBuilder("timesheet")
       .leftJoinAndSelect("timesheet.sessions", "sessions")
@@ -471,15 +833,29 @@ export async function getTimesheetSummary(req: Request, res: Response) {
     if (!userRoles.includes("ADMIN") && !userRoles.includes("HR") && !userRoles.includes("MANAGER")) {
       if (currentUserEmployeeId) {
         queryBuilder.andWhere("timesheet.employeeId = :employeeId", { employeeId: currentUserEmployeeId });
+=======
+    // Build where clause
+    const where: Prisma.TimesheetWhereInput = {};
+
+    // Access control: Non-admin users can only see their own timesheets
+    if (!userRoles.includes("ADMIN") && !userRoles.includes("HR") && !userRoles.includes("MANAGER")) {
+      if (currentUserEmployeeId) {
+        where.employeeId = currentUserEmployeeId;
+>>>>>>> dev
       } else {
         return res.status(403).json({ message: "Employee record not found for user" });
       }
     } else if (query.employeeId) {
+<<<<<<< HEAD
       queryBuilder.andWhere("timesheet.employeeId = :employeeId", { employeeId: query.employeeId });
+=======
+      where.employeeId = query.employeeId;
+>>>>>>> dev
     }
 
     // Date filtering
     if (query.startDate || query.endDate) {
+<<<<<<< HEAD
       if (query.startDate) {
         queryBuilder.andWhere("timesheet.date >= :startDate", { startDate: new Date(query.startDate) });
       }
@@ -521,6 +897,59 @@ export async function getTimesheetSummary(req: Request, res: Response) {
       averageHours,
       statusBreakdown,
       timesheets: timesheets.slice(0, 10),
+=======
+      where.date = {};
+      if (query.startDate) where.date.gte = new Date(query.startDate);
+      if (query.endDate) where.date.lte = new Date(query.endDate);
+    } else if (query.week) {
+      const { startDate, endDate } = getWeekDates(query.week);
+      where.date = { gte: startDate, lte: endDate };
+    } else if (query.month) {
+      const { startDate, endDate } = getMonthDates(query.month);
+      where.date = { gte: startDate, lte: endDate };
+    } else if (query.year) {
+      const { startDate, endDate } = getYearDates(query.year);
+      where.date = { gte: startDate, lte: endDate };
+    }
+
+    const [timesheets, totalHours, statusCounts] = await Promise.all([
+      prisma.timesheet.findMany({
+        where,
+        include: {
+          sessions: true,
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeCode: true,
+            },
+          },
+        },
+        orderBy: { date: "desc" },
+      }),
+      prisma.timesheet.aggregate({
+        where,
+        _sum: { totalHours: true },
+        _avg: { totalHours: true },
+      }),
+      prisma.timesheet.groupBy({
+        by: ["status"],
+        where,
+        _count: { status: true },
+      }),
+    ]);
+
+    const summary = {
+      totalTimesheets: timesheets.length,
+      totalHours: parseFloat(totalHours._sum.totalHours?.toString() || "0"),
+      averageHours: parseFloat(totalHours._avg.totalHours?.toString() || "0"),
+      statusBreakdown: statusCounts.reduce((acc, item) => {
+        acc[item.status.toLowerCase()] = item._count.status;
+        return acc;
+      }, {} as Record<string, number>),
+      timesheets: timesheets.slice(0, 10), // Latest 10 timesheets
+>>>>>>> dev
     };
 
     return res.status(200).json(summary);
@@ -543,6 +972,10 @@ export async function startTimer(req: Request, res: Response) {
     }
 
     // For now, we'll just return the timer data
+<<<<<<< HEAD
+=======
+    // In a real implementation, you might store this in Redis or a temporary table
+>>>>>>> dev
     const timerData = {
       employeeId: currentUserEmployeeId,
       taskName: data.taskName,
@@ -574,6 +1007,11 @@ export async function stopTimer(req: Request, res: Response) {
       return res.status(403).json({ message: "Employee record not found for user" });
     }
 
+<<<<<<< HEAD
+=======
+    // This would typically receive the timer data from the frontend
+    // For now, we'll just return a success message
+>>>>>>> dev
     return res.status(200).json({
       message: "Timer stopped successfully",
       note: "In a full implementation, this would create a timesheet session",
@@ -606,6 +1044,7 @@ export async function addManualTimeEntry(req: Request, res: Response) {
     }
 
     const totalHours = duration / 60;
+<<<<<<< HEAD
     const date = new Date(data.date);
     date.setHours(0, 0, 0, 0);
 
@@ -619,10 +1058,23 @@ export async function addManualTimeEntry(req: Request, res: Response) {
         date,
       },
       relations: ["sessions"],
+=======
+
+    // Check if timesheet exists for this date
+    let timesheet = await prisma.timesheet.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: currentUserEmployeeId,
+          date: new Date(data.date),
+        },
+      },
+      include: { sessions: true },
+>>>>>>> dev
     });
 
     if (timesheet) {
       // Add session to existing timesheet
+<<<<<<< HEAD
       const newSession = new TimesheetSession();
       newSession.id = uuidv4();
       newSession.timesheetId = timesheet.id;
@@ -639,6 +1091,26 @@ export async function addManualTimeEntry(req: Request, res: Response) {
       const updatedTotalHours = parseFloat(timesheet.totalHours) + totalHours;
       timesheet.totalHours = updatedTotalHours.toFixed(2);
       await timesheetRepo.save(timesheet);
+=======
+      const newSession = await prisma.timesheetSession.create({
+        data: {
+          timesheetId: timesheet.id,
+          taskName: data.taskName,
+          projectName: data.projectName,
+          description: data.description,
+          startTime: startDateTime,
+          endTime: endDateTime,
+          duration,
+        },
+      });
+
+      // Update total hours
+      const updatedTotalHours = parseFloat(timesheet.totalHours.toString()) + totalHours;
+      await prisma.timesheet.update({
+        where: { id: timesheet.id },
+        data: { totalHours: new Prisma.Decimal(updatedTotalHours) },
+      });
+>>>>>>> dev
 
       return res.status(200).json({
         message: "Manual time entry added to existing timesheet",
@@ -646,6 +1118,7 @@ export async function addManualTimeEntry(req: Request, res: Response) {
       });
     } else {
       // Create new timesheet with session
+<<<<<<< HEAD
       const result = await AppDataSource.transaction(async (manager) => {
         const newTimesheet = new Timesheet();
         newTimesheet.id = uuidv4();
@@ -673,11 +1146,50 @@ export async function addManualTimeEntry(req: Request, res: Response) {
           where: { id: savedTimesheet.id },
           relations: ["employee", "employee.department", "sessions"],
         });
+=======
+      const newTimesheet = await prisma.$transaction(async (tx) => {
+        const timesheet = await tx.timesheet.create({
+          data: {
+            employeeId: currentUserEmployeeId,
+            date: new Date(data.date),
+            totalHours: new Prisma.Decimal(totalHours),
+            notes: data.notes,
+            sessions: {
+              create: {
+                taskName: data.taskName,
+                projectName: data.projectName,
+                description: data.description,
+                startTime: startDateTime,
+                endTime: endDateTime,
+                duration,
+              },
+            },
+          },
+          include: {
+            sessions: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                employeeCode: true,
+                designation: true,
+              },
+            },
+          },
+        });
+
+        return timesheet;
+>>>>>>> dev
       });
 
       return res.status(201).json({
         message: "New timesheet created with manual time entry",
+<<<<<<< HEAD
         timesheet: result,
+=======
+        timesheet: newTimesheet,
+>>>>>>> dev
       });
     }
   } catch (error: any) {

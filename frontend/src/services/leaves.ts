@@ -45,6 +45,15 @@ export type LeaveBalance = {
 export async function listLeaveRequests(params: {
   status?: LeaveStatus;
   employeeId?: string;
+<<<<<<< HEAD
+=======
+  search?: string;
+  startDate?: string;
+  endDate?: string;
+  type?: LeaveType;
+  sortBy?: "createdAt" | "startDate" | "endDate" | "days" | "status";
+  sortOrder?: "asc" | "desc";
+>>>>>>> dev
   page?: number;
   pageSize?: number;
 }) {
@@ -58,10 +67,18 @@ export async function getLeaveRequest(id: string) {
 }
 
 export async function createLeaveRequest(payload: {
+<<<<<<< HEAD
+=======
+  employeeId?: string; // Optional: for creating on behalf of others
+>>>>>>> dev
   type: LeaveType;
   startDate: string;
   endDate: string;
   reason: string;
+<<<<<<< HEAD
+=======
+  halfDay?: boolean;
+>>>>>>> dev
 }) {
   const { data } = await api.post("/leaves", payload);
   return data as LeaveRequest;
@@ -72,6 +89,10 @@ export async function updateLeaveStatus(
   payload: {
     status: "APPROVED" | "REJECTED";
     rejectionReason?: string;
+<<<<<<< HEAD
+=======
+    comment?: string;
+>>>>>>> dev
   }
 ) {
   const { data } = await api.put(`/leaves/${id}/status`, payload);
@@ -83,6 +104,23 @@ export async function getLeaveBalance(employeeId: string) {
   return data as LeaveBalance;
 }
 
+<<<<<<< HEAD
+=======
+export async function updateLeaveRequest(
+  id: string,
+  payload: {
+    type?: LeaveType;
+    startDate?: string;
+    endDate?: string;
+    reason?: string;
+    halfDay?: boolean;
+  }
+) {
+  const { data } = await api.put(`/leaves/${id}`, payload);
+  return data as LeaveRequest;
+}
+
+>>>>>>> dev
 export async function cancelLeaveRequest(id: string) {
   await api.delete(`/leaves/${id}`);
 }

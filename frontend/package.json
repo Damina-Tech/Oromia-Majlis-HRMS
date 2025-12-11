@@ -57,6 +57,10 @@
     "react-hook-form": "^7.56.2",
     "react-resizable-panels": "^2.1.9",
     "react-router-dom": "^6.26.2",
+<<<<<<< HEAD
+=======
+    "qrcode.react": "^4.0.1",
+>>>>>>> dev
     "recharts": "^2.15.3",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",

@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,8 +22,11 @@ import {
   UserPlus,
   LogOut,
   ChevronRight,
-  Timer } from
-'lucide-react';
+  Timer,
+  ChevronDown,
+  CheckSquare,
+  Handshake,
+} from "lucide-react";
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -43,7 +46,7 @@ const menuItems = [
   permission: 'employees.read'
 },
 {
-  title: 'Organization',
+  title: 'Sectors',
   icon: Building2,
   href: '/organization',
   permission: 'organization.view'
@@ -66,11 +69,18 @@ const menuItems = [
   href: '/payroll',
   permission: 'payroll.view'
 },
+// {
+//   title: 'Leads',
+//   icon: Handshake,
+//   href: '/leads',
+//   permission: 'leads.read'
+// },
 {
-  title: 'Timesheet',
-  icon: Timer,
-  href: '/timesheet',
-  permission: 'timesheet.view'
+  title: 'Tasks',
+  icon: CheckSquare,
+  href: '/tasks',
+  permission: 'tasks.view',
+  submenu: true,
 },
 {
   title: 'Assets',
@@ -82,13 +92,22 @@ const menuItems = [
   title: 'Expenses',
   icon: CreditCard,
   href: '/expenses',
-  permission: 'expenses.view'
+  permission: 'expense.view',
+  submenu: true,
 },
 {
   title: 'Documents',
   icon: FileText,
   href: '/documents',
-  permission: 'documents.view'
+  permission: 'documents.view',
+  submenu: true,
+},
+{
+  title: 'Announcements',
+  icon: Bell,
+  href: '/announcements',
+  permission: '*', // Show to all authenticated users since listAnnouncements route doesn't require permission
+  submenu: true,
 },
 {
   title: 'Reports',
@@ -96,12 +115,12 @@ const menuItems = [
   href: '/reports',
   permission: 'reports.view'
 },
-{
-  title: 'Onboarding',
-  icon: UserPlus,
-  href: '/onboarding',
-  permission: 'onboarding.view'
-},
+// {
+//   title: 'Onboarding',
+//   icon: UserPlus,
+//   href: '/onboarding',
+//   permission: 'onboarding.view'
+// },
 {
   title: 'Notifications',
   icon: Bell,
@@ -127,14 +146,195 @@ const adminItems = [
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const { user, logout, hasPermission } = useAuth();
+  const location = useLocation();
+  const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set());
 
-  const filteredMenuItems = menuItems.filter((item) =>
-  item.permission === '*' || hasPermission(item.permission)
-  );
+  const filteredMenuItems = menuItems.filter((item) => {
+    // Always show items with '*' permission (for authenticated users)
+    if (item.permission === '*') {
+      return true;
+    }
+    // Check specific permission
+    return hasPermission(item.permission);
+  });
 
-  const filteredAdminItems = adminItems.filter((item) =>
-  item.permission === '*' || hasPermission(item.permission)
-  );
+  // Check if user is ADMIN
+  const isAdmin = user?.roles?.some(role => role.toUpperCase() === 'ADMIN') || false;
+  
+  const filteredAdminItems = adminItems.filter((item) => {
+    // Show admin items only for ADMIN users
+    if (item.permission === '*') {
+      return isAdmin;
+    }
+    return hasPermission(item.permission);
+  });
+
+  // Check if user is ADMIN or MANAGER
+  const isAdminOrManager = user?.roles?.some(role => 
+    role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'MANAGER'
+  ) || false;
+
+  // Leave Management submenu items
+  const leaveSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Leave Management submenu items if user has leave.view permission
+  if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
+    leaveSubmenuItems.push({ title: 'My Leave Mngt', href: '/leave', permission: 'leave.view' });
+    
+    // Only ADMIN and MANAGER can see Leave Requests and Leave Balance
+    if (isAdminOrManager) {
+      leaveSubmenuItems.push({ title: 'Leave Requests', href: '/leave-requests', permission: 'leave.view' });
+      leaveSubmenuItems.push({ title: 'Leave Balance', href: '/leave-balances', permission: 'leave.read' });
+    }
+  }
+
+  // Attendance submenu items
+  const attendanceSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Attendance submenu items if user has attendance.view permission
+  if (hasPermission('attendance.view') || hasPermission('attendance.read') || hasPermission('attendance.manage')) {
+    attendanceSubmenuItems.push({ title: 'My Attendance', href: '/attendance', permission: 'attendance.view' });
+    
+    // Only ADMIN and MANAGER can see Attendance Records
+    if (isAdminOrManager) {
+      attendanceSubmenuItems.push({ title: 'Attendance Records', href: '/attendance-records', permission: 'attendance.read' });
+    }
+  }
+
+  // Payroll submenu items
+  const payrollSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Payroll submenu items if user has payroll.view permission
+  if (hasPermission('payroll.view') || hasPermission('payroll.process')) {
+    // All users can see their own salary portal
+    payrollSubmenuItems.push({ title: 'My Salary', href: '/my-salary', permission: 'payroll.view' });
+    
+    // Only ADMIN and MANAGER can see payroll management pages
+    if (isAdminOrManager) {
+      payrollSubmenuItems.push({ title: 'Payroll Runs', href: '/payroll/runs', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Salary Grades', href: '/payroll/salary-grades', permission: 'payroll.process' });
+      payrollSubmenuItems.push({ title: 'Loans', href: '/payroll/loans', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Advances', href: '/payroll/advances', permission: 'payroll.view' });
+      payrollSubmenuItems.push({ title: 'Allowances', href: '/payroll/allowances', permission: 'payroll.process' });
+      payrollSubmenuItems.push({ title: 'Tax & Pension', href: '/payroll/tax-pension', permission: 'payroll.process' });
+    }
+  }
+
+  // Assets submenu items
+  const assetSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Assets submenu items if user has assets.view permission
+  if (hasPermission('assets.view') || hasPermission('assets.manage')) {
+    assetSubmenuItems.push({ title: 'Asset List', href: '/assets', permission: 'assets.view' });
+    assetSubmenuItems.push({ title: 'Dashboard', href: '/assets/dashboard', permission: 'assets.view' });
+    assetSubmenuItems.push({ title: 'Reports', href: '/assets/reports', permission: 'assets.view' });
+  }
+
+  // Documents submenu items
+  const documentSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Only show Documents submenu items if user has documents.view permission
+  if (hasPermission('documents.view') || hasPermission('documents.manage')) {
+    documentSubmenuItems.push({ title: 'Templates', href: '/documents/templates', permission: 'documents.view' });
+    documentSubmenuItems.push({ title: 'Generate', href: '/documents/generate', permission: 'documents.view' });
+    documentSubmenuItems.push({ title: 'Requests', href: '/documents/requests', permission: 'documents.view' });
+    if (hasPermission('documents.manage')) {
+      documentSubmenuItems.push({ title: 'Settings', href: '/documents/settings', permission: 'documents.manage' });
+    }
+  }
+
+  // Announcements submenu items
+  const announcementSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  // Show Inbox/All Announcements to all authenticated users (since listAnnouncements doesn't require permission)
+  announcementSubmenuItems.push({ title: 'Inbox', href: '/announcements', permission: '*' });
+  
+  // Show Create to users with create permission
+  if (hasPermission('announcements.create')) {
+    announcementSubmenuItems.push({ title: 'Create', href: '/announcements/create', permission: 'announcements.create' });
+  }
+
+  // Tasks submenu items
+  const taskSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  if (hasPermission('tasks.view')) {
+    taskSubmenuItems.push({ title: 'List View', href: '/tasks', permission: 'tasks.view' });
+    taskSubmenuItems.push({ title: 'Kanban Board', href: '/tasks/kanban', permission: 'tasks.view' });
+    taskSubmenuItems.push({ title: 'Dashboard', href: '/tasks/dashboard', permission: 'tasks.view' });
+  }
+
+  // Expenses submenu items
+  const expenseSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  
+  if (hasPermission('expense.view')) {
+    expenseSubmenuItems.push({ title: 'My Expenses', href: '/expenses', permission: 'expense.view' });
+  }
+  if (hasPermission('expense.approve')) {
+    expenseSubmenuItems.push({ title: 'Approval Queue', href: '/expenses/approval-queue', permission: 'expense.approve' });
+  }
+  if (hasPermission('expense.view_all')) {
+    expenseSubmenuItems.push({ title: 'All Expenses', href: '/expenses/all', permission: 'expense.view_all' });
+  }
+  
+  // Create Task is handled via dialog on the tasks list page, no separate route needed
+
+  // Auto-expand and auto-close submenus based on current route
+  React.useEffect(() => {
+    const newExpandedItems = new Set<string>();
+    
+    // Determine which submenu should be active based on current route
+    if (location.pathname.startsWith('/leave')) {
+      newExpandedItems.add('Leave Management');
+    } else if (location.pathname.startsWith('/attendance')) {
+      newExpandedItems.add('Attendance');
+    } else if (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary')) {
+      newExpandedItems.add('Payroll');
+    } else if (location.pathname.startsWith('/assets')) {
+      newExpandedItems.add('Assets');
+    } else if (location.pathname.startsWith('/expenses')) {
+      newExpandedItems.add('Expenses');
+    } else if (location.pathname.startsWith('/documents')) {
+      newExpandedItems.add('Documents');
+    } else if (location.pathname.startsWith('/announcements')) {
+      newExpandedItems.add('Announcements');
+    } else if (location.pathname.startsWith('/tasks')) {
+      newExpandedItems.add('Tasks');
+    }
+    
+    // Only update if the active submenu has changed
+    setExpandedItems(newExpandedItems);
+  }, [location.pathname]);
+
+  const toggleExpand = (item: string) => {
+    setExpandedItems(prev => {
+      const next = new Set<string>();
+      
+      // Check if the clicked item is the currently active submenu based on route
+      const isActiveSubmenu = (
+        (item === 'Leave Management' && location.pathname.startsWith('/leave')) ||
+        (item === 'Attendance' && location.pathname.startsWith('/attendance')) ||
+        (item === 'Payroll' && (location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary'))) ||
+        (item === 'Assets' && location.pathname.startsWith('/assets')) ||
+        (item === 'Expenses' && location.pathname.startsWith('/expenses')) ||
+        (item === 'Documents' && location.pathname.startsWith('/documents')) ||
+        (item === 'Announcements' && location.pathname.startsWith('/announcements')) ||
+        (item === 'Tasks' && location.pathname.startsWith('/tasks'))
+      );
+      
+      // If clicking on the currently active submenu, keep it open (don't allow closing)
+      if (isActiveSubmenu) {
+        next.add(item);
+      } else if (!prev.has(item)) {
+        // Open the clicked submenu (this will close others since we're creating a new Set)
+        next.add(item);
+      } else {
+        // It's expanded but not active - allow closing it
+        // Don't add it to next, so it closes
+      }
+      
+      return next;
+    });
+  };
 
   return (
     <div className={`bg-white border-r border-gray-200 transition-all duration-300 ${
@@ -148,7 +348,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
           </div>
           {!isCollapsed &&
           <div data-id="vhsmmnm2b" data-path="src/components/layout/Sidebar.tsx">
-              <h1 className="text-lg font-bold text-gray-900" data-id="00zu1xik0" data-path="src/components/layout/Sidebar.tsx">HRMS</h1>
+              <h1 className="text-lg font-bold text-gray-900" data-id="00zu1xik0" data-path="src/components/layout/Sidebar.tsx">Chiro HRMS</h1>
               <p className="text-xs text-gray-500" data-id="fix24iosm" data-path="src/components/layout/Sidebar.tsx">Portal</p>
             </div>
           }
@@ -184,6 +384,355 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         <nav className="space-y-1" data-id="vlfl8b3tl" data-path="src/components/layout/Sidebar.tsx">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
+            const isLeaveManagement = item.title === 'Leave Management';
+            const isAttendance = item.title === 'Attendance';
+            const isAssets = item.title === 'Assets';
+            const isDocuments = item.title === 'Documents';
+            const isAnnouncements = item.title === 'Announcements';
+            const isExpanded = expandedItems.has(item.title);
+            const isLeavePage = location.pathname.startsWith('/leave');
+            const isAttendancePage = location.pathname.startsWith('/attendance');
+            const isAssetsPage = location.pathname.startsWith('/assets');
+            const isDocumentsPage = location.pathname.startsWith('/documents');
+            const isAnnouncementsPage = location.pathname.startsWith('/announcements');
+            
+            if (isLeaveManagement && leaveSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isLeavePage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {leaveSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            
+            if (isAttendance && attendanceSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isAttendancePage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {attendanceSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (isAssets && assetSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isAssetsPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {assetSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (isDocuments && documentSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isDocumentsPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {documentSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (isAnnouncements && announcementSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isAnnouncementsPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {announcementSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isTasks = item.title === 'Tasks';
+            const isTasksPage = location.pathname.startsWith('/tasks');
+            
+            if (isTasks && taskSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isTasksPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {taskSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isExpenses = item.title === 'Expenses';
+            const isExpensesPage = location.pathname.startsWith('/expenses');
+            
+            if (isExpenses && expenseSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isExpensesPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {expenseSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isPayroll = item.title === 'Payroll';
+            const isPayrollPage = location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary');
+            
+            if (isPayroll && payrollSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isPayrollPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {payrollSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            
             return (
               <NavLink
                 key={item.href}
@@ -204,7 +753,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   </>
                 }
               </NavLink>);
-
           })}
 
           {filteredAdminItems.length > 0 &&

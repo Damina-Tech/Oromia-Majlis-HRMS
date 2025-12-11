@@ -9,6 +9,10 @@ export interface User {
   roles: string[];
   permissions: string[];
   employeeId?: string;
+<<<<<<< HEAD
+=======
+  avatarUrl?: string | null;
+>>>>>>> dev
 }
 
 interface AuthContextType {
@@ -17,6 +21,10 @@ interface AuthContextType {
   loginWithSSO: (provider: string) => Promise<boolean>;
   logout: () => void;
   refreshUserData: () => Promise<boolean>;
+<<<<<<< HEAD
+=======
+  updateUserProfile: (patch: Partial<User>) => void;
+>>>>>>> dev
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
   isLoading: boolean;
@@ -44,7 +52,12 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
         lastName: userData.lastName || '',
         roles: userData.roles || [],
         permissions: userData.permissions || [],
+<<<<<<< HEAD
         employeeId: userData.employeeId
+=======
+        employeeId: userData.employeeId,
+        avatarUrl: userData.avatarUrl ?? null,
+>>>>>>> dev
       };
       
       localStorage.setItem('accessToken', accessToken);
@@ -61,6 +74,18 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     }
   };
 
+<<<<<<< HEAD
+=======
+  const updateUserProfile = (patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...patch };
+      localStorage.setItem('hrms_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+>>>>>>> dev
   const logout = () => {
     setUser(null);
     localStorage.removeItem('hrms_user');
@@ -82,10 +107,17 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
           refreshUserData().then((success) => {
             if (!success) {
               console.warn('Token refresh failed. Please re-login.');
+<<<<<<< HEAD
               localStorage.removeItem('hrms_user');
               localStorage.removeItem('accessToken');
             }
             setIsLoading(false);
+=======
+          localStorage.removeItem('hrms_user');
+          localStorage.removeItem('accessToken');
+            }
+          setIsLoading(false);
+>>>>>>> dev
           });
           return;
         }
@@ -115,7 +147,12 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
         lastName: userData.lastName || '',
         roles: userData.roles || [],
         permissions: userData.permissions || [], // Permissions from backend
+<<<<<<< HEAD
         employeeId: userData.employeeId
+=======
+        employeeId: userData.employeeId,
+        avatarUrl: userData.avatarUrl ?? null,
+>>>>>>> dev
       };
       
       // Store token and complete user data (with permissions from backend)
@@ -161,6 +198,10 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     loginWithSSO,
     logout,
     refreshUserData,
+<<<<<<< HEAD
+=======
+    updateUserProfile,
+>>>>>>> dev
     isAuthenticated: !!user,
     hasPermission,
     isLoading

@@ -10,6 +10,7 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import EmployeesPage from "./pages/EmployeesPage";
 import AttendancePage from "./pages/AttendancePage";
+<<<<<<< HEAD
 import LeaveManagement from "./pages/LeaveManagement";
 import PayrollPage from "./pages/PayrollPage";
 import OrganizationPage from "./pages/OrganizationPage";
@@ -18,11 +19,57 @@ import AssetManagementPage from "./pages/AssetManagementPage";
 import ExpenseManagementPage from "./pages/ExpenseManagementPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ReportsPage from "./pages/ReportsPage";
+=======
+import AttendanceRecordsPage from "./pages/AttendanceRecordsPage";
+import LeaveManagement from "./pages/LeaveManagement";
+import LeaveBalancesPage from "./pages/LeaveBalancesPage";
+import LeaveRequestsPage from "./pages/LeaveRequestsPage";
+import PayrollPage from "./pages/PayrollPage";
+import PayrollRunsPage from "./pages/PayrollRunsPage";
+import PayrollRunItemsPage from "./pages/PayrollRunItemsPage";
+import SalaryGradesPage from "./pages/SalaryGradesPage";
+import LoansPage from "./pages/LoansPage";
+import AdvancesPage from "./pages/AdvancesPage";
+import AllowancesPage from "./pages/AllowancesPage";
+import TaxPensionPage from "./pages/TaxPensionPage";
+import EmployeeSalaryPortal from "./pages/EmployeeSalaryPortal";
+import OrganizationPage from "./pages/OrganizationPage";
+import TimesheetPage from "./pages/TimesheetPage";
+import AssetManagementPage from "./pages/AssetManagementPage";
+import AssetDashboardPage from "./pages/AssetDashboardPage";
+import AssetReportsPage from "./pages/AssetReportsPage";
+import DocumentTemplatesPage from "./pages/DocumentTemplatesPage";
+import DocumentGenerationPage from "./pages/DocumentGenerationPage";
+import DocumentSettingsPage from "./pages/DocumentSettingsPage";
+import DocumentRequestsPage from "./pages/DocumentRequestsPage";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
+import CreateAnnouncementPage from "./pages/CreateAnnouncementPage";
+import AnnouncementDetailPage from "./pages/AnnouncementDetailPage";
+import TasksKanbanPage from "./pages/TasksKanbanPage";
+import TasksListPage from "./pages/TasksListPage";
+import TaskDetailPage from "./pages/TaskDetailPage";
+import TasksDashboardPage from "./pages/TasksDashboardPage";
+import MyExpensesPage from "./pages/MyExpensesPage";
+import ExpenseApprovalQueuePage from "./pages/ExpenseApprovalQueuePage";
+import AllExpensesPage from "./pages/AllExpensesPage";
+import ExpenseDetailPage from "./pages/ExpenseDetailPage";
+import DocumentsPage from "./pages/DocumentsPage";
+import ReportsPage from "./pages/ReportsPage";
+import ReportBuilder from "./components/reports/ReportBuilder";
+import ReportViewer from "./components/reports/ReportViewer";
+>>>>>>> dev
 import OnboardingPage from "./pages/OnboardingPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
+<<<<<<< HEAD
 import NotFound from "./pages/NotFound";
+=======
+import ProfilePage from "./pages/ProfilePage";
+import NotFound from "./pages/NotFound";
+import LeadsPage from "./pages/LeadsPage";
+import LeadDetailPage from "./pages/LeadDetailPage";
+>>>>>>> dev
 
 const queryClient = new QueryClient();
 
@@ -136,6 +183,11 @@ function AppRoutes() {
           data-id="gfpbgf4gj"
           data-path="src/App.tsx"
         />
+<<<<<<< HEAD
+=======
+        <Route path="leads" element={<LeadsPage />} />
+        <Route path="leads/:leadId" element={<LeadDetailPage />} />
+>>>>>>> dev
         <Route
           path="attendance"
           element={
@@ -145,6 +197,17 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+<<<<<<< HEAD
+=======
+          path="attendance-records"
+          element={
+            <AttendanceRecordsPage data-id="attendance-records-page" data-path="src/App.tsx" />
+          }
+          data-id="attendance-records-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+>>>>>>> dev
           path="organization"
           element={
             <OrganizationPage data-id="8rv66kkd6" data-path="src/App.tsx" />
@@ -161,12 +224,66 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+<<<<<<< HEAD
+=======
+          path="leave-balances"
+          element={
+            <LeaveBalancesPage data-id="leave-balances-page" data-path="src/App.tsx" />
+          }
+          data-id="leave-balances-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="leave-requests"
+          element={
+            <LeaveRequestsPage data-id="leave-requests-page" data-path="src/App.tsx" />
+          }
+          data-id="leave-requests-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+>>>>>>> dev
           path="payroll"
           element={<PayrollPage data-id="gcl3okxuk" data-path="src/App.tsx" />}
           data-id="fxuwv8fkq"
           data-path="src/App.tsx"
         />
         <Route
+<<<<<<< HEAD
+=======
+          path="payroll/runs"
+          element={<PayrollRunsPage />}
+        />
+        <Route
+          path="payroll/runs/:runId/items"
+          element={<PayrollRunItemsPage />}
+        />
+        <Route
+          path="payroll/salary-grades"
+          element={<SalaryGradesPage />}
+        />
+        <Route
+          path="payroll/loans"
+          element={<LoansPage />}
+        />
+        <Route
+          path="payroll/advances"
+          element={<AdvancesPage />}
+        />
+        <Route
+          path="payroll/allowances"
+          element={<AllowancesPage />}
+        />
+        <Route
+          path="payroll/tax-pension"
+          element={<TaxPensionPage />}
+        />
+        <Route
+          path="my-salary"
+          element={<EmployeeSalaryPortal />}
+        />
+        <Route
+>>>>>>> dev
           path="timesheet"
           element={
             <TimesheetPage data-id="g9vxxt490" data-path="src/App.tsx" />
@@ -183,6 +300,7 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+<<<<<<< HEAD
           path="expenses"
           element={
             <ExpenseManagementPage
@@ -194,6 +312,80 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+=======
+          path="assets/dashboard"
+          element={<AssetDashboardPage />}
+        />
+        <Route
+          path="assets/reports"
+          element={<AssetReportsPage />}
+        />
+          <Route
+            path="documents/templates"
+            element={<DocumentTemplatesPage />}
+          />
+          <Route
+            path="documents/generate"
+            element={<DocumentGenerationPage />}
+          />
+          <Route
+            path="documents/settings"
+            element={<DocumentSettingsPage />}
+          />
+          <Route
+            path="documents/requests"
+            element={<DocumentRequestsPage />}
+          />
+          <Route
+            path="announcements"
+            element={<AnnouncementsPage />}
+          />
+          <Route
+            path="announcements/create"
+            element={<CreateAnnouncementPage />}
+          />
+          <Route
+            path="announcements/:id"
+            element={<AnnouncementDetailPage />}
+          />
+          <Route
+            path="announcements/edit/:id"
+            element={<CreateAnnouncementPage />}
+          />
+          <Route
+            path="tasks"
+            element={<TasksListPage />}
+          />
+          <Route
+            path="tasks/kanban"
+            element={<TasksKanbanPage />}
+          />
+          <Route
+            path="tasks/:id"
+            element={<TaskDetailPage />}
+          />
+          <Route
+            path="tasks/dashboard"
+            element={<TasksDashboardPage />}
+          />
+          <Route
+            path="expenses"
+            element={<MyExpensesPage />}
+          />
+          <Route
+            path="expenses/approval-queue"
+            element={<ExpenseApprovalQueuePage />}
+          />
+          <Route
+            path="expenses/all"
+            element={<AllExpensesPage />}
+          />
+          <Route
+            path="expenses/:id"
+            element={<ExpenseDetailPage />}
+          />
+        <Route
+>>>>>>> dev
           path="documents"
           element={
             <DocumentsPage data-id="oib2dwxm7" data-path="src/App.tsx" />
@@ -208,6 +400,17 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+<<<<<<< HEAD
+=======
+          path="reports/builder"
+          element={<ReportBuilder />}
+        />
+        <Route
+          path="reports/view"
+          element={<ReportViewer />}
+        />
+        <Route
+>>>>>>> dev
           path="onboarding"
           element={
             <OnboardingPage data-id="8znbv4kpt" data-path="src/App.tsx" />
@@ -235,6 +438,21 @@ function AppRoutes() {
           data-id="az0ylb3qd"
           data-path="src/App.tsx"
         />
+<<<<<<< HEAD
+=======
+        <Route
+          path="profile"
+          element={<ProfilePage data-id="profile-page" data-path="src/App.tsx" />}
+          data-id="profile-route"
+          data-path="src/App.tsx"
+        />
+        <Route
+          path="settings"
+          element={<SettingsPage data-id="settings-page" data-path="src/App.tsx" />}
+          data-id="settings-route"
+          data-path="src/App.tsx"
+        />
+>>>>>>> dev
       </Route>
 
       {/* Catch all route */}
