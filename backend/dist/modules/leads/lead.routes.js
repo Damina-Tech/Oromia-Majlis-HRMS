@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { listLeads, getLead, createLead, updateLead, changeLeadStage, assignLead, addLeadNote, dispositionLead, importLeads, getLeadKanban, getLeadDashboard, } from "./lead.controller.js";
-import { requireAuth, hasAnyPermission } from "../../middleware/auth.js";
+import { listLeads, getLead, createLead, updateLead, changeLeadStage, assignLead, addLeadNote, dispositionLead, importLeads, getLeadKanban, getLeadDashboard, downloadSampleTemplate, deleteAllLeads, } from "./lead.controller.js";
+import { requireAuth, hasAnyPermission, hasPermission } from "../../middleware/auth.js";
 import { uploadImport } from "../../lib/upload.js";
 const router = Router();
 router.get("/", requireAuth, hasAnyPermission("leads.read", "leads.write", "leads.manage"), listLeads);
 router.get("/dashboard", requireAuth, hasAnyPermission("leads.read", "leads.write", "leads.manage"), getLeadDashboard);
 router.get("/kanban", requireAuth, hasAnyPermission("leads.read", "leads.write"), getLeadKanban);
+router.get("/import/template", requireAuth, hasAnyPermission("leads.write", "leads.manage"), downloadSampleTemplate);
 router.post("/", requireAuth, hasAnyPermission("leads.write", "leads.manage"), createLead);
 router.post("/import", requireAuth, hasAnyPermission("leads.write", "leads.manage"), uploadImport.single("file"), importLeads);
 router.get("/:id", requireAuth, hasAnyPermission("leads.read", "leads.write"), getLead);
@@ -14,5 +15,6 @@ router.post("/:id/stage", requireAuth, hasAnyPermission("leads.write", "leads.ma
 router.post("/:id/assign", requireAuth, hasAnyPermission("leads.write", "leads.manage"), assignLead);
 router.post("/:id/notes", requireAuth, hasAnyPermission("leads.read", "leads.write", "leads.manage"), addLeadNote);
 router.post("/:id/disposition", requireAuth, hasAnyPermission("leads.write", "leads.manage"), dispositionLead);
+router.delete("/", requireAuth, hasPermission("leads.manage"), deleteAllLeads);
 export default router;
 //# sourceMappingURL=lead.routes.js.map

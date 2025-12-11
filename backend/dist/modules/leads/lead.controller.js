@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
-import { LeadStage, LeadHistoryAction, LeadStatus, LeadPriority, NotificationModule, NotificationType, } from "@prisma/client";
+import { LeadStage, LeadHistoryAction, LeadStatus, LeadPriority, NotificationModule, NotificationType, Prisma, } from "@prisma/client";
 import prisma from "../../db/client.js";
 import { CreateLeadDto, UpdateLeadDto, LeadFilterDto, LeadStageChangeDto, LeadAssignDto, LeadNoteDto, LeadDispositionDto, LeadKanbanQueryDto, } from "./lead.dto.js";
 import { LeadAutomationService } from "./lead.automation.js";
@@ -133,15 +133,23 @@ function buildLeadWhere(filters) {
     }
     return where;
 }
-async function findDuplicates(email, phone) {
+async function findDuplicates(email, phone, allowDuplicatePhone = false) {
     if (!email && !phone)
+        return [];
+    const conditions = [];
+    // Always check email if provided
+    if (email) {
+        conditions.push({ email: { equals: email, mode: "insensitive" } });
+    }
+    // Only check phone if not allowing duplicates
+    if (phone && !allowDuplicatePhone) {
+        conditions.push({ phone: { equals: phone } });
+    }
+    if (conditions.length === 0)
         return [];
     return prisma.lead.findMany({
         where: {
-            OR: [
-                email ? { email: { equals: email, mode: "insensitive" } } : undefined,
-                phone ? { phone: { equals: phone } } : undefined,
-            ].filter(Boolean),
+            OR: conditions,
             status: { in: [LeadStatus.ACTIVE, LeadStatus.CONVERTED] },
         },
         select: {
@@ -161,14 +169,66 @@ export async function listLeads(req, res) {
         const filters = LeadFilterDto.parse(req.query);
         const where = buildLeadWhere(filters);
         const skip = (filters.page - 1) * filters.pageSize;
-        const [items, total, stageCounts, sourceCounts] = await Promise.all([
-            prisma.lead.findMany({
-                where,
+        // Build WHERE clause parts
+        const whereParts = [];
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            whereParts.push(Prisma.sql `("fullName" ILIKE ${searchTerm} OR email ILIKE ${searchTerm} OR phone ILIKE ${searchTerm} OR "companyName" ILIKE ${searchTerm})`);
+        }
+        if (filters.stage) {
+            whereParts.push(Prisma.sql `stage = ${filters.stage}`);
+        }
+        if (filters.priority) {
+            whereParts.push(Prisma.sql `priority = ${filters.priority}`);
+        }
+        if (filters.assignedToUserId) {
+            whereParts.push(Prisma.sql `"assignedToUserId" = ${filters.assignedToUserId}`);
+        }
+        // Use raw SQL to efficiently sort and paginate at database level
+        let sortedIds;
+        if (whereParts.length > 0) {
+            const whereClause = Prisma.sql `WHERE ${Prisma.join(whereParts, Prisma.sql ` AND `)}`;
+            sortedIds = await prisma.$queryRaw `
+        SELECT id 
+        FROM "Lead" 
+        ${whereClause}
+        ORDER BY 
+          CASE 
+            WHEN email IS NOT NULL AND email != '' AND phone IS NOT NULL AND phone != '' 
+            THEN 0 
+            ELSE 1 
+          END ASC,
+          "createdAt" DESC
+        LIMIT ${filters.pageSize} OFFSET ${skip}
+      `;
+        }
+        else {
+            sortedIds = await prisma.$queryRaw `
+        SELECT id 
+        FROM "Lead" 
+        ORDER BY 
+          CASE 
+            WHEN email IS NOT NULL AND email != '' AND phone IS NOT NULL AND phone != '' 
+            THEN 0 
+            ELSE 1 
+          END ASC,
+          "createdAt" DESC
+        LIMIT ${filters.pageSize} OFFSET ${skip}
+      `;
+        }
+        const leadIds = sortedIds.map((row) => row.id);
+        // Get full lead objects with relations
+        const items = leadIds.length > 0
+            ? await prisma.lead.findMany({
+                where: { id: { in: leadIds } },
                 include: leadListInclude,
-                orderBy: [{ stage: "asc" }, { updatedAt: "desc" }],
-                skip,
-                take: filters.pageSize,
-            }),
+            })
+            : [];
+        // Maintain sort order from SQL query
+        const sortedItems = leadIds
+            .map((id) => items.find((lead) => lead.id === id))
+            .filter(Boolean);
+        const [total, stageCounts, sourceCounts] = await Promise.all([
             prisma.lead.count({ where }),
             prisma.lead.groupBy({
                 by: ["stage"],
@@ -185,7 +245,7 @@ export async function listLeads(req, res) {
             page: filters.page,
             pageSize: filters.pageSize,
             total,
-            items,
+            items: sortedItems.length > 0 ? sortedItems : items,
             summary: {
                 stageCounts: stageCounts.map((row) => ({ stage: row.stage, count: row._count._all })),
                 topSources: sourceCounts
@@ -294,11 +354,16 @@ export async function updateLead(req, res) {
         if (!lead) {
             return res.status(404).json({ message: "Lead not found" });
         }
+        // Map address to location for backward compatibility
+        const addressValue = dto.address ?? dto.location ?? undefined;
         const data = {
             fullName: dto.fullName ?? undefined,
             phone: dto.phone ?? undefined,
             email: dto.email ?? undefined,
-            location: dto.location ?? undefined,
+            location: addressValue,
+            address: addressValue,
+            gender: dto.gender ?? undefined,
+            education: dto.education ?? undefined,
             interest: dto.interest ?? undefined,
             source: dto.source ?? undefined,
             companyName: dto.companyName ?? undefined,
@@ -520,15 +585,40 @@ async function parseImportRows(file) {
 }
 function normalizeRow(row) {
     const normalized = {};
-    for (const header of CSV_HEADERS) {
-        if (row[header] !== undefined) {
-            normalized[header] = row[header];
+    // Field mapping: handle both camelCase and snake_case
+    const fieldMappings = {
+        fullName: ["fullName", "full_name", "full name", "name"],
+        phone: ["phone", "phone_number", "phone number", "mobile", "contact"],
+        email: ["email", "email_address", "email address"],
+        location: ["location", "address", "city", "address_line"],
+        address: ["address", "location", "city", "address_line"],
+        gender: ["gender", "sex"],
+        education: ["education", "educational_background", "educational background", "qualification", "qualifications"],
+        interest: ["interest", "interested_in", "interested in"],
+        source: ["source", "lead_source", "lead source", "origin"],
+        companyName: ["companyName", "company_name", "company name", "company"],
+        priority: ["priority", "lead_priority", "lead priority"],
+        stage: ["stage", "lead_stage", "lead stage", "status"],
+        assignedDepartmentId: ["assignedDepartmentId", "assigned_department_id", "department_id", "departmentId"],
+        assignedToUserId: ["assignedToUserId", "assigned_to_user_id", "user_id", "assignedTo", "assigned_to"],
+    };
+    for (const [targetHeader, possibleKeys] of Object.entries(fieldMappings)) {
+        // First check exact match
+        if (row[targetHeader] !== undefined && row[targetHeader] !== null && row[targetHeader] !== "") {
+            normalized[targetHeader] = String(row[targetHeader]).trim();
             continue;
         }
-        const camelKey = header.replace(/([A-Z])/g, (g) => ` ${g}`).toLowerCase();
-        const matchingKey = Object.keys(row).find((key) => key.toLowerCase().replace(/\s+/g, "") === camelKey.replace(/\s+/g, ""));
-        if (matchingKey) {
-            normalized[header] = row[matchingKey];
+        // Then check all possible variations (case-insensitive, space/snake_case agnostic)
+        const normalizedTarget = targetHeader.toLowerCase().replace(/[_\s]/g, "");
+        for (const key of Object.keys(row)) {
+            const normalizedKey = key.toLowerCase().replace(/[_\s]/g, "");
+            if (normalizedKey === normalizedTarget || possibleKeys.some(pk => normalizedKey === pk.toLowerCase().replace(/[_\s]/g, ""))) {
+                const value = row[key];
+                if (value !== undefined && value !== null && value !== "") {
+                    normalized[targetHeader] = String(value).trim();
+                    break;
+                }
+            }
         }
     }
     return normalized;
@@ -544,6 +634,28 @@ export async function importLeads(req, res) {
     }
     try {
         const rows = await parseImportRows(file);
+        // Validate CSV structure - check if required fields are present
+        if (rows.length === 0) {
+            return res.status(400).json({
+                message: "CSV file is empty or invalid",
+                errors: ["The uploaded file contains no data rows."]
+            });
+        }
+        // Check first row for required field presence (case-insensitive)
+        const firstRow = rows[0];
+        const rowKeys = Object.keys(firstRow).map(k => k.toLowerCase().replace(/[_\s]/g, ""));
+        const requiredFields = ["fullname", "full_name", "name"];
+        const hasRequiredField = requiredFields.some(rf => rowKeys.includes(rf));
+        if (!hasRequiredField) {
+            return res.status(400).json({
+                message: "Invalid CSV format",
+                errors: [
+                    "CSV file must contain at least one of these required fields: full_name, fullName, or name",
+                    `Found columns: ${Object.keys(firstRow).join(", ")}`,
+                    "Please download the sample template to see the correct format."
+                ]
+            });
+        }
         const job = await prisma.leadImportJob.create({
             data: {
                 uploadedBy: actorId,
@@ -557,13 +669,18 @@ export async function importLeads(req, res) {
         let created = 0;
         let duplicates = 0;
         let failed = 0;
-        for (const rawRow of rows) {
+        const errors = [];
+        for (let i = 0; i < rows.length; i++) {
+            const rawRow = rows[i];
             const row = normalizeRow(rawRow);
-            if (!row.fullName) {
+            // Validate required field
+            if (!row.fullName || !row.fullName.trim()) {
                 failed++;
+                errors.push(`Row ${i + 2}: Missing required field 'full_name' or 'fullName'`);
                 continue;
             }
-            const existing = await findDuplicates(row.email, row.phone);
+            // Check duplicates - allow duplicate phone numbers during import
+            const existing = await findDuplicates(row.email, row.phone, true);
             if (existing.length) {
                 duplicates++;
                 continue;
@@ -587,12 +704,17 @@ export async function importLeads(req, res) {
                 ? row.assignedToUserId.trim()
                 : undefined;
             try {
+                // Map address to location for backward compatibility, but also store in address field
+                const addressValue = row.address || row.location;
                 await prisma.lead.create({
                     data: {
                         fullName: row.fullName,
                         phone: row.phone,
                         email: row.email,
-                        location: row.location,
+                        location: addressValue,
+                        address: addressValue,
+                        gender: row.gender,
+                        education: row.education,
                         interest: row.interest,
                         source: row.source,
                         companyName: row.companyName,
@@ -620,6 +742,7 @@ export async function importLeads(req, res) {
                     created,
                     duplicates,
                     failed,
+                    errors: errors.length > 0 ? errors.slice(0, 50) : undefined, // Limit to first 50 errors
                 },
                 completedAt: new Date(),
             },
@@ -628,11 +751,69 @@ export async function importLeads(req, res) {
         res.json({
             message: "Import completed",
             summary: { total: rows.length, created, duplicates, failed },
+            errors: errors.length > 0 ? errors.slice(0, 50) : undefined,
         });
     }
     catch (error) {
         console.error("Failed to import leads", error);
         res.status(500).json({ message: "Failed to import leads", error: error.message });
+    }
+}
+export async function downloadSampleTemplate(req, res) {
+    try {
+        // Create sample CSV content
+        const sampleHeaders = [
+            "full_name",
+            "phone",
+            "email",
+            "gender",
+            "education",
+            "address",
+            "interest",
+            "source",
+            "company_name",
+            "priority",
+            "stage",
+        ];
+        const sampleRows = [
+            [
+                "John Doe",
+                "+1234567890",
+                "john.doe@example.com",
+                "Male",
+                "Bachelor's Degree",
+                "New York, USA",
+                "Product Demo",
+                "Website",
+                "Acme Corp",
+                "HIGH",
+                "NEW",
+            ],
+            [
+                "Jane Smith",
+                "+1987654321",
+                "jane.smith@example.com",
+                "Female",
+                "Master's Degree",
+                "Los Angeles, USA",
+                "Enterprise License",
+                "Referral",
+                "Tech Solutions Inc",
+                "MEDIUM",
+                "CONTACTED",
+            ],
+        ];
+        const csvContent = [
+            sampleHeaders.join(","),
+            ...sampleRows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+        ].join("\n");
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="lead-import-template.csv"');
+        res.send(csvContent);
+    }
+    catch (error) {
+        console.error("Failed to generate sample template", error);
+        res.status(500).json({ message: "Failed to generate template", error: error.message });
     }
 }
 export async function getLeadKanban(req, res) {
@@ -664,6 +845,27 @@ export async function getLeadKanban(req, res) {
     catch (error) {
         console.error("Failed to load kanban", error);
         res.status(500).json({ message: "Failed to load kanban board", error: error.message });
+    }
+}
+export async function deleteAllLeads(req, res) {
+    try {
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+        // Check permissions - only allow if user has leads.manage permission
+        const count = await prisma.lead.count();
+        // Delete all leads
+        await prisma.lead.deleteMany({});
+        await LeadAutomationService.refreshMetrics();
+        res.json({
+            message: "All leads deleted successfully",
+            deletedCount: count,
+        });
+    }
+    catch (error) {
+        console.error("Failed to delete all leads", error);
+        res.status(500).json({ message: "Failed to delete leads", error: error.message });
     }
 }
 export async function getLeadDashboard(req, res) {

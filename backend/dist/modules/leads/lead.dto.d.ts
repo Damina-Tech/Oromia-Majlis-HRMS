@@ -33,6 +33,9 @@ export declare const CreateLeadDto: z.ZodObject<{
     phone: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>;
     email: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>;
     location: z.ZodOptional<z.ZodString>;
+    address: z.ZodOptional<z.ZodString>;
+    gender: z.ZodOptional<z.ZodString>;
+    education: z.ZodOptional<z.ZodString>;
     interest: z.ZodOptional<z.ZodString>;
     source: z.ZodOptional<z.ZodString>;
     companyName: z.ZodOptional<z.ZodString>;
@@ -70,6 +73,9 @@ export declare const UpdateLeadDto: z.ZodObject<{
     phone: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>>;
     email: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodPipe<z.ZodLiteral<"">, z.ZodTransform<undefined, "">>]>>;
     location: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    address: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    gender: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    education: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     interest: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     source: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     companyName: z.ZodOptional<z.ZodOptional<z.ZodString>>;
