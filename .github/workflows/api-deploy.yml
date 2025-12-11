@@ -33,6 +33,8 @@ jobs:
         cp tsconfig.json deploy/
         mkdir -p deploy/src
         cp -r src/* deploy/src/
+        mkdir -p deploy/prisma
+        cp -r prisma/* deploy/prisma/
 
     - name: Deploy runtime bundle to cPanel via FTP
       uses: SamKirkland/FTP-Deploy-Action@v4.3.5
