@@ -10,16 +10,6 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import EmployeesPage from "./pages/EmployeesPage";
 import AttendancePage from "./pages/AttendancePage";
-<<<<<<< HEAD
-import LeaveManagement from "./pages/LeaveManagement";
-import PayrollPage from "./pages/PayrollPage";
-import OrganizationPage from "./pages/OrganizationPage";
-import TimesheetPage from "./pages/TimesheetPage";
-import AssetManagementPage from "./pages/AssetManagementPage";
-import ExpenseManagementPage from "./pages/ExpenseManagementPage";
-import DocumentsPage from "./pages/DocumentsPage";
-import ReportsPage from "./pages/ReportsPage";
-=======
 import AttendanceRecordsPage from "./pages/AttendanceRecordsPage";
 import LeaveManagement from "./pages/LeaveManagement";
 import LeaveBalancesPage from "./pages/LeaveBalancesPage";
@@ -57,19 +47,14 @@ import DocumentsPage from "./pages/DocumentsPage";
 import ReportsPage from "./pages/ReportsPage";
 import ReportBuilder from "./components/reports/ReportBuilder";
 import ReportViewer from "./components/reports/ReportViewer";
->>>>>>> dev
 import OnboardingPage from "./pages/OnboardingPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
-<<<<<<< HEAD
-import NotFound from "./pages/NotFound";
-=======
 import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
 import LeadsPage from "./pages/LeadsPage";
 import LeadDetailPage from "./pages/LeadDetailPage";
->>>>>>> dev
 
 const queryClient = new QueryClient();
 
@@ -183,11 +168,8 @@ function AppRoutes() {
           data-id="gfpbgf4gj"
           data-path="src/App.tsx"
         />
-<<<<<<< HEAD
-=======
         <Route path="leads" element={<LeadsPage />} />
         <Route path="leads/:leadId" element={<LeadDetailPage />} />
->>>>>>> dev
         <Route
           path="attendance"
           element={
@@ -197,8 +179,6 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
-<<<<<<< HEAD
-=======
           path="attendance-records"
           element={
             <AttendanceRecordsPage data-id="attendance-records-page" data-path="src/App.tsx" />
@@ -207,7 +187,6 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
->>>>>>> dev
           path="organization"
           element={
             <OrganizationPage data-id="8rv66kkd6" data-path="src/App.tsx" />
@@ -224,8 +203,6 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
-<<<<<<< HEAD
-=======
           path="leave-balances"
           element={
             <LeaveBalancesPage data-id="leave-balances-page" data-path="src/App.tsx" />
@@ -242,15 +219,12 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
->>>>>>> dev
           path="payroll"
           element={<PayrollPage data-id="gcl3okxuk" data-path="src/App.tsx" />}
           data-id="fxuwv8fkq"
           data-path="src/App.tsx"
         />
         <Route
-<<<<<<< HEAD
-=======
           path="payroll/runs"
           element={<PayrollRunsPage />}
         />
@@ -283,7 +257,6 @@ function AppRoutes() {
           element={<EmployeeSalaryPortal />}
         />
         <Route
->>>>>>> dev
           path="timesheet"
           element={
             <TimesheetPage data-id="g9vxxt490" data-path="src/App.tsx" />
@@ -300,19 +273,6 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
-<<<<<<< HEAD
-          path="expenses"
-          element={
-            <ExpenseManagementPage
-              data-id="68y9x1ab7"
-              data-path="src/App.tsx"
-            />
-          }
-          data-id="0qx63g042"
-          data-path="src/App.tsx"
-        />
-        <Route
-=======
           path="assets/dashboard"
           element={<AssetDashboardPage />}
         />
@@ -385,7 +345,6 @@ function AppRoutes() {
             element={<ExpenseDetailPage />}
           />
         <Route
->>>>>>> dev
           path="documents"
           element={
             <DocumentsPage data-id="oib2dwxm7" data-path="src/App.tsx" />
@@ -400,8 +359,6 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
-<<<<<<< HEAD
-=======
           path="reports/builder"
           element={<ReportBuilder />}
         />
@@ -410,7 +367,6 @@ function AppRoutes() {
           element={<ReportViewer />}
         />
         <Route
->>>>>>> dev
           path="onboarding"
           element={
             <OnboardingPage data-id="8znbv4kpt" data-path="src/App.tsx" />
@@ -438,8 +394,6 @@ function AppRoutes() {
           data-id="az0ylb3qd"
           data-path="src/App.tsx"
         />
-<<<<<<< HEAD
-=======
         <Route
           path="profile"
           element={<ProfilePage data-id="profile-page" data-path="src/App.tsx" />}
@@ -452,7 +406,6 @@ function AppRoutes() {
           data-id="settings-route"
           data-path="src/App.tsx"
         />
->>>>>>> dev
       </Route>
 
       {/* Catch all route */}

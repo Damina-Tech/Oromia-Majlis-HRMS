@@ -35,9 +35,6 @@ import {
   Play,
   Square,
   Loader2,
-<<<<<<< HEAD
-} from 'lucide-react';
-=======
   Search,
   Filter,
   X,
@@ -55,7 +52,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
->>>>>>> dev
 
 const AttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -68,8 +64,6 @@ const AttendancePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<Attendance[]>([]);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
-<<<<<<< HEAD
-=======
   
   // Filter states
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom'>('all');
@@ -78,7 +72,6 @@ const AttendancePage: React.FC = () => {
   const [customSingleDate, setCustomSingleDate] = useState<Date | undefined>(undefined);
   const [customDateType, setCustomDateType] = useState<'range' | 'single'>('range');
   const [statusFilter, setStatusFilter] = useState<string>('all');
->>>>>>> dev
 
   const employeeId = user?.employeeId;
 
@@ -100,22 +93,14 @@ const AttendancePage: React.FC = () => {
     }
   }, []);
 
-<<<<<<< HEAD
-  // Load data on mount
-=======
   // Load data on mount and when filters change
->>>>>>> dev
   useEffect(() => {
     if (employeeId) {
       loadData();
     } else {
       setLoading(false);
     }
-<<<<<<< HEAD
-  }, [employeeId]);
-=======
   }, [employeeId, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter]);
->>>>>>> dev
 
   // Timer effect
   useEffect(() => {
@@ -135,8 +120,6 @@ const AttendancePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [isTimerRunning, todayAttendance]);
 
-<<<<<<< HEAD
-=======
   // Calculate date range based on filter
   const getDateRange = (): { startDate?: string; endDate?: string } => {
     const now = new Date();
@@ -209,7 +192,6 @@ const AttendancePage: React.FC = () => {
     }
   };
 
->>>>>>> dev
   const loadData = async () => {
     if (!employeeId) {
       setLoading(false);
@@ -218,11 +200,6 @@ const AttendancePage: React.FC = () => {
 
     try {
       setLoading(true);
-<<<<<<< HEAD
-      const [today, history, statistics] = await Promise.all([
-        getTodayStatus(),
-        listAttendance({ page: 1, pageSize: 10 }),
-=======
       const dateRange = getDateRange();
       const [today, history, statistics] = await Promise.all([
         getTodayStatus(),
@@ -234,14 +211,10 @@ const AttendancePage: React.FC = () => {
           page: 1, 
           pageSize: 100,
         }),
->>>>>>> dev
         getAttendanceStats(),
       ]);
 
       setTodayAttendance(today);
-<<<<<<< HEAD
-      setAttendanceHistory(history.items);
-=======
       
       // Filter by status on client side if date filter is used
       let filteredHistory = history.items;
@@ -250,7 +223,6 @@ const AttendancePage: React.FC = () => {
       }
       
       setAttendanceHistory(filteredHistory);
->>>>>>> dev
       setStats(statistics);
 
       // Start timer if checked in but not checked out
@@ -610,12 +582,6 @@ const AttendancePage: React.FC = () => {
       {/* Attendance History */}
       <Card>
         <CardHeader>
-<<<<<<< HEAD
-          <CardTitle>Attendance History</CardTitle>
-          <CardDescription>Your recent attendance records</CardDescription>
-        </CardHeader>
-        <CardContent>
-=======
           <CardTitle>My Attendance History</CardTitle>
           <CardDescription>Your recent attendance records</CardDescription>
         </CardHeader>
@@ -779,7 +745,6 @@ const AttendancePage: React.FC = () => {
             </div>
           </div>
 
->>>>>>> dev
           <Table>
             <TableHeader>
               <TableRow>

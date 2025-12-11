@@ -1,42 +1,21 @@
-<<<<<<< HEAD
-"use client";
-import React, { useEffect, useMemo, useState } from "react";
-=======
  "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
->>>>>>> dev
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-<<<<<<< HEAD
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-=======
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
->>>>>>> dev
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
-<<<<<<< HEAD
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "@/components/ui/select";
-import { toast } from "sonner";
-import {
-  Search, Plus, Filter, Download, Mail, Phone, Calendar, Edit, Trash2, Eye, AlertCircle
-} from "lucide-react";
-import api from "@/services/api"; // Axios instance with baseURL + auth
-=======
 import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -83,7 +62,6 @@ import {
   type IdCardTemplateSettings,
 } from "@/services/employeeId";
 import IdCardPreview from "@/components/employees/IdCardPreview";
->>>>>>> dev
 
 // ---------- Types ----------
 type Dept = { id: string; name: string };
@@ -94,11 +72,6 @@ type Employee = {
   lastName: string;
   email: string;
   phone?: string | null;
-<<<<<<< HEAD
-  address?: string | null;
-  emergencyContact?: string | null;
-  designation?: string | null;
-=======
   dateOfBirth?: string | null;
   gender?: string | null;
   address?: string | null;
@@ -110,15 +83,12 @@ type Employee = {
   educationField?: string | null;
   marriageStatus?: string | null;
   document?: string | null;
->>>>>>> dev
   status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
   joiningDate?: string | null;
   salary?: number | null;
   departmentId?: string | null;
   department?: { id: string; name: string } | null;
   manager?: { id: string; firstName: string; lastName: string } | null;
-<<<<<<< HEAD
-=======
   userId?: string | null;
   user?: {
     id: string;
@@ -165,7 +135,6 @@ const DEFAULT_EMPLOYEE_SUMMARY: EmployeeListSummary = {
   inactive: 0,
   onLeave: 0,
   departments: 0,
->>>>>>> dev
 };
 
 // ---------- Helpers ----------
@@ -185,14 +154,6 @@ const getStatusColor = (status: string) => {
 };
 const initials = (first = "", last = "") => (first[0] ?? "").toUpperCase() + (last[0] ?? "").toUpperCase();
 
-<<<<<<< HEAD
-// ---------- API calls ----------
-async function apiListEmployees(params: {
-  search?: string; status?: Employee["status"]; departmentId?: string; page?: number; pageSize?: number;
-}) {
-  const { data } = await api.get("/employees", { params });
-  return data as { items: Employee[]; total: number; page: number; pageSize: number };
-=======
 const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 const resolveAvatarUrl = (value?: string | null) => {
@@ -273,14 +234,11 @@ async function apiListEmployees(params: {
 async function apiGetEmployee(id: string) {
   const { data } = await api.get(`/employees/${id}`);
   return data as Employee;
->>>>>>> dev
 }
 async function apiCreateEmployee(payload: Partial<Employee> & { firstName: string; lastName: string; email: string }) {
   const { data } = await api.post("/employees", payload);
   return data as Employee;
 }
-<<<<<<< HEAD
-=======
 async function apiUpdateEmployee(id: string, payload: Partial<Employee>) {
   const { data } = await api.put(`/employees/${id}`, payload);
   return data as Employee;
@@ -288,7 +246,6 @@ async function apiUpdateEmployee(id: string, payload: Partial<Employee>) {
 async function apiDeleteEmployee(id: string) {
   await api.delete(`/employees/${id}`);
 }
->>>>>>> dev
 async function apiListDepartments() {
   const { data } = await api.get("/departments");
   return data as Dept[];
@@ -298,41 +255,6 @@ async function apiListDepartments() {
 function AddEmployeeDialog({
   departments, onCreated, canCreate
 }: { departments: Dept[]; onCreated: (e: Employee) => void; canCreate: boolean }) {
-<<<<<<< HEAD
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    firstName: "", lastName: "", email: "", phone: "",
-    designation: "", departmentId: "", status: "ACTIVE" as Employee["status"],
-    joiningDate: "", salary: "", address: "", emergencyContact: "",
-  });
-  const onChange = (k: string, v: string) => {
-    setForm(p => ({ ...p, [k]: v }));
-    // Clear error when user starts typing
-    if (error) setError(null);
-  };
-
-  const handleSubmit = async () => {
-    try {
-      setSubmitting(true);
-      setError(null);
-      
-      const payload = {
-        ...form,
-        salary: form.salary ? Number(form.salary) : undefined,
-        departmentId: form.departmentId || undefined,
-        joiningDate: form.joiningDate || undefined,
-      };
-      
-      const created = await apiCreateEmployee(payload as any);
-      
-      // Show success toast
-      toast.success("Employee created successfully!", {
-        duration: 3000,
-        description: `${created.firstName} ${created.lastName} has been added to the system.`
-      });
-=======
   const { hasPermission } = useAuth();
   const canManageUsers = hasPermission("users.write");
   
@@ -535,7 +457,6 @@ function AddEmployeeDialog({
           }`,
         }
       );
->>>>>>> dev
       
       // Call parent callback
       onCreated(created);
@@ -544,10 +465,6 @@ function AddEmployeeDialog({
       setOpen(false);
       setForm({
         firstName: "", lastName: "", email: "", phone: "",
-<<<<<<< HEAD
-        designation: "", departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
-      });
-=======
         dateOfBirth: "", gender: "", designation: "", employmentType: "",
         educationLevel: "", educationOther: "", educationField: "", marriageStatus: "", document: "",
         departmentId: "", status: "ACTIVE", joiningDate: "", salary: "", address: "", emergencyContact: "",
@@ -558,7 +475,6 @@ function AddEmployeeDialog({
       });
       setSelectedFile(null);
       setFieldErrors({});
->>>>>>> dev
     } catch (e: any) {
       const errorMessage = e?.response?.data?.message || "Failed to create employee";
       
@@ -572,13 +488,7 @@ function AddEmployeeDialog({
       // Don't close the dialog on error
       setSubmitting(false);
     } finally {
-<<<<<<< HEAD
-      if (!error) {
-        setSubmitting(false);
-      }
-=======
       setSubmitting(false);
->>>>>>> dev
     }
   };
 
@@ -586,11 +496,6 @@ function AddEmployeeDialog({
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-<<<<<<< HEAD
-    if (!newOpen) {
-      // Reset error when closing
-      setError(null);
-=======
     if (newOpen) {
       if (typeof window !== "undefined") {
         const storedDefault = localStorage.getItem("hrms_employee_default_create_account");
@@ -618,7 +523,6 @@ function AddEmployeeDialog({
         userConfirmPassword: "",
         userRoleId: "",
       });
->>>>>>> dev
     }
   };
 
@@ -629,59 +533,18 @@ function AddEmployeeDialog({
           <Plus className="h-4 w-4 mr-2" /> Add Employee
         </Button>
       </DialogTrigger>
-<<<<<<< HEAD
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-=======
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
->>>>>>> dev
           <DialogTitle>Add Employee</DialogTitle>
           <DialogDescription>Fill in the new employee's details.</DialogDescription>
         </DialogHeader>
 
         {error && (
-<<<<<<< HEAD
-          <Alert variant="destructive">
-=======
           <Alert variant="destructive" className="flex-shrink-0">
->>>>>>> dev
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-<<<<<<< HEAD
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input placeholder="First name*" value={form.firstName} onChange={e=>onChange("firstName", e.target.value)} />
-          <Input placeholder="Last name*" value={form.lastName} onChange={e=>onChange("lastName", e.target.value)} />
-          <Input placeholder="Email*" type="email" value={form.email} onChange={e=>onChange("email", e.target.value)} />
-          <Input placeholder="Phone" value={form.phone} onChange={e=>onChange("phone", e.target.value)} />
-          <Input placeholder="Designation" value={form.designation} onChange={e=>onChange("designation", e.target.value)} />
-          <Select value={form.departmentId || undefined} onValueChange={(v)=>onChange("departmentId", v)}>
-            <SelectTrigger><SelectValue placeholder="Department (Optional)" /></SelectTrigger>
-            <SelectContent>
-              {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={form.status} onValueChange={(v)=>onChange("status", v as Employee["status"])}>
-            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ACTIVE">Active</SelectItem>
-              <SelectItem value="INACTIVE">Inactive</SelectItem>
-              <SelectItem value="ON_LEAVE">On Leave</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input type="date" placeholder="Joining date" value={form.joiningDate} onChange={e=>onChange("joiningDate", e.target.value)} />
-          <Input type="number" step="0.01" placeholder="Salary (ETB)" value={form.salary} onChange={e=>onChange("salary", e.target.value)} />
-          <Input placeholder="Address" value={form.address} onChange={e=>onChange("address", e.target.value)} />
-          <Input placeholder="Emergency contact" value={form.emergencyContact} onChange={e=>onChange("emergencyContact", e.target.value)} />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Saving..." : "Save"}
-=======
         <div className="flex-1 overflow-y-auto pr-2">
 
         <div className="space-y-6">
@@ -1486,7 +1349,6 @@ function EditEmployeeDialog({
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={submitting || uploading}>
             {uploading ? "Uploading..." : submitting ? "Saving..." : "Save Changes"}
->>>>>>> dev
           </Button>
         </div>
       </DialogContent>
@@ -1498,13 +1360,6 @@ function EditEmployeeDialog({
 const EmployeesPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("employees.write");
-<<<<<<< HEAD
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all"); // stores deptId or 'all'
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on-leave">("all");
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-=======
   const canManageId = hasPermission("employees.id.manage");
   const canGenerateId = canManageId || hasPermission("employees.id.generate");
   const canBatchGenerate = canManageId || hasPermission("employees.id.batch");
@@ -1515,58 +1370,10 @@ const EmployeesPage: React.FC = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
->>>>>>> dev
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Dept[]>([]);
   const [loading, setLoading] = useState(false);
-<<<<<<< HEAD
-
-  // Load deps & employees
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const [deps, empRes] = await Promise.all([
-          apiListDepartments(),
-          apiListEmployees({ page: 1, pageSize: 200 })
-        ]);
-        setDepartments(deps);
-        setEmployees(empRes.items);
-      } catch (e: any) {
-        toast.error(e?.response?.data?.message ?? "Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  // Client-side filtering to keep your UX
-  const filteredEmployees = useMemo(() => {
-    return employees.filter((e) => {
-      const fullName = `${e.firstName} ${e.lastName}`.trim();
-      const matchesSearch =
-        fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.employeeCode.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesDepartment =
-        departmentFilter === "all" || e.departmentId === departmentFilter;
-
-      const uiStatus = toUiStatus(e.status);
-      const matchesStatus =
-        statusFilter === "all" || uiStatus === statusFilter;
-
-      return matchesSearch && matchesDepartment && matchesStatus;
-    });
-  }, [employees, searchTerm, departmentFilter, statusFilter]);
-
-  const totals = useMemo(() => {
-    const active = employees.filter(e => e.status === "ACTIVE").length;
-    const onLeave = employees.filter(e => e.status === "ON_LEAVE").length;
-    return { total: employees.length, active, onLeave, departments: departments.length };
-  }, [employees, departments]);
-=======
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => {
     if (typeof window === "undefined") return 10;
@@ -1966,7 +1773,6 @@ const EmployeesPage: React.FC = () => {
     printWindow?.focus();
     printWindow?.print();
   };
->>>>>>> dev
 
   return (
     <div className="space-y-6">
@@ -1976,12 +1782,6 @@ const EmployeesPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
           <p className="text-gray-600 mt-1">Manage and view employee information</p>
         </div>
-<<<<<<< HEAD
-
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-=======
         
         <div className="flex flex-wrap gap-2">
           {canGenerateId && (
@@ -2025,17 +1825,10 @@ const EmployeesPage: React.FC = () => {
           )}
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
->>>>>>> dev
             Export
           </Button>
           <AddEmployeeDialog
             departments={departments}
-<<<<<<< HEAD
-            onCreated={(emp) => setEmployees(prev => [emp, ...prev])}
-            canCreate={!!canWrite}
-          />
-        </div>
-=======
             onCreated={() => {
               setPage(1);
               setReloadKey((key) => key + 1);
@@ -2043,7 +1836,6 @@ const EmployeesPage: React.FC = () => {
             canCreate={!!canWrite}
           />
           </div>
->>>>>>> dev
       </div>
 
       {/* Stats Cards */}
@@ -2052,84 +1844,48 @@ const EmployeesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
-<<<<<<< HEAD
-              <p className="text-2xl font-bold">{totals.total}</p>
-            </div>
-            <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-6 w-6 text-blue-600" />
-            </div>
-          </div>
-=======
               <p className="text-2xl font-bold">{employeeSummary.totalEmployees.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-blue-600" />
               </div>
             </div>
->>>>>>> dev
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
-<<<<<<< HEAD
-              <p className="text-2xl font-bold">{totals.active}</p>
-            </div>
-            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-6 w-6 text-green-600" />
-            </div>
-          </div>
-=======
               <p className="text-2xl font-bold">{employeeSummary.active.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-green-600" />
               </div>
             </div>
->>>>>>> dev
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">On Leave</p>
-<<<<<<< HEAD
-              <p className="text-2xl font-bold">{totals.onLeave}</p>
-            </div>
-            <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-6 w-6 text-yellow-600" />
-            </div>
-          </div>
-=======
               <p className="text-2xl font-bold">{employeeSummary.onLeave.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-yellow-600" />
               </div>
             </div>
->>>>>>> dev
         </CardContent></Card>
 
         <Card><CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Departments</p>
-<<<<<<< HEAD
-              <p className="text-2xl font-bold">{totals.departments}</p>
-            </div>
-            <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-6 w-6 text-purple-600" />
-            </div>
-          </div>
-=======
               <p className="text-2xl font-bold">{employeeSummary.departments.toLocaleString()}</p>
               </div>
             <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <Calendar className="h-6 w-6 text-purple-600" />
               </div>
             </div>
->>>>>>> dev
         </CardContent></Card>
       </div>
 
@@ -2146,15 +1902,6 @@ const EmployeesPage: React.FC = () => {
               <Input
                 placeholder="Search by name, email, or employee ID..."
                 value={searchTerm}
-<<<<<<< HEAD
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            {/* Department filter uses deptId */}
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-=======
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   if (page !== 1) setPage(1);
@@ -2171,7 +1918,6 @@ const EmployeesPage: React.FC = () => {
                 setPage(1);
               }}
             >
->>>>>>> dev
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
@@ -2184,9 +1930,6 @@ const EmployeesPage: React.FC = () => {
             </Select>
 
             {/* Status filter keeps your UI values */}
-<<<<<<< HEAD
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-=======
             <Select
               value={statusFilter}
               onValueChange={(value) => {
@@ -2194,7 +1937,6 @@ const EmployeesPage: React.FC = () => {
                 setPage(1);
               }}
             >
->>>>>>> dev
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -2217,8 +1959,6 @@ const EmployeesPage: React.FC = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-<<<<<<< HEAD
-=======
                   {canBatchGenerate && (
                     <TableHead className="w-8">
                       <Checkbox
@@ -2228,7 +1968,6 @@ const EmployeesPage: React.FC = () => {
                       />
                     </TableHead>
                   )}
->>>>>>> dev
                   <TableHead>Employee</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Status</TableHead>
@@ -2238,13 +1977,6 @@ const EmployeesPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-<<<<<<< HEAD
-                {filteredEmployees.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <Avatar>
-=======
                 {employees.map((e) => {
                   const avatarSrc = resolveAvatarUrl(e.avatarUrl ?? e.user?.avatarUrl ?? null);
                   return (
@@ -2265,7 +1997,6 @@ const EmployeesPage: React.FC = () => {
                           {avatarSrc && (
                             <AvatarImage src={avatarSrc} alt={`${e.firstName} ${e.lastName}`} />
                           )}
->>>>>>> dev
                           <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                             {initials(e.firstName, e.lastName)}
                           </AvatarFallback>
@@ -2274,8 +2005,6 @@ const EmployeesPage: React.FC = () => {
                           <p className="font-medium">{e.firstName} {e.lastName}</p>
                           <p className="text-sm text-gray-500">{e.designation ?? "—"}</p>
                           <p className="text-xs text-gray-400">{e.employeeCode}</p>
-<<<<<<< HEAD
-=======
                           {e.userId && e.user?.status === "ACTIVE" && (
                             <Badge variant="outline" className="mt-1 text-xs bg-green-50 text-green-700 border-green-200">
                               Has Account
@@ -2286,7 +2015,6 @@ const EmployeesPage: React.FC = () => {
                               ID ready
                             </Badge>
                           )}
->>>>>>> dev
                         </div>
                       </div>
                     </TableCell>
@@ -2295,11 +2023,7 @@ const EmployeesPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(toUiStatus(e.status))}>
-<<<<<<< HEAD
-                        {toUiStatus(e.status)}
-=======
                         {formatStatusLabel(e.status)}
->>>>>>> dev
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -2315,11 +2039,7 @@ const EmployeesPage: React.FC = () => {
                           <div className="flex items-center text-sm text-gray-600">
                             <Phone className="h-3 w-3 mr-2" />
                             {e.phone}
-<<<<<<< HEAD
-                          </div>
-=======
                         </div>
->>>>>>> dev
                         )}
                       </div>
                     </TableCell>
@@ -2328,13 +2048,8 @@ const EmployeesPage: React.FC = () => {
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
-<<<<<<< HEAD
-                              variant="ghost"
-                              size="sm"
-=======
                             variant="ghost"
                             size="sm"
->>>>>>> dev
                               onClick={() => setSelectedEmployee(e)}
                             >
                               <Eye className="h-4 w-4" />
@@ -2347,32 +2062,6 @@ const EmployeesPage: React.FC = () => {
                                 Complete information for {e.firstName} {e.lastName}
                               </DialogDescription>
                             </DialogHeader>
-<<<<<<< HEAD
-                            <div className="grid grid-cols-2 gap-6 py-4">
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="font-medium text-gray-900">Personal Information</h4>
-                                  <div className="mt-2 space-y-2 text-sm">
-                                    <p><span className="font-medium">Name:</span> {e.firstName} {e.lastName}</p>
-                                    <p><span className="font-medium">Email:</span> {e.email}</p>
-                                    <p><span className="font-medium">Phone:</span> {e.phone ?? "—"}</p>
-                                    <p><span className="font-medium">Address:</span> {e.address ?? "—"}</p>
-                                    <p><span className="font-medium">Emergency Contact:</span> {e.emergencyContact ?? "—"}</p>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="font-medium text-gray-900">Professional Information</h4>
-                                  <div className="mt-2 space-y-2 text-sm">
-                                    <p><span className="font-medium">Employee ID:</span> {e.employeeCode}</p>
-                                    <p><span className="font-medium">Department:</span> {e.department?.name ?? "—"}</p>
-                                    <p><span className="font-medium">Designation:</span> {e.designation ?? "—"}</p>
-                                    <p><span className="font-medium">Manager:</span> {e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A"}</p>
-                                    <p><span className="font-medium">Joining Date:</span> {e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "—"}</p>
-                                    <p><span className="font-medium">Salary:</span> {typeof e.salary === "number" ? `ETB ${e.salary.toLocaleString()}` : "—"}</p>
-                                  </div>
-=======
                             <div className="space-y-6 py-4">
                               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex items-center gap-4">
@@ -2515,18 +2204,11 @@ const EmployeesPage: React.FC = () => {
                                   {!e.idCardPdfUrl && (
                                     <p className="text-xs text-muted-foreground">No ID card available yet.</p>
                                   )}
->>>>>>> dev
                                 </div>
                               </div>
                             </div>
                           </DialogContent>
                         </Dialog>
-<<<<<<< HEAD
-
-                        {hasPermission("employees.write") && (
-                          <>
-                            <Button variant="ghost" size="sm">
-=======
                         
                         {canGenerateId && (
                           <Button variant="ghost" size="sm" onClick={() => openGenerateDialog(e)}>
@@ -2536,7 +2218,6 @@ const EmployeesPage: React.FC = () => {
                         {canWrite && (
                           <>
                             <Button variant="ghost" size="sm" onClick={() => setEditingEmployee(e)}>
->>>>>>> dev
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
