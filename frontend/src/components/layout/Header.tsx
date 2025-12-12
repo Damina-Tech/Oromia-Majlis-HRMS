@@ -29,6 +29,7 @@ import type { InboxNotification } from "@/services/notifications";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { resolveAvatarUrl } from "@/config/api";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -48,15 +49,6 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const setUnreadCount = useStore((state) => state.setUnreadCount);
   const markLocalRead = useStore((state) => state.markLocalRead);
 
-  const apiBaseUrl = React.useMemo(() => import.meta.env.VITE_API_URL || "http://localhost:4000", []);
-  const resolveAvatarUrl = React.useCallback(
-    (value?: string | null) => {
-      if (!value) return undefined;
-      if (value.startsWith("http")) return value;
-      return `${apiBaseUrl}${value}`;
-    },
-    [apiBaseUrl]
-  );
   const userAvatarSrc = resolveAvatarUrl(user?.avatarUrl ?? null);
 
   const fetchHeaderNotifications = React.useCallback(async () => {

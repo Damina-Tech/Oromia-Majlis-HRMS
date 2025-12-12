@@ -52,6 +52,7 @@ import {
   type IdCardTemplate,
 } from "@/services/employeeId";
 import IdCardPreview from "@/components/employees/IdCardPreview";
+import { resolveAvatarUrl, resolveFileUrl } from "@/config/api";
 
 type PermissionGroup = {
   module: string;
@@ -102,24 +103,6 @@ const ProfilePage: React.FC = () => {
   const [idResult, setIdResult] = useState<{ pdfUrl: string; pngUrl: string } | null>(null);
 
   const canGenerateId = hasPermission("employees.id.generate") || hasPermission("employees.id.manage");
-
-  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL || "http://localhost:4000", []);
-  const resolveAvatarUrl = useCallback(
-    (value?: string | null) => {
-      if (!value) return undefined;
-      if (value.startsWith("http")) return value;
-      return `${apiBaseUrl}${value}`;
-    },
-    [apiBaseUrl]
-  );
-  const resolveFileUrl = useCallback(
-    (value?: string | null) => {
-      if (!value) return undefined;
-      if (value.startsWith("http")) return value;
-      return `${apiBaseUrl}${value}`;
-    },
-    [apiBaseUrl]
-  );
 
   const formatStatus = useCallback((status?: string | null) => {
     if (!status) return "—";

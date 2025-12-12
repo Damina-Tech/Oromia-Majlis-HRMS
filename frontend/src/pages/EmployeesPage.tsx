@@ -154,19 +154,7 @@ const getStatusColor = (status: string) => {
 };
 const initials = (first = "", last = "") => (first[0] ?? "").toUpperCase() + (last[0] ?? "").toUpperCase();
 
-const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
-
-const resolveAvatarUrl = (value?: string | null) => {
-  if (!value) return undefined;
-  if (value.startsWith("http")) return value;
-  return `${apiBaseUrl}${value}`;
-};
-
-const resolveFileUrl = (value?: string | null) => {
-  if (!value) return undefined;
-  if (value.startsWith("http")) return value;
-  return `${apiBaseUrl}${value}`;
-};
+import { resolveAvatarUrl, resolveFileUrl } from "@/config/api";
 
 const formatStatusLabel = (status: Employee["status"]) =>
   status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -1309,7 +1297,7 @@ function EditEmployeeDialog({
                         <span className="font-medium">Current document:</span> {form.document.split('/').pop()}
                       </p>
                       <a
-                        href={`${import.meta.env.VITE_API_URL || "http://localhost:4000"}${form.document}`}
+                        href={resolveFileUrl(form.document) || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline text-sm flex items-center gap-1"

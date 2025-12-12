@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { IdCardTemplateSettings } from "@/services/employeeId";
 import { cn } from "@/lib/utils";
+import { resolveFileUrl } from "@/config/api";
 
 type PreviewEmployee = {
   firstName: string;
@@ -40,12 +41,7 @@ const formatDate = (value?: string) => {
   }
 };
 
-const resolveAssetUrl = (value?: string | null) => {
-  if (!value) return undefined;
-  if (value.startsWith("http")) return value;
-  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
-  return `${apiBase}${value}`;
-};
+const resolveAssetUrl = resolveFileUrl;
 
 const IdCardPreview: React.FC<IdCardPreviewProps> = ({ template, employee, issueDate, expiryDate, className, side = "front" }) => {
   const dims = CARD_DIMENSIONS[template.size] ?? CARD_DIMENSIONS.ID1;
