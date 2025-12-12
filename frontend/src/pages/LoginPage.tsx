@@ -89,11 +89,11 @@ const LoginPage: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-6" data-id="1mt5nb4b9" data-path="src/pages/LoginPage.tsx">
             {/* Demo Credentials */}
-            <div className="bg-blue-50 p-3 rounded-lg text-sm" data-id="vd6ukug4y" data-path="src/pages/LoginPage.tsx">
+            {/* <div className="bg-blue-50 p-3 rounded-lg text-sm" data-id="vd6ukug4y" data-path="src/pages/LoginPage.tsx">
               <p className="font-medium text-blue-800 mb-1" data-id="fyvkn5g5t" data-path="src/pages/LoginPage.tsx">Demo Credentials:</p>
               <p className="text-blue-700" data-id="xx14ho2u4" data-path="src/pages/LoginPage.tsx">Admin: admin@ciro.gov.et / Admin12345!</p>
               <p className="text-blue-700" data-id="woeu2rnkp" data-path="src/pages/LoginPage.tsx">Manager: manager@ciro.gov.et / Manager123!</p>
-            </div>
+            </div> */}
 
             <form onSubmit={handleLogin} className="space-y-4" data-id="1x51ohzy6" data-path="src/pages/LoginPage.tsx">
               <div className="space-y-2" data-id="oc9bic79t" data-path="src/pages/LoginPage.tsx">
