@@ -47,6 +47,7 @@ model User {
   taskCommentsCreated             TaskComment[]            @relation("TaskCommentCreatedBy")
   taskTimeLogsLogged              TaskTimeLog[]            @relation("TaskTimeLogLoggedBy")
   taskWatchers                    TaskWatcher[]            @relation("TaskWatchers")
+  passwordResetTokens             PasswordResetToken[]
   approvedTimesheets              Timesheet[]              @relation("TimesheetApprover")
   notifications                   Notification[]
   notificationPreference          NotificationPreference?
@@ -578,6 +579,41 @@ model LeaveBalance {
   @@unique([employeeId, leaveType, year])
   @@index([employeeId])
   @@index([year])
+}
+
+model LeavePolicy {
+  id                    String    @id @default(cuid())
+  name                  String    // Display name (e.g., "Casual Leave", "Sick Leave")
+  code                  String    @unique // Unique code (e.g., "CASUAL", "SICK")
+  description           String?
+  defaultAllocatedDays  Decimal   @db.Decimal(10, 2) // Default days allocated per year
+  maxCarryOverDays      Decimal   @default(0) @db.Decimal(10, 2) // Maximum days that can be carried over
+  carryOverEnabled      Boolean   @default(true) // Whether carry over is allowed
+  requiresApproval      Boolean   @default(true) // Whether this leave type requires approval
+  requiresDocumentation Boolean   @default(false) // Whether documentation is required (e.g., medical certificate)
+  isActive              Boolean   @default(true) // Whether this leave type is active
+  renewalMonth          Int       @default(1) // Month when leave renews (1-12, 1 = January)
+  renewalDay            Int       @default(1) // Day of month when leave renews (1-31)
+  color                 String?   // UI color for this leave type
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 model Attendance {

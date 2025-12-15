@@ -149,7 +149,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const location = useLocation();
   const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set());
 
+  // Check if user is EMPLOYEE role
+  const isEmployee = user?.roles?.some(role => role.toUpperCase() === 'EMPLOYEE') || false;
+
   const filteredMenuItems = menuItems.filter((item) => {
+    // Hide Reports and Notifications for EMPLOYEE role
+    if (isEmployee && (item.title === 'Reports' || item.title === 'Notifications')) {
+      return false;
+    }
     // Always show items with '*' permission (for authenticated users)
     if (item.permission === '*') {
       return true;
@@ -234,9 +241,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const documentSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
   
   // Only show Documents submenu items if user has documents.view permission
+  // Hide Templates and Generate for EMPLOYEE role
   if (hasPermission('documents.view') || hasPermission('documents.manage')) {
-    documentSubmenuItems.push({ title: 'Templates', href: '/documents/templates', permission: 'documents.view' });
-    documentSubmenuItems.push({ title: 'Generate', href: '/documents/generate', permission: 'documents.view' });
+    // Hide Templates and Generate for EMPLOYEE role
+    if (!isEmployee) {
+      documentSubmenuItems.push({ title: 'Templates', href: '/documents/templates', permission: 'documents.view' });
+      documentSubmenuItems.push({ title: 'Generate', href: '/documents/generate', permission: 'documents.view' });
+    }
     documentSubmenuItems.push({ title: 'Requests', href: '/documents/requests', permission: 'documents.view' });
     if (hasPermission('documents.manage')) {
       documentSubmenuItems.push({ title: 'Settings', href: '/documents/settings', permission: 'documents.manage' });
@@ -260,7 +271,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('tasks.view')) {
     taskSubmenuItems.push({ title: 'List View', href: '/tasks', permission: 'tasks.view' });
     taskSubmenuItems.push({ title: 'Kanban Board', href: '/tasks/kanban', permission: 'tasks.view' });
-    taskSubmenuItems.push({ title: 'Dashboard', href: '/tasks/dashboard', permission: 'tasks.view' });
+    // Hide Dashboard for EMPLOYEE role
+    if (!isEmployee) {
+      taskSubmenuItems.push({ title: 'Dashboard', href: '/tasks/dashboard', permission: 'tasks.view' });
+    }
   }
 
   // Expenses submenu items

@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Moon,
   Sun,
+  Globe,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStore } from "@/store";
@@ -30,6 +31,8 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { resolveAvatarUrl } from "@/config/api";
+import { useTranslation } from "react-i18next";
+import { useTheme } from "next-themes";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -42,7 +45,9 @@ const getInitials = (firstName: string, lastName: string) => {
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth();
-  const [isDark, setIsDark] = React.useState(false);
+  const { t, i18n } = useTranslation();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
   const [recentNotifications, setRecentNotifications] = React.useState<InboxNotification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = React.useState(false);
   const unreadCount = useStore((state) => state.unreadCount);
@@ -50,6 +55,22 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const markLocalRead = useStore((state) => state.markLocalRead);
 
   const userAvatarSrc = resolveAvatarUrl(user?.avatarUrl ?? null);
+
+  // Handle theme mounting to avoid hydration mismatch
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = theme === "dark";
+
+  const handleThemeToggle = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  const handleLanguageChange = (lang: string) => {
+    i18n.changeLanguage(lang);
+    toast.success(t("header.languageChanged", { defaultValue: "Language changed" }));
+  };
 
   const fetchHeaderNotifications = React.useCallback(async () => {
     if (!user) return;
@@ -87,15 +108,15 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       await markNotificationsRead(unreadIds, true);
       markLocalRead(unreadIds, true);
       fetchHeaderNotifications();
-      toast.success("All notifications marked as read");
+      toast.success(t("header.markAllReadSuccess", { defaultValue: "All notifications marked as read" }));
     } catch (error: any) {
       console.error("Failed to mark notifications", error);
-      toast.error(error?.response?.data?.message ?? "Failed to update notifications");
+      toast.error(error?.response?.data?.message ?? t("header.markAllReadError", { defaultValue: "Failed to update notifications" }));
     }
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
+    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button variant="ghost" size="sm" onClick={onToggleSidebar} className="p-2">
@@ -103,14 +124,43 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </Button>
 
           <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input placeholder="Search employees, departments..." className="pl-10 w-80" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
+            <Input placeholder={t("header.search")} className="pl-10 w-80" />
           </div>
         </div>
 
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm" onClick={() => setIsDark(!isDark)} className="p-2">
-            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          {/* Language Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="p-2">
+                <Globe className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{t("header.selectLanguage", { defaultValue: "Select Language" })}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleLanguageChange("en")} className={i18n.language === "en" ? "bg-accent" : ""}>
+                {t("languages.en")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleLanguageChange("om")} className={i18n.language === "om" ? "bg-accent" : ""}>
+                {t("languages.om")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleLanguageChange("am")} className={i18n.language === "am" ? "bg-accent" : ""}>
+                {t("languages.am")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Theme Toggle */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleThemeToggle} 
+            className="p-2"
+            disabled={!mounted}
+          >
+            {mounted && isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
 
           <DropdownMenu>
@@ -126,7 +176,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
               <DropdownMenuLabel className="flex items-center justify-between">
-                Notifications
+                {t("header.notifications")}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -134,17 +184,17 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   onClick={handleMarkAllRead}
                   disabled={loadingNotifications || unreadCount === 0}
                 >
-                  Mark all read
+                  {t("header.markAllRead")}
                 </Button>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {loadingNotifications ? (
                 <DropdownMenuItem className="text-sm text-muted-foreground">
-                  Loading notifications...
+                  {t("header.loadingNotifications")}
                 </DropdownMenuItem>
               ) : recentNotifications.length === 0 ? (
                 <DropdownMenuItem className="text-sm text-muted-foreground">
-                  No notifications yet
+                  {t("header.noNotifications")}
                 </DropdownMenuItem>
               ) : (
                 recentNotifications.map((notification) => (
@@ -163,8 +213,8 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 ))
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-center text-blue-600 hover:text-blue-700" asChild>
-                <a href="/notifications">View all notifications</a>
+              <DropdownMenuItem className="text-center text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300" asChild>
+                <Link to="/notifications">{t("header.viewAllNotifications")}</Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -202,19 +252,19 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <DropdownMenuItem asChild>
                 <Link to="/profile" className="flex items-center">
                   <User className="mr-2 h-4 w-4" />
-                  Profile
+                  {t("header.profile")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link to="/settings" className="flex items-center">
                   <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                  {t("header.settings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} className="text-red-600">
+              <DropdownMenuItem onClick={logout} className="text-red-600 dark:text-red-400">
                 <LogOut className="mr-2 h-4 w-4" />
-                Logout
+                {t("header.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

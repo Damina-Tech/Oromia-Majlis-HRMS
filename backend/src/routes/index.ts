@@ -6,6 +6,7 @@ import employeesRoutes from "../modules/employees/employees.routes.js";
 import departmentsRoutes from "../modules/departments/departments.routes.js";
 import leavesRoutes from "../modules/leaves/leaves.routes.js";
 import leaveBalancesRoutes from "../modules/leaves/leave-balances.routes.js";
+import leavePolicyRoutes from "../modules/leaves/leave-policy.routes.js";
 import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import payrollRoutes from "../modules/payroll/payroll.routes.js";
 import timesheetRoutes from "../modules/timesheet/timesheet.routes.js";
@@ -56,6 +57,7 @@ router.use("/v1/employees",
 );
 router.use("/v1/leaves", requireAuth, hasAnyPermission("leave.apply", "leave.view", "leave.approve"), leavesRoutes);
 router.use("/v1/leave-balances", requireAuth, leaveBalancesRoutes);
+router.use("/v1/leave-policies", requireAuth, hasPermission("leave.manage"), leavePolicyRoutes);
 router.use("/v1/attendance", requireAuth, hasAnyPermission("attendance.mark", "attendance.view"), attendanceRoutes);
 router.use("/v1/payroll", requireAuth, hasAnyPermission("payroll.view", "payroll.process"), payrollRoutes);
 router.use("/v1/timesheets", requireAuth, hasAnyPermission("timesheet.create", "timesheet.view", "timesheet.approve"), timesheetRoutes);
@@ -64,7 +66,7 @@ router.use("/v1/documents", requireAuth, hasAnyPermission("documents.view", "doc
 router.use("/v1/announcements", requireAuth, announcementRoutes);
 router.use("/v1/tasks", requireAuth, hasAnyPermission("tasks.view", "tasks.create", "tasks.edit"), taskRoutes);
 router.use("/v1/expenses", expenseRoutes);
-router.use("/v1/reports", reportRoutes);
+router.use("/v1/reports", requireAuth, hasPermission("reports.view"), reportRoutes);
 router.use("/v1/dashboard", dashboardRoutes);
 router.use(
   "/v1/leads",

@@ -14,11 +14,11 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get("/", listNotifications);
-router.post("/mark-read", markNotifications);
-router.get("/preferences", getNotificationPreferences);
-router.put("/preferences", updateNotificationPreferences);
-router.post("/test", sendTestNotification);
+router.get("/", hasPermission("notifications.view"), listNotifications);
+router.post("/mark-read", hasPermission("notifications.view"), markNotifications);
+router.get("/preferences", hasPermission("notifications.view"), getNotificationPreferences);
+router.put("/preferences", hasPermission("notifications.view"), updateNotificationPreferences);
+router.post("/test", hasPermission("notifications.manage"), sendTestNotification);
 
 router.get(
   "/deliveries",

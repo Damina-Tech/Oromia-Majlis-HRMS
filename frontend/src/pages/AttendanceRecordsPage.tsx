@@ -162,32 +162,34 @@ const AttendanceRecordsPage: React.FC = () => {
   // Calculate date range based on filter
   const getDateRange = (): { startDate?: string; endDate?: string } => {
     const now = new Date();
+    // Use local timezone to ensure accurate date calculations
+    const localNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     switch (dateFilter) {
       case 'today': {
-        const today = startOfDay(now);
+        const today = startOfDay(localNow);
         return {
           startDate: format(today, 'yyyy-MM-dd'),
           endDate: format(today, 'yyyy-MM-dd'),
         };
       }
       case 'yesterday': {
-        const yesterday = startOfDay(subDays(now, 1));
+        const yesterday = startOfDay(subDays(localNow, 1));
         return {
           startDate: format(yesterday, 'yyyy-MM-dd'),
           endDate: format(yesterday, 'yyyy-MM-dd'),
         };
       }
       case 'thisWeek': {
-        const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
-        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+        const weekStart = startOfWeek(localNow, { weekStartsOn: 1 }); // Monday
+        const weekEnd = endOfWeek(localNow, { weekStartsOn: 1 });
         return {
           startDate: format(weekStart, 'yyyy-MM-dd'),
           endDate: format(weekEnd, 'yyyy-MM-dd'),
         };
       }
       case 'lastWeek': {
-        const lastWeek = subWeeks(now, 1);
+        const lastWeek = subWeeks(localNow, 1);
         const weekStart = startOfWeek(lastWeek, { weekStartsOn: 1 });
         const weekEnd = endOfWeek(lastWeek, { weekStartsOn: 1 });
         return {
@@ -196,15 +198,15 @@ const AttendanceRecordsPage: React.FC = () => {
         };
       }
       case 'thisMonth': {
-        const monthStart = startOfMonth(now);
-        const monthEnd = endOfMonth(now);
+        const monthStart = startOfMonth(localNow);
+        const monthEnd = endOfMonth(localNow);
         return {
           startDate: format(monthStart, 'yyyy-MM-dd'),
           endDate: format(monthEnd, 'yyyy-MM-dd'),
         };
       }
       case 'lastMonth': {
-        const lastMonth = subMonths(now, 1);
+        const lastMonth = subMonths(localNow, 1);
         const monthStart = startOfMonth(lastMonth);
         const monthEnd = endOfMonth(lastMonth);
         return {
@@ -214,14 +216,17 @@ const AttendanceRecordsPage: React.FC = () => {
       }
       case 'custom': {
         if (customDateType === 'single' && customSingleDate) {
+          const singleDate = startOfDay(customSingleDate);
           return {
-            startDate: format(customSingleDate, 'yyyy-MM-dd'),
-            endDate: format(customSingleDate, 'yyyy-MM-dd'),
+            startDate: format(singleDate, 'yyyy-MM-dd'),
+            endDate: format(singleDate, 'yyyy-MM-dd'),
           };
         } else if (customDateType === 'range' && customStartDate && customEndDate) {
+          const start = startOfDay(customStartDate);
+          const end = startOfDay(customEndDate);
           return {
-            startDate: format(customStartDate, 'yyyy-MM-dd'),
-            endDate: format(customEndDate, 'yyyy-MM-dd'),
+            startDate: format(start, 'yyyy-MM-dd'),
+            endDate: format(end, 'yyyy-MM-dd'),
           };
         }
         return {};
@@ -399,6 +404,23 @@ const AttendanceRecordsPage: React.FC = () => {
     }
   };
 
+  const getStatusDisplay = (status: string) => {
+    switch (status.toUpperCase()) {
+      case 'PRESENT':
+        return 'Present';
+      case 'LATE':
+        return 'Present (Late)';
+      case 'ABSENT':
+        return 'Absent';
+      case 'HALF_DAY':
+        return 'Half Day';
+      case 'ON_LEAVE':
+        return 'On Leave';
+      default:
+        return status;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
       case 'PRESENT':
@@ -514,7 +536,7 @@ const AttendanceRecordsPage: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="PRESENT">Present</SelectItem>
-                  <SelectItem value="LATE">Late</SelectItem>
+                  <SelectItem value="LATE">Present (Late)</SelectItem>
                   <SelectItem value="ABSENT">Absent</SelectItem>
                   <SelectItem value="HALF_DAY">Half Day</SelectItem>
                   <SelectItem value="ON_LEAVE">On Leave</SelectItem>
@@ -752,7 +774,7 @@ const AttendanceRecordsPage: React.FC = () => {
                           <TableCell>
                             <Badge className={getStatusColor(record.status)}>
                               {getStatusIcon(record.status)}
-                              <span className="ml-1">{record.status}</span>
+                              <span className="ml-1">{getStatusDisplay(record.status)}</span>
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -951,7 +973,7 @@ const AttendanceRecordsPage: React.FC = () => {
                 <div>
                   <Label>Status</Label>
                   <Badge className={getStatusColor(selectedRecord.status)}>
-                    {selectedRecord.status}
+                    {getStatusDisplay(selectedRecord.status)}
                   </Badge>
                 </div>
                 {(selectedRecord.checkInLocationInfo || selectedRecord.checkInLocation) && (

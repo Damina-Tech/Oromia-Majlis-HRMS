@@ -3,10 +3,16 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 const router = Router();
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
+const ForgotPasswordDto = z.object({ email: z.string().email() });
+const ResetPasswordDto = z.object({ 
+  token: z.string(), 
+  password: z.string().min(6, "Password must be at least 6 characters") 
+});
 
 function signAccess(userId: string, roles: string[], permissions: string[], employeeId?: string) {
   const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
@@ -137,6 +143,175 @@ router.post("/refresh", async (req, res) => {
     });
   } catch {
     return res.status(401).json({ message: "Invalid refresh" });
+  }
+});
+
+// POST /api/v1/auth/forgot-password - Request password reset
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = ForgotPasswordDto.parse(req.body);
+    
+    const user = await prisma.user.findUnique({ where: { email } });
+    
+    // Don't reveal if user exists or not for security
+    // Also check if user is active - only active users can reset password
+    if (!user || user.status !== "ACTIVE") {
+      return res.json({ 
+        message: "If an account with that email exists, a password reset link has been sent." 
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Delete any existing reset tokens for this user
+    await prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id }
+    });
+
+    // Store reset token in database
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token: resetToken,
+        expiresAt: resetTokenExpiry
+      }
+    });
+
+    // Generate reset link
+    const resetLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${resetToken}`;
+    
+    // TODO: Send email with reset link using your email service
+    // await sendPasswordResetEmail(user.email, resetLink);
+    
+    // In development, log the reset link for testing
+    if (process.env.NODE_ENV === "development") {
+      console.log(`Password reset link for ${email}: ${resetLink}`);
+    }
+
+    res.json({ 
+      message: "If an account with that email exists, a password reset link has been sent.",
+      // Only show in development
+      resetLink: process.env.NODE_ENV === "development" ? resetLink : undefined
+    });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ message: "Invalid email address" });
+    }
+    console.error("Forgot password error:", error);
+    res.status(500).json({ message: "Failed to process password reset request" });
+  }
+});
+
+// POST /api/v1/auth/reset-password - Reset password with token
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = ResetPasswordDto.parse(req.body);
+    
+    // Find the reset token
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { token },
+      include: { user: true }
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    // Check if user is active - only active users can reset password
+    if (resetToken.user.status !== "ACTIVE") {
+      return res.status(403).json({ 
+        message: "Password reset is not available for inactive accounts. Please contact your administrator." 
+      });
+    }
+
+    // Check if token has been used
+    if (resetToken.used) {
+      return res.status(400).json({ message: "This reset token has already been used" });
+    }
+
+    // Check if token has expired
+    if (resetToken.expiresAt < new Date()) {
+      return res.status(400).json({ message: "Reset token has expired. Please request a new one." });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update user password and mark token as used in a transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash: hashedPassword }
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { used: true }
+      })
+    ]);
+
+    res.json({ message: "Password has been reset successfully. You can now login with your new password." });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ message: error.errors[0].message });
+    }
+    console.error("Reset password error:", error);
+    res.status(500).json({ message: "Failed to reset password" });
+  }
+});
+
+// POST /api/v1/auth/google - Google OAuth login
+router.post("/google", async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    
+    if (!idToken) {
+      return res.status(400).json({ message: "Google ID token is required" });
+    }
+
+    // TODO: Verify Google ID token
+    // In production, verify the token with Google's API
+    // const ticket = await client.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
+    // const payload = ticket.getPayload();
+    
+    // For now, return an error indicating OAuth needs to be configured
+    res.status(501).json({ 
+      message: "Google OAuth needs to be configured. Please use email/password login." 
+    });
+  } catch (error) {
+    console.error("Google OAuth error:", error);
+    res.status(500).json({ message: "Google authentication failed" });
+  }
+});
+
+// POST /api/v1/auth/facebook - Facebook OAuth login
+router.post("/facebook", async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+    
+    if (!accessToken) {
+      return res.status(400).json({ message: "Facebook access token is required" });
+    }
+
+    // TODO: Verify Facebook access token with Facebook's Graph API
+    // For production, implement:
+    // const response = await fetch(`https://graph.facebook.com/me?fields=id,name,email&access_token=${accessToken}`);
+    // const userData = await response.json();
+    // if (userData.error) throw new Error('Invalid token');
+    // const email = userData.email;
+    
+    // Then:
+    // 1. Find or create user by email
+    // 2. Generate JWT tokens
+    // 3. Return tokens and user data
+    
+    res.status(501).json({ 
+      message: "Facebook OAuth is not yet fully configured. Please use email/password login for now.",
+    });
+  } catch (error) {
+    console.error("Facebook OAuth error:", error);
+    res.status(500).json({ message: "Facebook authentication failed" });
   }
 });
 

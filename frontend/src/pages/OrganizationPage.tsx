@@ -232,6 +232,26 @@ const OrganizationPage: React.FC = () => {
   }, departments[0]);
   const avgTeamSize = departments.length > 0 ? Math.round(totalEmployees / departments.length) : 0;
 
+  // Color palette for departments - subtle, distinct colors
+  const departmentColors = [
+    { bg: 'from-blue-50 to-blue-100', border: 'border-blue-300', accent: 'bg-blue-500', stroke: '#3b82f6' },
+    { bg: 'from-green-50 to-green-100', border: 'border-green-300', accent: 'bg-green-500', stroke: '#10b981' },
+    { bg: 'from-purple-50 to-purple-100', border: 'border-purple-300', accent: 'bg-purple-500', stroke: '#a855f7' },
+    { bg: 'from-orange-50 to-orange-100', border: 'border-orange-300', accent: 'bg-orange-500', stroke: '#f97316' },
+    { bg: 'from-pink-50 to-pink-100', border: 'border-pink-300', accent: 'bg-pink-500', stroke: '#ec4899' },
+    { bg: 'from-cyan-50 to-cyan-100', border: 'border-cyan-300', accent: 'bg-cyan-500', stroke: '#06b6d4' },
+    { bg: 'from-indigo-50 to-indigo-100', border: 'border-indigo-300', accent: 'bg-indigo-500', stroke: '#6366f1' },
+    { bg: 'from-teal-50 to-teal-100', border: 'border-teal-300', accent: 'bg-teal-500', stroke: '#14b8a6' },
+    { bg: 'from-amber-50 to-amber-100', border: 'border-amber-300', accent: 'bg-amber-500', stroke: '#f59e0b' },
+    { bg: 'from-rose-50 to-rose-100', border: 'border-rose-300', accent: 'bg-rose-500', stroke: '#f43f5e' },
+    { bg: 'from-emerald-50 to-emerald-100', border: 'border-emerald-300', accent: 'bg-emerald-500', stroke: '#059669' },
+    { bg: 'from-violet-50 to-violet-100', border: 'border-violet-300', accent: 'bg-violet-500', stroke: '#8b5cf6' },
+  ];
+
+  const getDepartmentColor = (index: number) => {
+    return departmentColors[index % departmentColors.length];
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -339,25 +359,77 @@ const OrganizationPage: React.FC = () => {
           <CardDescription>Visual representation of company structure</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center space-y-8">
+          <div className="relative flex flex-col items-center py-6">
             {/* CEO Level */}
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-4 rounded-lg text-center">
-              <h3 className="font-bold">CEO / Managing Director</h3>
-              <p className="text-sm opacity-90">Executive Leadership</p>
+            <div className="relative z-20 bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-5 rounded-lg text-center shadow-lg min-w-[200px]">
+              <h3 className="font-bold text-lg">Mayor Office</h3>
+              <p className="text-sm opacity-90">City Administration</p>
             </div>
             
+            {/* Connecting Lines Container */}
+            {filteredDepartments.length > 0 && (
+              <div className="relative w-full flex justify-center" style={{ height: '60px', marginTop: '-10px', marginBottom: '-10px' }}>
+                {/* Main vertical line from Mayor Office */}
+                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-0.5 h-full bg-blue-500" style={{ 
+                  backgroundImage: 'linear-gradient(to bottom, #3b82f6, transparent)',
+                  backgroundSize: '100% 50%',
+                  backgroundRepeat: 'no-repeat'
+                }}></div>
+                
+                {/* Horizontal connector line */}
+                <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-blue-500 opacity-30"></div>
+                
+                {/* Individual department connection lines */}
+                <div className="absolute top-1/2 left-0 right-0 h-0.5">
+                  {filteredDepartments.map((dept, index) => {
+                    const totalCols = Math.min(filteredDepartments.length, 4);
+                    const colIndex = index % totalCols;
+                    const colsPerRow = totalCols;
+                    const leftPercent = colsPerRow === 1 
+                      ? 50 
+                      : 20 + (colIndex * (60 / Math.max(colsPerRow - 1, 1)));
+                    const deptColor = getDepartmentColor(index);
+                    
+                    return (
+                      <div
+                        key={dept.id}
+                        className="absolute"
+                        style={{
+                          left: `${leftPercent}%`,
+                          transform: 'translateX(-50%)',
+                        }}
+                      >
+                        {/* Vertical line down to department */}
+                        <div 
+                          className="w-0.5 bg-gradient-to-b"
+                          style={{
+                            height: '60px',
+                            background: `linear-gradient(to bottom, ${deptColor.stroke}, transparent)`,
+                            opacity: 0.6
+                          }}
+                        ></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
             {/* Department Heads Level */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {filteredDepartments.map((dept) => {
+            <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-4 w-full mt-4">
+              {filteredDepartments.map((dept, index) => {
                 const employeeCount = getDepartmentEmployees(dept.id).length;
+                const deptColor = getDepartmentColor(index);
                 return (
                   <div
                     key={dept.id}
-                    className="bg-gray-100 p-4 rounded-lg text-center cursor-pointer hover:bg-gray-200 transition-colors"
+                    className={`bg-gradient-to-br ${deptColor.bg} border-2 ${deptColor.border} p-4 rounded-lg text-center cursor-pointer hover:shadow-md transition-all transform hover:scale-105 relative overflow-hidden`}
                     onClick={() => handleViewDepartment(dept)}
                   >
-                    <h4 className="font-semibold">{dept.name}</h4>
-                    <Badge variant="secondary" className="mt-2">
+                    {/* Accent bar at top */}
+                    <div className={`absolute top-0 left-0 right-0 h-1.5 ${deptColor.accent}`}></div>
+                    <h4 className="font-semibold text-gray-800 mt-1">{dept.name}</h4>
+                    <Badge variant="secondary" className="mt-2 bg-white/70">
                       {employeeCount} employee{employeeCount !== 1 ? 's' : ''}
                     </Badge>
                   </div>
@@ -370,22 +442,29 @@ const OrganizationPage: React.FC = () => {
 
       {/* Departments Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredDepartments.map((department) => {
+        {filteredDepartments.map((department, index) => {
           const employees = getDepartmentEmployees(department.id);
+          const deptColor = getDepartmentColor(index);
 
           return (
-            <Card key={department.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+            <Card 
+              key={department.id} 
+              className={`hover:shadow-lg transition-all transform hover:scale-[1.02] border-2 ${deptColor.border} bg-gradient-to-br ${deptColor.bg} relative overflow-hidden`}
+            >
+              {/* Accent bar at top */}
+              <div className={`absolute top-0 left-0 right-0 h-1.5 ${deptColor.accent}`}></div>
+              
+              <CardHeader className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                  <CardTitle className="text-lg">{department.name}</CardTitle>
+                  <CardTitle className="text-lg text-gray-800">{department.name}</CardTitle>
                     {department.manager && (
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="text-sm text-gray-600 mt-1">
                         Manager: {department.manager.firstName} {department.manager.lastName}
                       </p>
                     )}
                   </div>
-                  <Badge variant="outline">{employees.length} member{employees.length !== 1 ? 's' : ''}</Badge>
+                  <Badge variant="outline" className="bg-white/50">{employees.length} member{employees.length !== 1 ? 's' : ''}</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -394,14 +473,14 @@ const OrganizationPage: React.FC = () => {
                   <p className="text-sm font-medium text-gray-700">Team Members</p>
                   <div className="flex flex-wrap gap-2">
                     {employees.slice(0, 8).map((employee) => (
-                      <Avatar key={employee.id} className="h-8 w-8" title={`${employee.firstName} ${employee.lastName}`}>
-                        <AvatarFallback className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs">
+                      <Avatar key={employee.id} className="h-8 w-8 border-2 border-white shadow-sm" title={`${employee.firstName} ${employee.lastName}`}>
+                        <AvatarFallback className={`${deptColor.accent} text-white text-xs`}>
                           {getInitials(employee.firstName, employee.lastName)}
                         </AvatarFallback>
                       </Avatar>
                     ))}
                     {employees.length > 8 && (
-                      <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                      <div className={`h-8 w-8 ${deptColor.accent} rounded-full flex items-center justify-center text-xs font-medium text-white border-2 border-white shadow-sm`}>
                         +{employees.length - 8}
                       </div>
                     )}

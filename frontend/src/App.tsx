@@ -4,9 +4,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeProvider";
 import Layout from "./components/layout/Layout";
+import "./i18n/config";
 
 import LoginPage from "./pages/LoginPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import Dashboard from "./pages/Dashboard";
 import EmployeesPage from "./pages/EmployeesPage";
 import AttendancePage from "./pages/AttendancePage";
@@ -141,6 +144,15 @@ function AppRoutes() {
         }
         data-id="fxqgzvjvo"
         data-path="src/App.tsx"
+      />
+
+      <Route
+        path="/reset-password"
+        element={
+          <PublicRoute data-id="reset-password-route" data-path="src/App.tsx">
+            <ResetPasswordPage />
+          </PublicRoute>
+        }
       />
 
       {/* Protected Routes */}
@@ -425,6 +437,7 @@ const App = () => (
     data-id="t05dmonz4"
     data-path="src/App.tsx"
   >
+    <ThemeProvider>
     <TooltipProvider data-id="mobcb0b0n" data-path="src/App.tsx">
       <AuthProvider data-id="l2tksbrmp" data-path="src/App.tsx">
         <BrowserRouter data-id="lopawu7zf" data-path="src/App.tsx">
@@ -434,6 +447,7 @@ const App = () => (
       <Toaster data-id="u7pxvax50" data-path="src/App.tsx" />
       <SonnerToaster position="top-right" richColors />
     </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

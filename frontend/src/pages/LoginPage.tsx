@@ -6,14 +6,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { Building2, Chrome, Github, Loader2 } from 'lucide-react';
+import { Building2, Chrome, Facebook, Loader2, Mail, AlertCircle } from 'lucide-react';
+import { forgotPassword, loginWithGoogle, loginWithFacebook } from '@/services/auth';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, loginWithSSO } = useAuth();
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,25 +60,103 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const handleSSOLogin = async (provider: string) => {
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
-      const success = await loginWithSSO(provider);
-      if (success) {
-        toast({
-          title: "SSO Login Successful",
-          description: `Logged in with ${provider}`
-        });
-        navigate('/dashboard');
-      }
-    } catch (error) {
+      // For now, redirect to Google OAuth or use a popup
+      // In production, implement proper Google OAuth flow
+      const googleAuthUrl = `${process.env.VITE_API_URL || 'http://localhost:3000'}/api/v1/auth/google/redirect`;
+      
+      // Open Google OAuth in a popup
+      const width = 500;
+      const height = 600;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      
+      const popup = window.open(
+        googleAuthUrl,
+        'Google Login',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      // Listen for OAuth callback
+      const checkPopup = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkPopup);
+          setIsLoading(false);
+        }
+      }, 1000);
+
+      // For demo: Show message that OAuth needs configuration
       toast({
-        title: "SSO Login Failed",
-        description: "Failed to authenticate with SSO provider.",
+        title: "Google OAuth",
+        description: "Google OAuth is not yet configured. Please use email/password login.",
+        variant: "default"
+      });
+      setIsLoading(false);
+    } catch (error: any) {
+      toast({
+        title: "Google Login",
+        description: error?.response?.data?.message || "Google OAuth is not configured. Please use email/password login.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    setIsLoading(true);
+    try {
+      // For now, show message that Facebook OAuth needs configuration
+      // In production, implement proper Facebook OAuth flow
+      toast({
+        title: "Facebook OAuth",
+        description: "Facebook OAuth is not yet configured. Please use email/password login.",
+        variant: "default"
+      });
+      setIsLoading(false);
+    } catch (error: any) {
+      toast({
+        title: "Facebook Login",
+        description: error?.response?.data?.message || "Facebook OAuth is not configured. Please use email/password login.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotPasswordEmail) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    try {
+      const result = await forgotPassword(forgotPasswordEmail);
+      setForgotPasswordSent(true);
+      toast({
+        title: "Reset Link Sent",
+        description: result.message || "If an account with that email exists, a password reset link has been sent.",
+      });
+      
+      // In development, show the reset link
+      if (result.resetLink) {
+        console.log('Reset link:', result.resetLink);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || "Failed to send reset link. Please try again.",
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      setForgotPasswordLoading(false);
     }
   };
 
@@ -109,7 +201,16 @@ const LoginPage: React.FC = () => {
               </div>
 
               <div className="space-y-2" data-id="gwo3x3x9j" data-path="src/pages/LoginPage.tsx">
-                <Label htmlFor="password" data-id="rp93tcyml" data-path="src/pages/LoginPage.tsx">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" data-id="rp93tcyml" data-path="src/pages/LoginPage.tsx">Password</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -117,7 +218,6 @@ const LoginPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required data-id="rmlfit5na" data-path="src/pages/LoginPage.tsx" />
-
               </div>
 
               <Button
@@ -149,21 +249,19 @@ const LoginPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-3" data-id="ax7stvxh3" data-path="src/pages/LoginPage.tsx">
               <Button
                 variant="outline"
-                onClick={() => handleSSOLogin('Google')}
+                onClick={handleGoogleLogin}
                 disabled={isLoading}
                 className="w-full" data-id="6e89gyfmb" data-path="src/pages/LoginPage.tsx">
-
                 <Chrome className="mr-2 h-4 w-4" data-id="vjje5dx6h" data-path="src/pages/LoginPage.tsx" />
                 Google
               </Button>
               <Button
                 variant="outline"
-                onClick={() => handleSSOLogin('Microsoft')}
+                onClick={handleFacebookLogin}
                 disabled={isLoading}
                 className="w-full" data-id="yt8gxoeao" data-path="src/pages/LoginPage.tsx">
-
-                <Github className="mr-2 h-4 w-4" data-id="rry97zjba" data-path="src/pages/LoginPage.tsx" />
-                Microsoft
+                <Facebook className="mr-2 h-4 w-4" data-id="rry97zjba" data-path="src/pages/LoginPage.tsx" />
+                Facebook
               </Button>
             </div>
 
@@ -179,6 +277,71 @@ const LoginPage: React.FC = () => {
           <p data-id="5nmpf7z9b" data-path="src/pages/LoginPage.tsx">Powered by Damina Tech</p>
         </div>
       </div>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Enter your email address and we'll send you a link to reset your password.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {forgotPasswordSent ? (
+            <div className="space-y-4">
+              <Alert>
+                <Mail className="h-4 w-4" />
+                <AlertDescription>
+                  If an account with that email exists, a password reset link has been sent to your email.
+                  Please check your inbox and follow the instructions to reset your password.
+                </AlertDescription>
+              </Alert>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotPasswordSent(false);
+                  setForgotPasswordEmail('');
+                }}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email Address</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={forgotPasswordEmail}
+                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                  required
+                  disabled={forgotPasswordLoading}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotPasswordEmail('');
+                  }}
+                  disabled={forgotPasswordLoading}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={forgotPasswordLoading}>
+                  {forgotPasswordLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Send Reset Link
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>);
 
 };

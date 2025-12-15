@@ -1,0 +1,24 @@
+{
+  "header": {
+    "search": "Search employees, departments...",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all read",
+    "markAllReadSuccess": "All notifications marked as read",
+    "markAllReadError": "Failed to update notifications",
+    "loadingNotifications": "Loading notifications...",
+    "noNotifications": "No notifications yet",
+    "viewAllNotifications": "View all notifications",
+    "selectLanguage": "Select Language",
+    "languageChanged": "Language changed",
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Logout",
+    "help": "Help"
+  },
+  "languages": {
+    "en": "English",
+    "om": "Oromo",
+    "am": "Amharic"
+  }
+}
+

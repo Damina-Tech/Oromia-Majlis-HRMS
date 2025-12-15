@@ -28,8 +28,8 @@ import { hasPermission } from "../../middleware/auth.js";
 const router = Router();
 
 // Template routes
-router.get("/templates", listTemplates);
-router.get("/templates/:id", getTemplate);
+router.get("/templates", hasPermission("documents.view"), listTemplates);
+router.get("/templates/:id", hasPermission("documents.view"), getTemplate);
 router.post("/templates", hasPermission("documents.manage"), createTemplate);
 router.put("/templates/:id", hasPermission("documents.manage"), updateTemplate);
 router.delete("/templates/:id", hasPermission("documents.manage"), deleteTemplate);

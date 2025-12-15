@@ -52,7 +52,20 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  Settings,
+  Calendar,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import {
+  listLeavePolicies,
+  createLeavePolicy,
+  updateLeavePolicy,
+  deleteLeavePolicy,
+  renewLeaveBalances,
+  type LeavePolicy,
+  type CreateLeavePolicyPayload,
+} from '@/services/leave-policies';
 
 const LeaveBalancesPage: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -103,6 +116,32 @@ const LeaveBalancesPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Policy management states
+  const [activeTab, setActiveTab] = useState('balances');
+  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
+  const [loadingPolicies, setLoadingPolicies] = useState(false);
+  const [showPolicyDialog, setShowPolicyDialog] = useState(false);
+  const [showRenewDialog, setShowRenewDialog] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState<LeavePolicy | null>(null);
+  const [policyForm, setPolicyForm] = useState<CreateLeavePolicyPayload>({
+    name: '',
+    code: '',
+    description: '',
+    defaultAllocatedDays: 0,
+    maxCarryOverDays: 0,
+    carryOverEnabled: true,
+    requiresApproval: true,
+    requiresDocumentation: false,
+    isActive: true,
+    renewalMonth: 1,
+    renewalDay: 1,
+    color: '',
+  });
+  const [renewForm, setRenewForm] = useState({
+    year: new Date().getFullYear(),
+    leaveTypeCode: '',
+  });
+
   const leaveTypes: { value: LeaveType; label: string; color: string }[] = [
     { value: 'CASUAL', label: 'Casual Leave', color: 'purple' },
     { value: 'SICK', label: 'Sick Leave', color: 'blue' },
@@ -118,6 +157,13 @@ const LeaveBalancesPage: React.FC = () => {
       loadEmployees();
     }
   }, [canRead, page, pageSize, yearFilter, leaveTypeFilter, sortBy]);
+
+  // Load policies
+  useEffect(() => {
+    if (canManage) {
+      loadPolicies();
+    }
+  }, [canManage]);
 
   const loadData = async () => {
     try {
@@ -144,6 +190,114 @@ const LeaveBalancesPage: React.FC = () => {
       setEmployees(response.items);
     } catch (err) {
       console.error('Failed to load employees:', err);
+    }
+  };
+
+  const loadPolicies = async () => {
+    try {
+      setLoadingPolicies(true);
+      const response = await listLeavePolicies();
+      setPolicies(response.items);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to load leave policies');
+    } finally {
+      setLoadingPolicies(false);
+    }
+  };
+
+  const handlePolicySubmit = async () => {
+    if (!policyForm.name || !policyForm.code || policyForm.defaultAllocatedDays <= 0) {
+      setError('Please fill all required fields');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError('');
+
+      if (editingPolicy) {
+        await updateLeavePolicy(editingPolicy.id, policyForm);
+        toast.success('Leave policy updated successfully!');
+      } else {
+        await createLeavePolicy(policyForm);
+        toast.success('Leave policy created successfully!');
+      }
+
+      setShowPolicyDialog(false);
+      setEditingPolicy(null);
+      setPolicyForm({
+        name: '',
+        code: '',
+        description: '',
+        defaultAllocatedDays: 0,
+        maxCarryOverDays: 0,
+        carryOverEnabled: true,
+        requiresApproval: true,
+        requiresDocumentation: false,
+        isActive: true,
+        renewalMonth: 1,
+        renewalDay: 1,
+        color: '',
+      });
+      await loadPolicies();
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to save leave policy';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditPolicy = (policy: LeavePolicy) => {
+    setEditingPolicy(policy);
+    setPolicyForm({
+      name: policy.name,
+      code: policy.code,
+      description: policy.description || '',
+      defaultAllocatedDays: policy.defaultAllocatedDays,
+      maxCarryOverDays: policy.maxCarryOverDays,
+      carryOverEnabled: policy.carryOverEnabled,
+      requiresApproval: policy.requiresApproval,
+      requiresDocumentation: policy.requiresDocumentation,
+      isActive: policy.isActive,
+      renewalMonth: policy.renewalMonth,
+      renewalDay: policy.renewalDay,
+      color: policy.color || '',
+    });
+    setError('');
+    setShowPolicyDialog(true);
+  };
+
+  const handleDeletePolicy = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this leave policy?')) return;
+
+    try {
+      await deleteLeavePolicy(id);
+      toast.success('Leave policy deleted successfully!');
+      await loadPolicies();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to delete leave policy');
+    }
+  };
+
+  const handleRenewBalances = async () => {
+    try {
+      setSubmitting(true);
+      setError('');
+      const result = await renewLeaveBalances({
+        year: renewForm.year,
+        leaveTypeCode: renewForm.leaveTypeCode || undefined,
+      });
+      toast.success(result.message);
+      setShowRenewDialog(false);
+      await loadData();
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to renew leave balances';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -366,13 +520,28 @@ const LeaveBalancesPage: React.FC = () => {
             Export
           </Button>
           {canManage && (
-            <Button onClick={handleAdd}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Leave Balance
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setShowRenewDialog(true)}>
+                <Calendar className="h-4 w-4 mr-2" />
+                Renew Leaves
+              </Button>
+              <Button onClick={handleAdd}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Leave Balance
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Tabs for Balances and Settings */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="balances">Leave Balances</TabsTrigger>
+          {canManage && <TabsTrigger value="settings">Leave Policies</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="balances" className="space-y-6">
 
       {/* Filters and Search */}
       <Card>
@@ -957,6 +1126,370 @@ const LeaveBalancesPage: React.FC = () => {
               </Button>
               <Button variant="destructive" onClick={handleDeleteConfirm}>
                 Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+        </TabsContent>
+
+        {/* Settings Tab - Leave Policies */}
+        {canManage && (
+          <TabsContent value="settings" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Leave Policies</CardTitle>
+                    <CardDescription>Configure organization-wide leave types and policies</CardDescription>
+                  </div>
+                  <Button onClick={() => {
+                    setEditingPolicy(null);
+                    setPolicyForm({
+                      name: '',
+                      code: '',
+                      description: '',
+                      defaultAllocatedDays: 0,
+                      maxCarryOverDays: 0,
+                      carryOverEnabled: true,
+                      requiresApproval: true,
+                      requiresDocumentation: false,
+                      isActive: true,
+                      renewalMonth: 1,
+                      renewalDay: 1,
+                      color: '',
+                    });
+                    setError('');
+                    setShowPolicyDialog(true);
+                  }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Policy
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingPolicies ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {policies.length === 0 ? (
+                      <p className="text-center text-gray-500 py-8">No leave policies configured</p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {policies.map((policy) => (
+                          <Card key={policy.id} className={`${!policy.isActive ? 'opacity-60' : ''}`}>
+                            <CardHeader>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  {policy.color && (
+                                    <div 
+                                      className="w-4 h-4 rounded-full" 
+                                      style={{ backgroundColor: policy.color }}
+                                    />
+                                  )}
+                                  <CardTitle className="text-lg">{policy.name}</CardTitle>
+                                </div>
+                                <Badge variant={policy.isActive ? 'default' : 'secondary'}>
+                                  {policy.isActive ? 'Active' : 'Inactive'}
+                                </Badge>
+                              </div>
+                              <CardDescription>{policy.code}</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Default Days:</span>
+                                  <span className="font-medium">{policy.defaultAllocatedDays}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Max Carry Over:</span>
+                                  <span className="font-medium">{policy.maxCarryOverDays}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Carry Over:</span>
+                                  <span className="font-medium">{policy.carryOverEnabled ? 'Yes' : 'No'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Requires Approval:</span>
+                                  <span className="font-medium">{policy.requiresApproval ? 'Yes' : 'No'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Renewal Date:</span>
+                                  <span className="font-medium">
+                                    {new Date(2024, policy.renewalMonth - 1, policy.renewalDay).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex gap-2 mt-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={() => handleEditPolicy(policy)}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700"
+                                  onClick={() => handleDeletePolicy(policy.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {/* Policy Dialog */}
+      {canManage && (
+        <Dialog open={showPolicyDialog} onOpenChange={(open) => { setShowPolicyDialog(open); if (!open) setError(''); }}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingPolicy ? 'Edit Leave Policy' : 'Create Leave Policy'}</DialogTitle>
+              <DialogDescription>
+                {editingPolicy ? 'Update leave policy configuration' : 'Define a new leave type with its policies'}
+              </DialogDescription>
+            </DialogHeader>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="policy-name">Name *</Label>
+                  <Input
+                    id="policy-name"
+                    value={policyForm.name}
+                    onChange={(e) => setPolicyForm({ ...policyForm, name: e.target.value })}
+                    placeholder="e.g., Casual Leave"
+                    disabled={submitting || !!editingPolicy}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="policy-code">Code *</Label>
+                  <Input
+                    id="policy-code"
+                    value={policyForm.code}
+                    onChange={(e) => setPolicyForm({ ...policyForm, code: e.target.value.toUpperCase() })}
+                    placeholder="e.g., CASUAL"
+                    disabled={submitting || !!editingPolicy}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="policy-description">Description</Label>
+                <Input
+                  id="policy-description"
+                  value={policyForm.description}
+                  onChange={(e) => setPolicyForm({ ...policyForm, description: e.target.value })}
+                  placeholder="Brief description of this leave type"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="policy-allocated">Default Allocated Days *</Label>
+                  <Input
+                    id="policy-allocated"
+                    type="number"
+                    step="0.1"
+                    value={policyForm.defaultAllocatedDays}
+                    onChange={(e) => setPolicyForm({ ...policyForm, defaultAllocatedDays: Number(e.target.value) })}
+                    min={0}
+                    disabled={submitting}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="policy-max-carryover">Max Carry Over Days</Label>
+                  <Input
+                    id="policy-max-carryover"
+                    type="number"
+                    step="0.1"
+                    value={policyForm.maxCarryOverDays}
+                    onChange={(e) => setPolicyForm({ ...policyForm, maxCarryOverDays: Number(e.target.value) })}
+                    min={0}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="policy-renewal-month">Renewal Month</Label>
+                  <Select
+                    value={policyForm.renewalMonth?.toString()}
+                    onValueChange={(v) => setPolicyForm({ ...policyForm, renewalMonth: Number(v) })}
+                    disabled={submitting}
+                  >
+                    <SelectTrigger id="policy-renewal-month">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+                        <SelectItem key={month} value={month.toString()}>
+                          {new Date(2024, month - 1, 1).toLocaleDateString('en-US', { month: 'long' })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="policy-renewal-day">Renewal Day</Label>
+                  <Input
+                    id="policy-renewal-day"
+                    type="number"
+                    value={policyForm.renewalDay}
+                    onChange={(e) => setPolicyForm({ ...policyForm, renewalDay: Number(e.target.value) })}
+                    min={1}
+                    max={31}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="policy-color">Color (Hex)</Label>
+                <Input
+                  id="policy-color"
+                  value={policyForm.color}
+                  onChange={(e) => setPolicyForm({ ...policyForm, color: e.target.value })}
+                  placeholder="#3b82f6"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="policy-carryover">Carry Over Enabled</Label>
+                  <Switch
+                    id="policy-carryover"
+                    checked={policyForm.carryOverEnabled}
+                    onCheckedChange={(checked) => setPolicyForm({ ...policyForm, carryOverEnabled: checked })}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="policy-approval">Requires Approval</Label>
+                  <Switch
+                    id="policy-approval"
+                    checked={policyForm.requiresApproval}
+                    onCheckedChange={(checked) => setPolicyForm({ ...policyForm, requiresApproval: checked })}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="policy-documentation">Requires Documentation</Label>
+                  <Switch
+                    id="policy-documentation"
+                    checked={policyForm.requiresDocumentation}
+                    onCheckedChange={(checked) => setPolicyForm({ ...policyForm, requiresDocumentation: checked })}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="policy-active">Active</Label>
+                  <Switch
+                    id="policy-active"
+                    checked={policyForm.isActive}
+                    onCheckedChange={(checked) => setPolicyForm({ ...policyForm, isActive: checked })}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPolicyDialog(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handlePolicySubmit} disabled={submitting}>
+                {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {editingPolicy ? 'Save Changes' : 'Create Policy'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Renew Leave Balances Dialog */}
+      {canManage && (
+        <Dialog open={showRenewDialog} onOpenChange={(open) => { setShowRenewDialog(open); if (!open) setError(''); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Renew Leave Balances</DialogTitle>
+              <DialogDescription>
+                Renew leave balances for all employees for a specific year. This will create new balances and carry over unused days based on policy settings.
+              </DialogDescription>
+            </DialogHeader>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="renew-year">Year *</Label>
+                <Input
+                  id="renew-year"
+                  type="number"
+                  value={renewForm.year}
+                  onChange={(e) => setRenewForm({ ...renewForm, year: Number(e.target.value) })}
+                  min={2020}
+                  max={2100}
+                  disabled={submitting}
+                />
+              </div>
+              <div>
+                <Label htmlFor="renew-leave-type">Leave Type (Optional)</Label>
+                <Select
+                  value={renewForm.leaveTypeCode || "all"}
+                  onValueChange={(v) => setRenewForm({ ...renewForm, leaveTypeCode: v === "all" ? "" : v })}
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="renew-leave-type">
+                    <SelectValue placeholder="All leave types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All leave types</SelectItem>
+                    {policies.map(policy => (
+                      <SelectItem key={policy.id} value={policy.code}>{policy.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRenewDialog(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleRenewBalances} disabled={submitting}>
+                {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Renew Balances
               </Button>
             </DialogFooter>
           </DialogContent>

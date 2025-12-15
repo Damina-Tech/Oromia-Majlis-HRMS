@@ -822,8 +822,7 @@ export default function TimesheetPage() {
                           <div key={index} className="text-sm">
                             <div className="font-medium">{session.taskName}</div>
                             <div className="text-muted-foreground">
-                              {session.projectName} ΓÇó{" "}
-                              {formatDuration(session.duration)}
+                              {session.projectName} • {formatDuration(session.duration)}
                             </div>
                           </div>
                         ))}

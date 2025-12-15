@@ -1,0 +1,24 @@
+{
+  "header": {
+    "search": "Hojjettoota, gareewwan barbaadi...",
+    "notifications": "Beekumsa",
+    "markAllRead": "Hunduu dubbisi",
+    "markAllReadSuccess": "Beekumsa hundi dubbifame",
+    "markAllReadError": "Beekumsa fooyya'iinsa hin milkaa'ine",
+    "loadingNotifications": "Beekumsa fudhachaa jira...",
+    "noNotifications": "Amma beekumsa hin jiru",
+    "viewAllNotifications": "Beekumsa hundaa ilaali",
+    "selectLanguage": "Afaan filadhu",
+    "languageChanged": "Afaan jijjiirame",
+    "profile": "Seenaa",
+    "settings": "Qindeeffannoo",
+    "logout": "Ba'i",
+    "help": "Gargaarsa"
+  },
+  "languages": {
+    "en": "Ingiriizii",
+    "om": "Oromoo",
+    "am": "Afaan Amaaraa"
+  }
+}
+

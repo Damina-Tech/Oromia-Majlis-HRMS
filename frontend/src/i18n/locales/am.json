@@ -1,0 +1,24 @@
+{
+  "header": {
+    "search": "ሰራተኞች፣ ክፍሎችን ፈልግ...",
+    "notifications": "ማስታወሻዎች",
+    "markAllRead": "ሁሉንም አንብብ",
+    "markAllReadSuccess": "ሁሉም ማስታወሻዎች እንደተነበቡ ምልክት ተደርጎባቸዋል",
+    "markAllReadError": "ማስታወሻዎችን ማዘመን አልተሳካም",
+    "loadingNotifications": "ማስታወሻዎች በመጫን ላይ...",
+    "noNotifications": "እስካሁን ምንም ማስታወሻዎች የሉም",
+    "viewAllNotifications": "ሁሉንም ማስታወሻዎች ይመልከቱ",
+    "selectLanguage": "ቋንቋ ይምረጡ",
+    "languageChanged": "ቋንቋ ተቀይሯል",
+    "profile": "መገለጫ",
+    "settings": "ቅንብሮች",
+    "logout": "ውጣ",
+    "help": "እርዳታ"
+  },
+  "languages": {
+    "en": "እንግሊዘኛ",
+    "om": "ኦሮምኛ",
+    "am": "አማርኛ"
+  }
+}
+

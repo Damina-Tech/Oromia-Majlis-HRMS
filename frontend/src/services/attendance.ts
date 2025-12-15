@@ -75,7 +75,10 @@ export interface ListAttendanceResponse {
  * Check in for the day
  */
 export async function checkIn(location: string): Promise<Attendance> {
-  const response = await api.post("/attendance/check-in", { location });
+  // Send the current date in YYYY-MM-DD format to ensure correct date handling
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const response = await api.post("/attendance/check-in", { location, date: dateStr });
   return response.data;
 }
 
@@ -83,7 +86,10 @@ export async function checkIn(location: string): Promise<Attendance> {
  * Check out for the day
  */
 export async function checkOut(location: string): Promise<Attendance> {
-  const response = await api.post("/attendance/check-out", { location });
+  // Send the current date in YYYY-MM-DD format to ensure correct date handling
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const response = await api.post("/attendance/check-out", { location, date: dateStr });
   return response.data;
 }
 

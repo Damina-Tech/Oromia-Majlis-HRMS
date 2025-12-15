@@ -1022,11 +1022,11 @@ const LeaveManagement: React.FC = () => {
             <div data-id="aebpevy5z" data-path="src/pages/LeaveManagement.tsx">
               <h4 className="font-semibold mb-3" data-id="0mzytt8fi" data-path="src/pages/LeaveManagement.tsx">Important Notes</h4>
               <div className="space-y-2 text-sm text-gray-600" data-id="r6hel4acm" data-path="src/pages/LeaveManagement.tsx">
-                <p data-id="742jwdkgw" data-path="src/pages/LeaveManagement.tsx">ΓÇó Leave requests must be submitted at least 2 days in advance</p>
-                <p data-id="zhf3ga3o5" data-path="src/pages/LeaveManagement.tsx">ΓÇó Sick leave requires medical certificate for more than 3 days</p>
-                <p data-id="h06hdssk6" data-path="src/pages/LeaveManagement.tsx">ΓÇó Vacation leave requires manager approval</p>
-                <p data-id="s6i86xsx9" data-path="src/pages/LeaveManagement.tsx">ΓÇó Unused casual leave can be carried forward up to 5 days</p>
-                <p data-id="ezmu63dsd" data-path="src/pages/LeaveManagement.tsx">ΓÇó Maternity leave is as per company policy</p>
+                <p data-id="742jwdkgw" data-path="src/pages/LeaveManagement.tsx">• Leave requests must be submitted at least 2 days in advance</p>
+                <p data-id="zhf3ga3o5" data-path="src/pages/LeaveManagement.tsx">• Sick leave requires medical certificate for more than 3 days</p>
+                <p data-id="h06hdssk6" data-path="src/pages/LeaveManagement.tsx">• Vacation leave requires manager approval</p>
+                <p data-id="s6i86xsx9" data-path="src/pages/LeaveManagement.tsx">• Unused casual leave can be carried forward up to 5 days</p>
+                <p data-id="ezmu63dsd" data-path="src/pages/LeaveManagement.tsx">• Maternity leave is as per company policy</p>
               </div>
             </div>
           </div>
