@@ -19,6 +19,7 @@ import reportRoutes from "../modules/reports/report.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
+import institutionRoutes from "../modules/institutions/institution.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -78,6 +79,11 @@ router.use(
   "/v1/notifications",
   requireAuth,
   notificationRoutes
+);
+router.use(
+  "/v1/institutions",
+  requireAuth,
+  institutionRoutes
 );
 
 export default router;

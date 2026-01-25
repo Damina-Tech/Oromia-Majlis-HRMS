@@ -70,6 +70,14 @@ async function seedPermissions() {
     { name: "expense.edit", module: "expenses", action: "edit", description: "Edit expenses" },
     { name: "expense.approve", module: "expenses", action: "approve", description: "Approve/Reject expenses" },
     { name: "expense.pay", module: "expenses", action: "pay", description: "Mark expenses as paid" },
+    { name: "majlis.institutions.read", module: "majlis", action: "institutions.read", description: "View institutions" },
+    { name: "majlis.institutions.write", module: "majlis", action: "institutions.write", description: "Create/Edit institutions" },
+    { name: "majlis.institutions.approve", module: "majlis", action: "institutions.approve", description: "Approve institutions" },
+    { name: "majlis.institutions.delete", module: "majlis", action: "institutions.delete", description: "Delete institutions" },
+    { name: "majlis.assignments.read", module: "majlis", action: "assignments.read", description: "View assignments" },
+    { name: "majlis.assignments.write", module: "majlis", action: "assignments.write", description: "Create/Edit assignments" },
+    { name: "majlis.assignments.approve", module: "majlis", action: "assignments.approve", description: "Approve assignments" },
+    { name: "majlis.dashboard.view", module: "majlis", action: "dashboard.view", description: "View Majlis dashboard" },
   ];
 
   // Create all permissions
@@ -100,8 +108,8 @@ async function seedPermissions() {
 
   // Assign permissions to other roles
   const rolePermissions = {
-    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay"],
-    MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve"],
+    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view"],
+    MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve", "majlis.institutions.read", "majlis.assignments.read", "majlis.dashboard.view"],
     EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
   };
 
@@ -300,6 +308,9 @@ async function main() {
 
   // Seed leads and related CRM data
   await seedLeads(admin, managerUser, employeeUser, depts);
+
+  // Seed Majlis institutions
+  await seedMajlisInstitutions(admin);
 
   // Create additional department manager (Finance Department)
   const financeManagerEmail = "finance.manager@ciro.gov.et";
@@ -2296,6 +2307,145 @@ async function seedLeads(
   });
 
   console.log(`✅ Seeded ${samples.length} leads with histories, notes, and metrics`);
+}
+
+async function seedMajlisInstitutions(adminUser: { id: string }) {
+  console.log("🕌 Seeding Majlis Institutions...");
+
+  const existing = await prisma.institution.count();
+  if (existing > 0) {
+    console.log("ℹ️  Institutions already exist, skipping seed.");
+    return;
+  }
+
+  // Create sample regions, zones, woredas
+  const oromiaRegion = await prisma.region.upsert({
+    where: { name: "Oromia" },
+    update: {},
+    create: {
+      name: "Oromia",
+      code: "OR",
+    },
+  });
+
+  const eastHarargeZone = await prisma.zone.upsert({
+    where: { regionId_name: { regionId: oromiaRegion.id, name: "East Hararge" } },
+    update: {},
+    create: {
+      name: "East Hararge",
+      code: "EH",
+      regionId: oromiaRegion.id,
+    },
+  });
+
+  const hararWoreda = await prisma.woreda.upsert({
+    where: { zoneId_name: { zoneId: eastHarargeZone.id, name: "Harar" } },
+    update: {},
+    create: {
+      name: "Harar",
+      code: "HR",
+      zoneId: eastHarargeZone.id,
+    },
+  });
+
+  const kebele1 = await prisma.kebele.upsert({
+    where: { woredaId_name: { woredaId: hararWoreda.id, name: "Kebele 01" } },
+    update: {},
+    create: {
+      name: "Kebele 01",
+      code: "K01",
+      woredaId: hararWoreda.id,
+    },
+  });
+
+  // Sample institutions
+  const institutions = [
+    {
+      name: "Grand Mosque of Harar",
+      type: "MOSQUE" as const,
+      institutionCode: "MOS-2024-0001",
+      status: "ACTIVE" as const,
+      regionId: oromiaRegion.id,
+      zoneId: eastHarargeZone.id,
+      woredaId: hararWoreda.id,
+      kebeleId: kebele1.id,
+      latitude: new Prisma.Decimal(9.3106),
+      longitude: new Prisma.Decimal(42.1258),
+      address: "Harar, Oromia Region",
+      yearEstablished: 1990,
+      ownershipStatus: "MAJLIS_OWNED" as const,
+      mosqueData: {
+        capacity: 500,
+        jummahAvailable: true,
+        womenPrayerSpace: true,
+        utilities: { water: true, electricity: true },
+      },
+      createdById: adminUser.id,
+      approvedById: adminUser.id,
+      approvedAt: new Date(),
+    },
+    {
+      name: "Al-Azhar Integrated School",
+      type: "MADRASAH" as const,
+      institutionCode: "MAD-2024-0001",
+      status: "ACTIVE" as const,
+      regionId: oromiaRegion.id,
+      zoneId: eastHarargeZone.id,
+      woredaId: hararWoreda.id,
+      latitude: new Prisma.Decimal(9.3120),
+      longitude: new Prisma.Decimal(42.1260),
+      address: "Harar, Oromia Region",
+      yearEstablished: 2005,
+      ownershipStatus: "MAJLIS_OWNED" as const,
+      madrasahData: {
+        curriculumType: "INTEGRATED",
+        gradeLevels: ["PRIMARY", "SECONDARY"],
+        accreditationStatus: "ACCREDITED",
+        students: { male: 200, female: 180 },
+        teachers: { islamic: 8, science: 12 },
+        classrooms: 15,
+        hasLabs: true,
+        hasLibrary: true,
+      },
+      createdById: adminUser.id,
+      approvedById: adminUser.id,
+      approvedAt: new Date(),
+    },
+    {
+      name: "Markaz Al-Quran wa Al-Hadith",
+      type: "MARKAZ" as const,
+      institutionCode: "MAR-2024-0001",
+      status: "ACTIVE" as const,
+      regionId: oromiaRegion.id,
+      zoneId: eastHarargeZone.id,
+      woredaId: hararWoreda.id,
+      latitude: new Prisma.Decimal(9.3130),
+      longitude: new Prisma.Decimal(42.1270),
+      address: "Harar, Oromia Region",
+      yearEstablished: 2010,
+      ownershipStatus: "MAJLIS_OWNED" as const,
+      markazData: {
+        disciplines: ["QURAN", "HADITH", "TAFSIR", "FIQH", "ARABIC"],
+        studyLevels: ["BEGINNER", "INTERMEDIATE", "ADVANCED"],
+        daawahActivities: true,
+        students: 150,
+        scholars: 10,
+        hasBoarding: true,
+        hasLibrary: true,
+      },
+      createdById: adminUser.id,
+      approvedById: adminUser.id,
+      approvedAt: new Date(),
+    },
+  ];
+
+  for (const inst of institutions) {
+    await prisma.institution.create({
+      data: inst,
+    });
+  }
+
+  console.log(`✅ Seeded ${institutions.length} Majlis institutions`);
 }
 
 main()

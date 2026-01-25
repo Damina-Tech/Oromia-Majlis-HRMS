@@ -8,6 +8,17 @@ const prisma = new PrismaClient();
  */
 export async function processScheduledAnnouncements() {
   try {
+    // Check if database tables exist before proceeding
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM "Announcement" LIMIT 1`;
+    } catch (error: any) {
+      // Table doesn't exist yet - skip processing
+      if (error?.code === 'P2021' || error?.code === '42P01') {
+        return; // Silently skip if tables don't exist
+      }
+      throw error; // Re-throw other errors
+    }
+
     const now = new Date();
 
     // Publish scheduled announcements

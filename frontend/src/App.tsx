@@ -58,6 +58,12 @@ import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
 import LeadsPage from "./pages/LeadsPage";
 import LeadDetailPage from "./pages/LeadDetailPage";
+import MajlisInstitutionsPage from "./pages/MajlisInstitutionsPage";
+import MajlisDashboardPage from "./pages/MajlisDashboardPage";
+import InstitutionDetailPage from "./pages/InstitutionDetailPage";
+import EditInstitutionPage from "./pages/EditInstitutionPage";
+import MajlisAssignmentsPage from "./pages/MajlisAssignmentsPage";
+import MajlisReportsPage from "./pages/MajlisReportsPage";
 
 const queryClient = new QueryClient();
 
@@ -182,6 +188,12 @@ function AppRoutes() {
         />
         <Route path="leads" element={<LeadsPage />} />
         <Route path="leads/:leadId" element={<LeadDetailPage />} />
+        <Route path="majlis/dashboard" element={<MajlisDashboardPage />} />
+        <Route path="majlis/institutions" element={<MajlisInstitutionsPage />} />
+        <Route path="majlis/institutions/:id/edit" element={<EditInstitutionPage />} />
+        <Route path="majlis/institutions/:id" element={<InstitutionDetailPage />} />
+        <Route path="majlis/assignments" element={<MajlisAssignmentsPage />} />
+        <Route path="majlis/reports" element={<MajlisReportsPage />} />
         <Route
           path="attendance"
           element={

@@ -61,6 +61,10 @@ model User {
   employeeIdTemplatesCreated      EmployeeIdTemplate[]     @relation("EmployeeIdTemplateCreatedBy")
   employeeIdTemplatesUpdated      EmployeeIdTemplate[]     @relation("EmployeeIdTemplateUpdatedBy")
   employeeIdCardsGenerated        EmployeeIdCard[]
+  institutionsCreated              Institution[]           @relation("InstitutionCreatedBy")
+  institutionsApproved             Institution[]           @relation("InstitutionApprovedBy")
+  assignmentsApproved              InstitutionAssignment[] @relation("AssignmentApprovedBy")
+  institutionAuditLogs             InstitutionAuditLog[]   @relation("InstitutionAuditActor")
 }
 
 model Role {
@@ -188,6 +192,7 @@ model Employee {
   idCardTemplate                   EmployeeIdTemplate? @relation("EmployeeIdTemplateCurrent", fields: [idCardTemplateId], references: [id])
   salaryGrade                      SalaryGrade?        @relation(fields: [salaryGradeId], references: [id])
   salaryStep                       SalaryStep?         @relation(fields: [salaryStepId], references: [id])
+  institutionAssignments           InstitutionAssignment[]
 
   @@index([departmentId])
   @@index([joiningDate])
@@ -2000,3 +2005,218 @@ model NotificationPreference {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ============================================
+// Majlis Institution Management Module
+// ============================================
+
+enum InstitutionType {
+  MOSQUE
+  MADRASAH
+  MARKAZ
+}
+
+enum InstitutionStatus {
+  ACTIVE
+  UNDER_CONSTRUCTION
+  CLOSED
+  SUSPENDED
+}
+
+enum OwnershipStatus {
+  MAJLIS_OWNED
+  COMMUNITY_OWNED
+  WAQF
+}
+
+enum InstitutionRole {
+  // Mosque roles
+  IMAM
+  MUAZZIN
+  MOSQUE_COMMITTEE_MEMBER
+  
+  // Madrasah roles
+  MADRASAH_DIRECTOR
+  MADRASAH_BOARD_MEMBER
+  
+  // Markaz roles
+  MARKAZ_DIRECTOR
+  MARKAZ_COMMITTEE_MEMBER
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  ENDED
+  SUSPENDED
+  PENDING_APPROVAL
+}
+
+enum InstitutionAuditAction {
+  CREATED
+  UPDATED
+  DELETED
+  STATUS_CHANGED
+  ASSIGNMENT_CREATED
+  ASSIGNMENT_APPROVED
+  ASSIGNMENT_REJECTED
+  ASSIGNMENT_ENDED
+}
+
+// Geographic Hierarchy
+model Region {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  zones     Zone[]
+  institutions Institution[]
+}
+
+model Zone {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  regionId  String
+  region    Region  @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  woredas  Woreda[]
+  institutions Institution[]
+
+  @@unique([regionId, name])
+  @@index([regionId])
+}
+
+model Woreda {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  zoneId    String
+  zone      Zone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  kebeles   Kebele[]
+  institutions Institution[]
+
+  @@unique([zoneId, name])
+  @@index([zoneId])
+}
+
+model Kebele {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  woredaId  String
+  woreda    Woreda  @relation(fields: [woredaId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  institutions Institution[]
+
+  @@unique([woredaId, name])
+  @@index([woredaId])
+}
+
+// Main Institution Model
+model Institution {
+  id                String            @id @default(cuid())
+  institutionCode   String            @unique // MOS-0001, MAD-0001, MAR-0001
+  name              String
+  type              InstitutionType
+  status            InstitutionStatus @default(ACTIVE)
+  
+  // Geographic location
+  regionId          String?
+  region            Region?           @relation(fields: [regionId], references: [id])
+  zoneId            String?
+  zone              Zone?              @relation(fields: [zoneId], references: [id])
+  woredaId          String?
+  woreda            Woreda?            @relation(fields: [woredaId], references: [id])
+  kebeleId          String?
+  kebele            Kebele?           @relation(fields: [kebeleId], references: [id])
+  
+  // GPS coordinates
+  latitude          Decimal?           @db.Decimal(10, 8)
+  longitude         Decimal?           @db.Decimal(11, 8)
+  address           String?
+  
+  // Basic info
+  yearEstablished   Int?
+  ownershipStatus   OwnershipStatus?
+  
+  // Approval workflow
+  createdById       String
+  createdBy         User              @relation("InstitutionCreatedBy", fields: [createdById], references: [id])
+  approvedById      String?
+  approvedBy        User?             @relation("InstitutionApprovedBy", fields: [approvedById], references: [id])
+  approvedAt        DateTime?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Type-specific data (stored as JSON for flexibility)
+  mosqueData        Json?             // Capacity, Jummah, Women space, Utilities
+  madrasahData      Json?             // Curriculum, Grade levels, Accreditation, Students, Teachers, etc.
+  markazData        Json?             // Disciplines, Study levels, Da'wah, Students, Scholars, etc.
+  
+  // Relations
+  assignments       InstitutionAssignment[]
+  auditLogs         InstitutionAuditLog[]
+  
+  @@index([type, status])
+  @@index([regionId, zoneId, woredaId])
+  @@index([status])
+  @@index([createdById])
+}
+
+// Institution HR Assignment
+model InstitutionAssignment {
+  id                String            @id @default(cuid())
+  employeeId        String
+  employee          Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  institutionId     String
+  institution       Institution       @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  institutionType   InstitutionType
+  role              InstitutionRole
+  status            AssignmentStatus  @default(PENDING_APPROVAL)
+  
+  startDate         DateTime
+  endDate           DateTime?
+  
+  // Approval workflow
+  approvedById      String?
+  approvedBy        User?             @relation("AssignmentApprovedBy", fields: [approvedById], references: [id])
+  approvalDate      DateTime?
+  rejectionReason   String?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  @@index([employeeId, status])
+  @@index([institutionId, status])
+  @@index([status])
+  @@index([role])
+}
+
+// Audit Log for Institutions
+model InstitutionAuditLog {
+  id              String        @id @default(cuid())
+  institutionId   String
+  institution     Institution   @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  action          InstitutionAuditAction
+  actorId         String
+  actor           User          @relation("InstitutionAuditActor", fields: [actorId], references: [id])
+  entityType      String        // "Institution" or "Assignment"
+  entityId        String?
+  oldValue        Json?
+  newValue        Json?
+  description     String?
+  createdAt       DateTime      @default(now())
+  
+  @@index([institutionId, createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+// Extend User model with new relations
+// (Adding to existing User model relations)
