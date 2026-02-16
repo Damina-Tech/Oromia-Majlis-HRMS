@@ -123,19 +123,20 @@ export default function InstitutionDetailPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      ACTIVE: "default",
-      UNDER_CONSTRUCTION: "secondary",
-      CLOSED: "destructive",
-      SUSPENDED: "outline",
-      PENDING_APPROVAL: "secondary",
-      ENDED: "outline",
+    const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }> = {
+      ACTIVE: { variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
+      UNDER_CONSTRUCTION: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+      CLOSED: { variant: "destructive", className: "bg-red-100 text-red-800 border-red-200" },
+      SUSPENDED: { variant: "outline", className: "bg-gray-100 text-gray-800 border-gray-200" },
+      PENDING_APPROVAL: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+      ENDED: { variant: "outline", className: "bg-gray-100 text-gray-800 border-gray-200" },
     };
-    return <Badge variant={variants[status] || "outline"}>{status.replace("_", " ")}</Badge>;
+    const config = statusConfig[status] || { variant: "outline" as const, className: "bg-gray-100 text-gray-800 border-gray-200" };
+    return <Badge variant={config.variant} className={config.className}>{status.replace("_", " ")}</Badge>;
   };
 
   const getRoleBadge = (role: string) => {
-    return <Badge variant="outline">{role.replace("_", " ")}</Badge>;
+    return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">{role.replace("_", " ")}</Badge>;
   };
 
   return (
@@ -152,7 +153,10 @@ export default function InstitutionDetailPage() {
           </div>
           <p className="text-muted-foreground">{institution.institutionCode}</p>
         </div>
-        <Button onClick={() => navigate(`/majlis/institutions/${id}/edit`)}>
+        <Button 
+          onClick={() => navigate(`/majlis/institutions/${id}/edit`)}
+          className="bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+        >
           <Edit className="h-4 w-4 mr-2" />
           Edit
         </Button>
@@ -160,9 +164,9 @@ export default function InstitutionDetailPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
+        <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <CardTitle className="text-lg font-semibold text-gray-800">Basic Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -214,9 +218,9 @@ export default function InstitutionDetailPage() {
         </Card>
 
         {/* Type-Specific Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Institution Details</CardTitle>
+        <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+            <CardTitle className="text-lg font-semibold text-gray-800">Institution Details</CardTitle>
           </CardHeader>
           <CardContent>
             {institution.type === "MOSQUE" && institution.mosqueData && (
@@ -307,15 +311,15 @@ export default function InstitutionDetailPage() {
       )}
 
       {/* Assignments */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+      <Card className="shadow-md">
+        <CardHeader className="flex flex-row items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 border-b">
           <div>
-            <CardTitle>HR Assignments</CardTitle>
-            <CardDescription>Personnel assigned to this institution</CardDescription>
+            <CardTitle className="text-lg font-semibold text-gray-800">HR Assignments</CardTitle>
+            <CardDescription className="text-gray-600">Personnel assigned to this institution</CardDescription>
           </div>
           <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200">
                 <Plus className="h-4 w-4 mr-2" />
                 New Assignment
               </Button>
@@ -339,25 +343,25 @@ export default function InstitutionDetailPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="bg-gray-50">
+                <TableHead className="font-semibold text-gray-700">Employee</TableHead>
+                <TableHead className="font-semibold text-gray-700">Role</TableHead>
+                <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                <TableHead className="font-semibold text-gray-700">Start Date</TableHead>
+                <TableHead className="font-semibold text-gray-700">End Date</TableHead>
+                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {assignments?.items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No assignments yet
                   </TableCell>
                 </TableRow>
               ) : (
                 assignments?.items.map((assignment) => (
-                  <TableRow key={assignment.id}>
+                  <TableRow key={assignment.id} className="hover:bg-blue-50/50 transition-colors duration-150">
                     <TableCell>
                       <div>
                         <div className="font-medium">
@@ -391,6 +395,8 @@ export default function InstitutionDetailPage() {
                                   approved: true,
                                 })
                               }
+                              className="hover:bg-green-50 hover:text-green-600 transition-colors duration-200"
+                              title="Approve"
                             >
                               <CheckCircle className="h-4 w-4 text-green-600" />
                             </Button>
@@ -404,6 +410,8 @@ export default function InstitutionDetailPage() {
                                   rejectionReason: "Rejected by user",
                                 })
                               }
+                              className="hover:bg-red-50 hover:text-red-600 transition-colors duration-200"
+                              title="Reject"
                             >
                               <XCircle className="h-4 w-4 text-red-600" />
                             </Button>
@@ -423,6 +431,8 @@ export default function InstitutionDetailPage() {
                                 });
                               }
                             }}
+                            className="hover:bg-orange-50 hover:text-orange-600 transition-colors duration-200"
+                            title="End Assignment"
                           >
                             End
                           </Button>

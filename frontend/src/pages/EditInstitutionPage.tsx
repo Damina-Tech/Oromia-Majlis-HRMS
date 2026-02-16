@@ -141,10 +141,10 @@ export default function EditInstitutionPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Update institution details</CardDescription>
+        <Card className="shadow-md">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <CardTitle className="text-lg font-semibold text-gray-800">Basic Information</CardTitle>
+            <CardDescription className="text-gray-600">Update institution details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -259,9 +259,9 @@ export default function EditInstitutionPage() {
 
         {/* Type-specific fields */}
         {formData.type === "MOSQUE" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Mosque Details</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+              <CardTitle className="text-lg font-semibold text-gray-800">Mosque Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -310,9 +310,9 @@ export default function EditInstitutionPage() {
         )}
 
         {formData.type === "MADRASAH" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Madrasah Details</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+              <CardTitle className="text-lg font-semibold text-gray-800">Madrasah Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -360,9 +360,9 @@ export default function EditInstitutionPage() {
         )}
 
         {formData.type === "MARKAZ" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Markaz Details</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+              <CardTitle className="text-lg font-semibold text-gray-800">Markaz Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -400,10 +400,15 @@ export default function EditInstitutionPage() {
             type="button"
             variant="outline"
             onClick={() => navigate(`/majlis/institutions/${id}`)}
+            className="border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={updateMutation.isPending}>
+          <Button 
+            type="submit" 
+            disabled={updateMutation.isPending}
+            className="bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+          >
             <Save className="h-4 w-4 mr-2" />
             {updateMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>

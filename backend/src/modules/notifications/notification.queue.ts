@@ -32,7 +32,7 @@ function getRedisConnection(): IORedis | null {
 
   try {
     connection = new IORedis(redisUrl, {
-      maxRetriesPerRequest: null,
+  maxRetriesPerRequest: null,
       retryStrategy: (times) => {
         // Stop retrying after 3 attempts
         if (times > 3) {
@@ -43,14 +43,14 @@ function getRedisConnection(): IORedis | null {
       lazyConnect: true, // Don't connect immediately
       connectTimeout: 5000, // 5 second timeout
       enableReadyCheck: true,
-    });
+});
 
-    connection.on("error", (err) => {
+connection.on("error", (err) => {
       // Only log if it's not a connection refused (expected when Redis is down)
       if (!err.message.includes("ECONNREFUSED")) {
-        console.warn("⚠️  Redis connection error for notification queue:", err.message);
+  console.warn("⚠️  Redis connection error for notification queue:", err.message);
       }
-    });
+});
 
     connection.on("connect", () => {
       console.log("✅ Redis connected for notification queue");
@@ -94,7 +94,7 @@ function getNotificationQueue(): Queue | null {
   try {
     notificationQueue = new Queue(NOTIFICATION_QUEUE_NAME, {
       connection: conn,
-    });
+});
   } catch (err) {
     console.warn("⚠️  Failed to create notification queue:", err);
     return null;
@@ -116,7 +116,7 @@ function getNotificationQueueEvents(): QueueEvents | null {
   try {
     notificationQueueEvents = new QueueEvents(NOTIFICATION_QUEUE_NAME, {
       connection: conn,
-    });
+});
   } catch (err) {
     console.warn("⚠️  Failed to create notification queue events:", err);
     return null;
@@ -226,19 +226,19 @@ export async function enqueueNotificationDelivery(
 
   try {
     await queue.add(
-      "deliver",
-      { deliveryId },
-      {
-        attempts: 5,
-        backoff: {
-          type: "exponential",
-          delay: 60_000,
-        },
-        removeOnComplete: 1000,
-        removeOnFail: 1000,
-        ...options,
-      }
-    );
+    "deliver",
+    { deliveryId },
+    {
+      attempts: 5,
+      backoff: {
+        type: "exponential",
+        delay: 60_000,
+      },
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+      ...options,
+    }
+  );
   } catch (err) {
     console.warn("⚠️  Failed to enqueue notification, processing directly:", err);
     await processNotificationDeliveryDirectly(deliveryId);
@@ -302,9 +302,9 @@ export async function startNotificationWorker() {
   }
 
   try {
-    const worker = new Worker(
-      NOTIFICATION_QUEUE_NAME,
-      async (job) => {
+  const worker = new Worker(
+    NOTIFICATION_QUEUE_NAME,
+    async (job) => {
       const { deliveryId } = job.data as { deliveryId: string };
 
       const delivery = await prisma.notificationDelivery.findUnique({
@@ -390,36 +390,36 @@ export async function startNotificationWorker() {
           const queue = getNotificationQueue();
           if (queue) {
             await queue.add(
-              "deliver",
-              { deliveryId },
-              {
-                delay: Math.min(5, attempts) * 60_000,
-              }
-            );
+            "deliver",
+            { deliveryId },
+            {
+              delay: Math.min(5, attempts) * 60_000,
+            }
+          );
           }
         }
 
         throw error;
       }
     },
-      {
+    {
         connection: conn,
-        concurrency: 5,
-      }
+      concurrency: 5,
+    }
+  );
+
+  worker.on("failed", (job, err) => {
+    console.error(
+      `❌ Notification delivery failed for job ${job?.id ?? 'unknown'}:`,
+      err?.message
     );
+  });
 
-    worker.on("failed", (job, err) => {
-      console.error(
-        `❌ Notification delivery failed for job ${job?.id ?? 'unknown'}:`,
-        err?.message
-      );
-    });
+  worker.on("completed", (job) => {
+    console.log(`✅ Notification delivery completed for job ${job.id}`);
+  });
 
-    worker.on("completed", (job) => {
-      console.log(`✅ Notification delivery completed for job ${job.id}`);
-    });
-
-    return worker;
+  return worker;
   } catch (err: any) {
     console.warn("⚠️  Failed to start notification worker:", err?.message ?? err);
     return null;

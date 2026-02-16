@@ -80,17 +80,18 @@ export default function MajlisAssignmentsPage() {
   });
 
   const getStatusBadge = (status: AssignmentStatus) => {
-    const variants: Record<AssignmentStatus, "default" | "secondary" | "destructive" | "outline"> = {
-      ACTIVE: "default",
-      ENDED: "outline",
-      SUSPENDED: "destructive",
-      PENDING_APPROVAL: "secondary",
+    const statusConfig: Record<AssignmentStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }> = {
+      ACTIVE: { variant: "default", className: "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" },
+      ENDED: { variant: "outline", className: "bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200" },
+      SUSPENDED: { variant: "destructive", className: "bg-red-100 text-red-800 border-red-200 hover:bg-red-200" },
+      PENDING_APPROVAL: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200" },
     };
-    return <Badge variant={variants[status]}>{status.replace("_", " ")}</Badge>;
+    const config = statusConfig[status];
+    return <Badge variant={config.variant} className={config.className}>{status.replace("_", " ")}</Badge>;
   };
 
   const getRoleBadge = (role: InstitutionRole) => {
-    return <Badge variant="outline">{role.replace("_", " ")}</Badge>;
+    return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">{role.replace("_", " ")}</Badge>;
   };
 
   if (isLoading) {
@@ -160,20 +161,22 @@ export default function MajlisAssignmentsPage() {
 
       {/* Pending Approvals Alert */}
       {pendingAssignments.length > 0 && statusFilter === "ALL" && (
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-l-4 border-l-yellow-500 bg-gradient-to-r from-yellow-50 to-yellow-100 shadow-md">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-yellow-800">
-              <Clock className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-yellow-900">
+              <div className="h-10 w-10 rounded-full bg-yellow-500 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-white" />
+              </div>
               Pending Approvals ({pendingAssignments.length})
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-yellow-700">
               {pendingAssignments.length} assignment(s) require your approval
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button
-              variant="outline"
               onClick={() => setStatusFilter("PENDING_APPROVAL")}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white shadow-md hover:shadow-lg transition-all duration-200"
             >
               View Pending
             </Button>
@@ -182,33 +185,33 @@ export default function MajlisAssignmentsPage() {
       )}
 
       {/* Assignments Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Assignments ({data?.total || 0})</CardTitle>
+      <Card className="shadow-md">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
+          <CardTitle className="text-lg font-semibold text-gray-800">Assignments ({data?.total || 0})</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Institution</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="bg-gray-50">
+                <TableHead className="font-semibold text-gray-700">Employee</TableHead>
+                <TableHead className="font-semibold text-gray-700">Institution</TableHead>
+                <TableHead className="font-semibold text-gray-700">Role</TableHead>
+                <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                <TableHead className="font-semibold text-gray-700">Start Date</TableHead>
+                <TableHead className="font-semibold text-gray-700">End Date</TableHead>
+                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data?.items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No assignments found
                   </TableCell>
                 </TableRow>
               ) : (
                 data?.items.map((assignment) => (
-                  <TableRow key={assignment.id}>
+                  <TableRow key={assignment.id} className="hover:bg-blue-50/50 transition-colors duration-150">
                     <TableCell>
                       <div>
                         <div className="font-medium">
@@ -245,6 +248,8 @@ export default function MajlisAssignmentsPage() {
                           onClick={() =>
                             navigate(`/majlis/institutions/${assignment.institutionId}`)
                           }
+                          className="hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200"
+                          title="View Institution"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -259,6 +264,8 @@ export default function MajlisAssignmentsPage() {
                                   approved: true,
                                 })
                               }
+                              className="hover:bg-green-50 hover:text-green-600 transition-colors duration-200"
+                              title="Approve"
                             >
                               <CheckCircle className="h-4 w-4 text-green-600" />
                             </Button>
@@ -275,6 +282,8 @@ export default function MajlisAssignmentsPage() {
                                   });
                                 }
                               }}
+                              className="hover:bg-red-50 hover:text-red-600 transition-colors duration-200"
+                              title="Reject"
                             >
                               <XCircle className="h-4 w-4 text-red-600" />
                             </Button>
@@ -289,6 +298,8 @@ export default function MajlisAssignmentsPage() {
                                 endMutation.mutate(assignment.id);
                               }
                             }}
+                            className="hover:bg-orange-50 hover:text-orange-600 transition-colors duration-200"
+                            title="End Assignment"
                           >
                             End
                           </Button>

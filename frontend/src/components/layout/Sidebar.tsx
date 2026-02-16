@@ -337,6 +337,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       newExpandedItems.add('Announcements');
     } else if (location.pathname.startsWith('/tasks')) {
       newExpandedItems.add('Tasks');
+    } else if (location.pathname.startsWith('/majlis')) {
+      newExpandedItems.add('Majlis Institutions');
     }
     
     // Only update if the active submenu has changed
@@ -356,7 +358,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         (item === 'Expenses' && location.pathname.startsWith('/expenses')) ||
         (item === 'Documents' && location.pathname.startsWith('/documents')) ||
         (item === 'Announcements' && location.pathname.startsWith('/announcements')) ||
-        (item === 'Tasks' && location.pathname.startsWith('/tasks'))
+        (item === 'Tasks' && location.pathname.startsWith('/tasks')) ||
+        (item === 'Majlis Institutions' && location.pathname.startsWith('/majlis'))
       );
       
       // If clicking on the currently active submenu, keep it open (don't allow closing)

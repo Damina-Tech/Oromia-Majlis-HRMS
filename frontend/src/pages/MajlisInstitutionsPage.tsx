@@ -100,13 +100,14 @@ export default function MajlisInstitutionsPage() {
   };
 
   const getStatusBadge = (status: InstitutionStatus) => {
-    const variants: Record<InstitutionStatus, "default" | "secondary" | "destructive" | "outline"> = {
-      ACTIVE: "default",
-      UNDER_CONSTRUCTION: "secondary",
-      CLOSED: "destructive",
-      SUSPENDED: "outline",
+    const statusConfig: Record<InstitutionStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }> = {
+      ACTIVE: { variant: "default", className: "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" },
+      UNDER_CONSTRUCTION: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200" },
+      CLOSED: { variant: "destructive", className: "bg-red-100 text-red-800 border-red-200 hover:bg-red-200" },
+      SUSPENDED: { variant: "outline", className: "bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200" },
     };
-    return <Badge variant={variants[status]}>{status.replace("_", " ")}</Badge>;
+    const config = statusConfig[status];
+    return <Badge variant={config.variant} className={config.className}>{status.replace("_", " ")}</Badge>;
   };
 
   if (isLoading) {
@@ -125,13 +126,17 @@ export default function MajlisInstitutionsPage() {
           <p className="text-muted-foreground">Manage mosques, madrasahs, and markaz</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowMap(!showMap)}>
+          <Button 
+            variant="outline" 
+            onClick={() => setShowMap(!showMap)}
+            className="border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+          >
             <Map className="h-4 w-4 mr-2" />
             {showMap ? "Hide Map" : "Show Map"}
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200">
                 <Plus className="h-4 w-4 mr-2" />
                 New Institution
               </Button>
@@ -153,17 +158,17 @@ export default function MajlisInstitutionsPage() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="shadow-sm border-gray-200">
         <CardContent className="pt-6">
           <div className="flex gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Search institutions..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
+                  className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -203,25 +208,25 @@ export default function MajlisInstitutionsPage() {
       )}
 
       {/* Institutions Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Institutions ({data?.total || 0})</CardTitle>
+      <Card className="shadow-md">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
+          <CardTitle className="text-lg font-semibold text-gray-800">Institutions ({data?.total || 0})</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="bg-gray-50">
+                <TableHead className="font-semibold text-gray-700">Code</TableHead>
+                <TableHead className="font-semibold text-gray-700">Name</TableHead>
+                <TableHead className="font-semibold text-gray-700">Type</TableHead>
+                <TableHead className="font-semibold text-gray-700">Location</TableHead>
+                <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data?.items.map((institution) => (
-                <TableRow key={institution.id}>
+                <TableRow key={institution.id} className="hover:bg-blue-50/50 transition-colors duration-150">
                   <TableCell className="font-mono text-sm">
                     {institution.institutionCode}
                   </TableCell>
@@ -245,6 +250,8 @@ export default function MajlisInstitutionsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => navigate(`/majlis/institutions/${institution.id}`)}
+                        className="hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200"
+                        title="View Details"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -252,6 +259,8 @@ export default function MajlisInstitutionsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => navigate(`/majlis/institutions/${institution.id}/edit`)}
+                        className="hover:bg-green-50 hover:text-green-600 transition-colors duration-200"
+                        title="Edit Institution"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
