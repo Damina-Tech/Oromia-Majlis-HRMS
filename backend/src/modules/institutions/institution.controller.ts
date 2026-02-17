@@ -167,6 +167,7 @@ export async function createInstitution(req: Request, res: Response) {
     if (data.zoneId) institutionData.zone = { connect: { id: data.zoneId } };
     if (data.woredaId) institutionData.woreda = { connect: { id: data.woredaId } };
     if (data.kebeleId) institutionData.kebele = { connect: { id: data.kebeleId } };
+    if (data.kebeleName !== undefined) institutionData.kebeleName = data.kebeleName || null;
     
     const institution = await prisma.institution.create({
       data: institutionData,
@@ -340,6 +341,7 @@ export async function updateInstitution(req: Request, res: Response) {
     if (data.zoneId) updateData.zone = { connect: { id: data.zoneId } };
     if (data.woredaId) updateData.woreda = { connect: { id: data.woredaId } };
     if (data.kebeleId) updateData.kebele = { connect: { id: data.kebeleId } };
+    if (data.kebeleName !== undefined) updateData.kebeleName = data.kebeleName || null;
     
     const updated = await prisma.institution.update({
       where: { id },

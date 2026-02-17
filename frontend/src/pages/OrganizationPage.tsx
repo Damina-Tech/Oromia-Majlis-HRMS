@@ -362,8 +362,8 @@ const OrganizationPage: React.FC = () => {
           <div className="relative flex flex-col items-center py-6">
             {/* CEO Level */}
             <div className="relative z-20 bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-5 rounded-lg text-center shadow-lg min-w-[200px]">
-              <h3 className="font-bold text-lg">Mayor Office</h3>
-              <p className="text-sm opacity-90">City Administration</p>
+              <h3 className="font-bold text-lg">Oromia Majlis</h3>
+              <p className="text-sm opacity-90">Oromia Region</p>
             </div>
             
             {/* Connecting Lines Container */}

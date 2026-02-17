@@ -13,10 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Navigation, Loader2 } from "lucide-react";
 import {
   institutionsApi,
+  regionsApi,
   type Institution,
   type InstitutionType,
   type InstitutionStatus,
@@ -60,33 +62,125 @@ export default function EditInstitutionPage() {
     regionId: "",
     zoneId: "",
     woredaId: "",
-    kebeleId: "",
-    // Type-specific data
-    mosqueData: {} as any,
-    madrasahData: {} as any,
-    markazData: {} as any,
+    kebeleName: "",
+    mosqueData: {
+      capacity: undefined as number | undefined,
+      jummahAvailable: false,
+      womenPrayerSpace: false,
+      utilities: { water: false, electricity: false },
+    },
+    madrasahData: {
+      curriculumType: "INTEGRATED" as const,
+      gradeLevels: [] as ("PRIMARY" | "SECONDARY" | "PREPARATORY")[],
+      accreditationStatus: "NOT_ACCREDITED" as "ACCREDITED" | "PROVISIONALLY_ACCREDITED" | "NOT_ACCREDITED",
+      students: { male: undefined as number | undefined, female: undefined as number | undefined },
+      teachers: { islamic: undefined as number | undefined, science: undefined as number | undefined },
+      classrooms: undefined as number | undefined,
+      hasLabs: false,
+      hasLibrary: false,
+    },
+    markazData: {
+      disciplines: [] as ("QURAN" | "HADITH" | "TAFSIR" | "FIQH" | "AQEEDAH" | "TARBIYA" | "ARABIC")[],
+      studyLevels: [] as ("BEGINNER" | "INTERMEDIATE" | "ADVANCED")[],
+      daawahActivities: false,
+      students: undefined as number | undefined,
+      scholars: undefined as number | undefined,
+      hasBoarding: false,
+      hasLibrary: false,
+    },
   });
 
-  useEffect(() => {
-    if (institution) {
-      setFormData({
-        name: institution.name || "",
-        type: institution.type,
-        status: institution.status,
-        address: institution.address || "",
-        latitude: institution.latitude ? String(institution.latitude) : "",
-        longitude: institution.longitude ? String(institution.longitude) : "",
-        yearEstablished: institution.yearEstablished || new Date().getFullYear(),
-        ownershipStatus: institution.ownershipStatus || "MAJLIS_OWNED",
-        regionId: institution.regionId || "",
-        zoneId: institution.zoneId || "",
-        woredaId: institution.woredaId || "",
-        kebeleId: institution.kebeleId || "",
-        mosqueData: institution.mosqueData || {},
-        madrasahData: institution.madrasahData || {},
-        markazData: institution.markazData || {},
-      });
+  const { data: regions } = useQuery({
+    queryKey: ["regions"],
+    queryFn: () => regionsApi.list(),
+  });
+  const selectedRegion = regions?.find((r) => r.id === formData.regionId);
+  const selectedZone = selectedRegion?.zones?.find((z) => z.id === formData.zoneId);
+
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
     }
+    setIsGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setFormData((prev) => ({
+          ...prev,
+          latitude: latitude.toFixed(6),
+          longitude: longitude.toFixed(6),
+        }));
+        setIsGettingLocation(false);
+        toast.success("Location captured successfully");
+      },
+      (error) => {
+        setIsGettingLocation(false);
+        const messages: Record<number, string> = {
+          [error.PERMISSION_DENIED]: "Location access denied. Please enable location permissions.",
+          [error.POSITION_UNAVAILABLE]: "Location information unavailable.",
+          [error.TIMEOUT]: "Location request timed out.",
+        };
+        toast.error(messages[error.code] ?? "Failed to get location");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  useEffect(() => {
+    if (!institution) return;
+    const m = institution.mosqueData;
+    const mad = institution.madrasahData;
+    const mar = institution.markazData;
+    setFormData({
+      name: institution.name || "",
+      type: institution.type,
+      status: institution.status,
+      address: institution.address || "",
+      latitude: institution.latitude != null ? String(institution.latitude) : "",
+      longitude: institution.longitude != null ? String(institution.longitude) : "",
+      yearEstablished: institution.yearEstablished ?? new Date().getFullYear(),
+      ownershipStatus: institution.ownershipStatus || "MAJLIS_OWNED",
+      regionId: institution.regionId || institution.region?.id || "",
+      zoneId: institution.zoneId || institution.zone?.id || "",
+      woredaId: institution.woredaId || institution.woreda?.id || "",
+      kebeleName: institution.kebeleName || institution.kebele?.name || "",
+      mosqueData: {
+        capacity: m?.capacity,
+        jummahAvailable: m?.jummahAvailable ?? false,
+        womenPrayerSpace: m?.womenPrayerSpace ?? false,
+        utilities: {
+          water: m?.utilities?.water ?? false,
+          electricity: m?.utilities?.electricity ?? false,
+        },
+      },
+      madrasahData: {
+        curriculumType: mad?.curriculumType ?? "INTEGRATED",
+        gradeLevels: mad?.gradeLevels ?? [],
+        accreditationStatus: mad?.accreditationStatus ?? "NOT_ACCREDITED",
+        students: {
+          male: mad?.students?.male,
+          female: mad?.students?.female,
+        },
+        teachers: {
+          islamic: mad?.teachers?.islamic,
+          science: mad?.teachers?.science,
+        },
+        classrooms: mad?.classrooms,
+        hasLabs: mad?.hasLabs ?? false,
+        hasLibrary: mad?.hasLibrary ?? false,
+      },
+      markazData: {
+        disciplines: mar?.disciplines ?? [],
+        studyLevels: mar?.studyLevels ?? [],
+        daawahActivities: mar?.daawahActivities ?? false,
+        students: mar?.students,
+        scholars: mar?.scholars,
+        hasBoarding: mar?.hasBoarding ?? false,
+        hasLibrary: mar?.hasLibrary ?? false,
+      },
+    });
   }, [institution]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -97,7 +191,7 @@ export default function EditInstitutionPage() {
       name: formData.name,
       type: formData.type,
       status: formData.status,
-      address: formData.address,
+      address: formData.address || undefined,
       latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
       longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
       yearEstablished: formData.yearEstablished,
@@ -105,18 +199,53 @@ export default function EditInstitutionPage() {
       regionId: formData.regionId || undefined,
       zoneId: formData.zoneId || undefined,
       woredaId: formData.woredaId || undefined,
-      kebeleId: formData.kebeleId || undefined,
+      kebeleName: formData.kebeleName || undefined,
     };
 
     if (formData.type === "MOSQUE") {
-      submitData.mosqueData = formData.mosqueData;
+      submitData.mosqueData = {
+        ...formData.mosqueData,
+        capacity: formData.mosqueData.capacity ?? undefined,
+        utilities: {
+          water: formData.mosqueData.utilities.water || undefined,
+          electricity: formData.mosqueData.utilities.electricity || undefined,
+        },
+      };
     } else if (formData.type === "MADRASAH") {
-      submitData.madrasahData = formData.madrasahData;
+      submitData.madrasahData = {
+        ...formData.madrasahData,
+        gradeLevels: formData.madrasahData.gradeLevels,
+        students: {
+          male: formData.madrasahData.students.male ?? undefined,
+          female: formData.madrasahData.students.female ?? undefined,
+        },
+        teachers: {
+          islamic: formData.madrasahData.teachers.islamic ?? undefined,
+          science: formData.madrasahData.teachers.science ?? undefined,
+        },
+        classrooms: formData.madrasahData.classrooms ?? undefined,
+      };
     } else if (formData.type === "MARKAZ") {
-      submitData.markazData = formData.markazData;
+      submitData.markazData = {
+        ...formData.markazData,
+        disciplines: formData.markazData.disciplines,
+        studyLevels: formData.markazData.studyLevels,
+        students: formData.markazData.students ?? undefined,
+        scholars: formData.markazData.scholars ?? undefined,
+      };
     }
 
     updateMutation.mutate({ id, data: submitData });
+  };
+
+  const handleRegionChange = (regionId: string) => {
+    setFormData((prev) => ({ ...prev, regionId, zoneId: "", woredaId: "" }));
+  };
+  const handleZoneChange = (zoneId: string) => {
+    setFormData((prev) => ({ ...prev, zoneId, woredaId: "" }));
+  };
+  const handleWoredaChange = (woredaId: string) => {
+    setFormData((prev) => ({ ...prev, woredaId }));
   };
 
   if (isLoading) {
@@ -129,101 +258,75 @@ export default function EditInstitutionPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/majlis/institutions/${id}`)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">Edit Institution</h1>
-          <p className="text-muted-foreground">{institution.institutionCode}</p>
+      <div className="rounded-xl bg-gradient-to-br from-slate-800 via-slate-700 to-slate-800 text-white p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/majlis/institutions/${id}`)}
+              className="text-white/90 hover:text-white hover:bg-white/10 -ml-2"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Edit Institution</h1>
+              <p className="text-white/80 font-mono text-sm mt-0.5">{institution.institutionCode}</p>
+            </div>
+          </div>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="shadow-md">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+        <Card className="shadow-md border-gray-200 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b py-4">
             <CardTitle className="text-lg font-semibold text-gray-800">Basic Information</CardTitle>
-            <CardDescription className="text-gray-600">Update institution details</CardDescription>
+            <CardDescription className="text-gray-600">Name, type, status, and ownership</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <div>
               <Label>Institution Name *</Label>
               <Input
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 required
+                className="border-gray-300 focus:border-blue-500"
               />
             </div>
-
-            <div>
-              <Label>Type *</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(v) => setFormData({ ...formData, type: v as InstitutionType })}
-                disabled
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MOSQUE">Mosque</SelectItem>
-                  <SelectItem value="MADRASAH">Madrasah</SelectItem>
-                  <SelectItem value="MARKAZ">Markaz</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Type cannot be changed after creation</p>
-            </div>
-
-            <div>
-              <Label>Status *</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(v) => setFormData({ ...formData, status: v as InstitutionStatus })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ACTIVE">Active</SelectItem>
-                  <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
-                  <SelectItem value="CLOSED">Closed</SelectItem>
-                  <SelectItem value="SUSPENDED">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Address</Label>
-              <Textarea
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Latitude</Label>
-                <Input
-                  type="number"
-                  step="any"
-                  value={formData.latitude}
-                  onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                  placeholder="9.1450"
-                />
+                <Label>Type *</Label>
+                <Select value={formData.type} disabled>
+                  <SelectTrigger className="border-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MOSQUE">Mosque</SelectItem>
+                    <SelectItem value="MADRASAH">Madrasah</SelectItem>
+                    <SelectItem value="MARKAZ">Markaz</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">Type cannot be changed after creation</p>
               </div>
               <div>
-                <Label>Longitude</Label>
-                <Input
-                  type="number"
-                  step="any"
-                  value={formData.longitude}
-                  onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                  placeholder="38.7617"
-                />
+                <Label>Status *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, status: v as InstitutionStatus }))}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
+                    <SelectItem value="CLOSED">Closed</SelectItem>
+                    <SelectItem value="SUSPENDED">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label>Year Established</Label>
@@ -231,8 +334,12 @@ export default function EditInstitutionPage() {
                   type="number"
                   value={formData.yearEstablished}
                   onChange={(e) =>
-                    setFormData({ ...formData, yearEstablished: parseInt(e.target.value) })
+                    setFormData((prev) => ({
+                      ...prev,
+                      yearEstablished: e.target.value ? parseInt(e.target.value, 10) : new Date().getFullYear(),
+                    }))
                   }
+                  className="border-gray-300 focus:border-blue-500"
                 />
               </div>
               <div>
@@ -240,10 +347,10 @@ export default function EditInstitutionPage() {
                 <Select
                   value={formData.ownershipStatus}
                   onValueChange={(v) =>
-                    setFormData({ ...formData, ownershipStatus: v as OwnershipStatus })
+                    setFormData((prev) => ({ ...prev, ownershipStatus: v as OwnershipStatus }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -257,52 +364,230 @@ export default function EditInstitutionPage() {
           </CardContent>
         </Card>
 
+        <Card className="shadow-md border-gray-200 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b py-4">
+            <CardTitle className="text-lg font-semibold text-gray-800">Geographic Location</CardTitle>
+            <CardDescription className="text-gray-600">Region, zone, woreda, and GPS coordinates</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h3 className="font-medium text-gray-800">Location</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGetCurrentLocation}
+                disabled={isGettingLocation}
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                {isGettingLocation ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Getting location...
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="h-4 w-4 mr-2" />
+                    Use GPS location
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <Label>Region</Label>
+                <Select value={formData.regionId} onValueChange={handleRegionChange}>
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regions?.map((region) => (
+                      <SelectItem key={region.id} value={region.id}>
+                        {region.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Zone</Label>
+                <Select
+                  value={formData.zoneId}
+                  onValueChange={handleZoneChange}
+                  disabled={!formData.regionId}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
+                    <SelectValue placeholder="Select zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedRegion?.zones?.map((zone) => (
+                      <SelectItem key={zone.id} value={zone.id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Woreda</Label>
+                <Select
+                  value={formData.woredaId}
+                  onValueChange={handleWoredaChange}
+                  disabled={!formData.zoneId}
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
+                    <SelectValue placeholder="Select woreda" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedZone?.woredas?.map((woreda) => (
+                      <SelectItem key={woreda.id} value={woreda.id}>
+                        {woreda.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Kebele (optional – enter manually)</Label>
+              <Input
+                value={formData.kebeleName}
+                onChange={(e) => setFormData((prev) => ({ ...prev, kebeleName: e.target.value }))}
+                placeholder="e.g. Kebele 01, Bole"
+                className="border-gray-300 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <Label>Area / Address</Label>
+              <Textarea
+                value={formData.address}
+                onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
+                placeholder="Neighborhood or street details"
+                rows={2}
+                className="border-gray-300 focus:border-blue-500"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-gray-500" />
+                  Latitude
+                </Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={formData.latitude}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, latitude: e.target.value }))}
+                  placeholder="9.1450"
+                  className="border-gray-300 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-gray-500" />
+                  Longitude
+                </Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={formData.longitude}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, longitude: e.target.value }))}
+                  placeholder="38.7617"
+                  className="border-gray-300 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Type-specific fields */}
         {formData.type === "MOSQUE" && (
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+          <Card className="shadow-md border-gray-200 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b py-4">
               <CardTitle className="text-lg font-semibold text-gray-800">Mosque Details</CardTitle>
+              <CardDescription className="text-gray-600">Capacity, facilities, and utilities</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               <div>
                 <Label>Capacity (worshippers)</Label>
                 <Input
                   type="number"
-                  value={formData.mosqueData.capacity || ""}
+                  value={formData.mosqueData.capacity ?? ""}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      mosqueData: { ...formData.mosqueData, capacity: parseInt(e.target.value) },
-                    })
+                    setFormData((prev) => ({
+                      ...prev,
+                      mosqueData: {
+                        ...prev.mosqueData,
+                        capacity: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                      },
+                    }))
                   }
+                  className="border-gray-300 focus:border-blue-500"
                 />
               </div>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-6">
                 <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.mosqueData.jummahAvailable || false}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        mosqueData: { ...formData.mosqueData, jummahAvailable: e.target.checked },
-                      })
+                  <Checkbox
+                    id="jummah"
+                    checked={formData.mosqueData.jummahAvailable}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        mosqueData: { ...prev.mosqueData, jummahAvailable: checked === true },
+                      }))
                     }
                   />
-                  <Label>Friday Jummah Available</Label>
+                  <Label htmlFor="jummah" className="cursor-pointer">Friday Jummah available</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.mosqueData.womenPrayerSpace || false}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        mosqueData: { ...formData.mosqueData, womenPrayerSpace: e.target.checked },
-                      })
+                  <Checkbox
+                    id="women-space"
+                    checked={formData.mosqueData.womenPrayerSpace}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        mosqueData: { ...prev.mosqueData, womenPrayerSpace: checked === true },
+                      }))
                     }
                   />
-                  <Label>Women Prayer Space</Label>
+                  <Label htmlFor="women-space" className="cursor-pointer">Women prayer space</Label>
+                </div>
+              </div>
+              <div>
+                <Label className="mb-2 block">Utilities</Label>
+                <div className="flex flex-wrap gap-6">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="water"
+                      checked={formData.mosqueData.utilities.water}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          mosqueData: {
+                            ...prev.mosqueData,
+                            utilities: { ...prev.mosqueData.utilities, water: checked === true },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="water" className="cursor-pointer">Water</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="electricity"
+                      checked={formData.mosqueData.utilities.electricity}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          mosqueData: {
+                            ...prev.mosqueData,
+                            utilities: { ...prev.mosqueData.utilities, electricity: checked === true },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="electricity" className="cursor-pointer">Electricity</Label>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -310,49 +595,187 @@ export default function EditInstitutionPage() {
         )}
 
         {formData.type === "MADRASAH" && (
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+          <Card className="shadow-md border-gray-200 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b py-4">
               <CardTitle className="text-lg font-semibold text-gray-800">Madrasah Details</CardTitle>
+              <CardDescription className="text-gray-600">Accreditation, grades, students, teachers, and facilities</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
+              <div>
+                <Label>Accreditation status</Label>
+                <Select
+                  value={formData.madrasahData.accreditationStatus}
+                  onValueChange={(v) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      madrasahData: {
+                        ...prev.madrasahData,
+                        accreditationStatus: v as "ACCREDITED" | "PROVISIONALLY_ACCREDITED" | "NOT_ACCREDITED",
+                      },
+                    }))
+                  }
+                >
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACCREDITED">Accredited</SelectItem>
+                    <SelectItem value="PROVISIONALLY_ACCREDITED">Provisionally accredited</SelectItem>
+                    <SelectItem value="NOT_ACCREDITED">Not accredited</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Grade levels (select at least one)</Label>
+                <div className="border rounded-lg p-3 bg-white space-y-2">
+                  {(["PRIMARY", "SECONDARY", "PREPARATORY"] as const).map((level) => (
+                    <div key={level} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`madrasah-${level}`}
+                        checked={formData.madrasahData.gradeLevels.includes(level)}
+                        onCheckedChange={(checked) => {
+                          const current = formData.madrasahData.gradeLevels;
+                          setFormData((prev) => ({
+                            ...prev,
+                            madrasahData: {
+                              ...prev.madrasahData,
+                              gradeLevels: checked === true
+                                ? [...current, level]
+                                : current.filter((l) => l !== level),
+                            },
+                          }));
+                        }}
+                      />
+                      <Label htmlFor={`madrasah-${level}`} className="cursor-pointer capitalize">{level.toLowerCase()}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <Label>Number of Students (Male)</Label>
+                  <Label>Students (male)</Label>
                   <Input
                     type="number"
-                    value={formData.madrasahData.students?.male || ""}
+                    value={formData.madrasahData.students.male ?? ""}
                     onChange={(e) =>
-                      setFormData({
-                        ...formData,
+                      setFormData((prev) => ({
+                        ...prev,
                         madrasahData: {
-                          ...formData.madrasahData,
+                          ...prev.madrasahData,
                           students: {
-                            ...formData.madrasahData.students,
-                            male: parseInt(e.target.value),
+                            ...prev.madrasahData.students,
+                            male: e.target.value ? parseInt(e.target.value, 10) : undefined,
                           },
                         },
-                      })
+                      }))
                     }
+                    className="border-gray-300 focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <Label>Number of Students (Female)</Label>
+                  <Label>Students (female)</Label>
                   <Input
                     type="number"
-                    value={formData.madrasahData.students?.female || ""}
+                    value={formData.madrasahData.students.female ?? ""}
                     onChange={(e) =>
-                      setFormData({
-                        ...formData,
+                      setFormData((prev) => ({
+                        ...prev,
                         madrasahData: {
-                          ...formData.madrasahData,
+                          ...prev.madrasahData,
                           students: {
-                            ...formData.madrasahData.students,
-                            female: parseInt(e.target.value),
+                            ...prev.madrasahData.students,
+                            female: e.target.value ? parseInt(e.target.value, 10) : undefined,
                           },
                         },
-                      })
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <Label>Teachers (Islamic)</Label>
+                  <Input
+                    type="number"
+                    value={formData.madrasahData.teachers.islamic ?? ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        madrasahData: {
+                          ...prev.madrasahData,
+                          teachers: {
+                            ...prev.madrasahData.teachers,
+                            islamic: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                          },
+                        },
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <Label>Teachers (Science)</Label>
+                  <Input
+                    type="number"
+                    value={formData.madrasahData.teachers.science ?? ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        madrasahData: {
+                          ...prev.madrasahData,
+                          teachers: {
+                            ...prev.madrasahData.teachers,
+                            science: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                          },
+                        },
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <Label>Classrooms</Label>
+                  <Input
+                    type="number"
+                    value={formData.madrasahData.classrooms ?? ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        madrasahData: {
+                          ...prev.madrasahData,
+                          classrooms: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                        },
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-6">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="madrasah-labs"
+                    checked={formData.madrasahData.hasLabs}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        madrasahData: { ...prev.madrasahData, hasLabs: checked === true },
+                      }))
                     }
                   />
+                  <Label htmlFor="madrasah-labs" className="cursor-pointer">Has labs</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="madrasah-library"
+                    checked={formData.madrasahData.hasLibrary}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        madrasahData: { ...prev.madrasahData, hasLibrary: checked === true },
+                      }))
+                    }
+                  />
+                  <Label htmlFor="madrasah-library" className="cursor-pointer">Has library</Label>
                 </div>
               </div>
             </CardContent>
@@ -360,42 +783,146 @@ export default function EditInstitutionPage() {
         )}
 
         {formData.type === "MARKAZ" && (
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+          <Card className="shadow-md border-gray-200 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b py-4">
               <CardTitle className="text-lg font-semibold text-gray-800">Markaz Details</CardTitle>
+              <CardDescription className="text-gray-600">Disciplines, study levels, and facilities</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               <div>
-                <Label>Number of Students</Label>
-                <Input
-                  type="number"
-                  value={formData.markazData.students || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      markazData: { ...formData.markazData, students: parseInt(e.target.value) },
-                    })
-                  }
-                />
+                <Label>Islamic disciplines (select at least one)</Label>
+                <div className="border rounded-lg p-3 bg-white space-y-2">
+                  {(["QURAN", "HADITH", "TAFSIR", "FIQH", "AQEEDAH", "TARBIYA", "ARABIC"] as const).map((d) => (
+                    <div key={d} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`markaz-${d}`}
+                        checked={formData.markazData.disciplines.includes(d)}
+                        onCheckedChange={(checked) => {
+                          const current = formData.markazData.disciplines;
+                          setFormData((prev) => ({
+                            ...prev,
+                            markazData: {
+                              ...prev.markazData,
+                              disciplines: checked === true
+                                ? [...current, d]
+                                : current.filter((x) => x !== d),
+                            },
+                          }));
+                        }}
+                      />
+                      <Label htmlFor={`markaz-${d}`} className="cursor-pointer capitalize">{d.toLowerCase()}</Label>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
-                <Label>Number of Scholars</Label>
-                <Input
-                  type="number"
-                  value={formData.markazData.scholars || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      markazData: { ...formData.markazData, scholars: parseInt(e.target.value) },
-                    })
-                  }
-                />
+                <Label>Study levels (select at least one)</Label>
+                <div className="border rounded-lg p-3 bg-white space-y-2">
+                  {(["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const).map((level) => (
+                    <div key={level} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`markaz-level-${level}`}
+                        checked={formData.markazData.studyLevels.includes(level)}
+                        onCheckedChange={(checked) => {
+                          const current = formData.markazData.studyLevels;
+                          setFormData((prev) => ({
+                            ...prev,
+                            markazData: {
+                              ...prev.markazData,
+                              studyLevels: checked === true
+                                ? [...current, level]
+                                : current.filter((l) => l !== level),
+                            },
+                          }));
+                        }}
+                      />
+                      <Label htmlFor={`markaz-level-${level}`} className="cursor-pointer capitalize">{level.toLowerCase()}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Label>Number of students</Label>
+                  <Input
+                    type="number"
+                    value={formData.markazData.students ?? ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        markazData: {
+                          ...prev.markazData,
+                          students: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                        },
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <Label>Number of scholars</Label>
+                  <Input
+                    type="number"
+                    value={formData.markazData.scholars ?? ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        markazData: {
+                          ...prev.markazData,
+                          scholars: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                        },
+                      }))
+                    }
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-6">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="markaz-daawah"
+                    checked={formData.markazData.daawahActivities}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        markazData: { ...prev.markazData, daawahActivities: checked === true },
+                      }))
+                    }
+                  />
+                  <Label htmlFor="markaz-daawah" className="cursor-pointer">Da&apos;wah activities</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="markaz-boarding"
+                    checked={formData.markazData.hasBoarding}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        markazData: { ...prev.markazData, hasBoarding: checked === true },
+                      }))
+                    }
+                  />
+                  <Label htmlFor="markaz-boarding" className="cursor-pointer">Has boarding</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="markaz-library"
+                    checked={formData.markazData.hasLibrary}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        markazData: { ...prev.markazData, hasLibrary: checked === true },
+                      }))
+                    }
+                  />
+                  <Label htmlFor="markaz-library" className="cursor-pointer">Has library</Label>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 pt-4 border-t">
           <Button
             type="button"
             variant="outline"
@@ -404,8 +931,8 @@ export default function EditInstitutionPage() {
           >
             Cancel
           </Button>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={updateMutation.isPending}
             className="bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
           >

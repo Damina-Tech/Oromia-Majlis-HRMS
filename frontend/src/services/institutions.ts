@@ -94,6 +94,7 @@ export interface Institution {
   woreda?: Woreda;
   kebeleId?: string;
   kebele?: Kebele;
+  kebeleName?: string; // Manual kebele name (free text)
   latitude?: number;
   longitude?: number;
   address?: string;
@@ -223,10 +224,12 @@ export const institutionsApi = {
   create: async (data: {
     name: string;
     type: InstitutionType;
+    status?: InstitutionStatus;
     regionId?: string;
     zoneId?: string;
     woredaId?: string;
     kebeleId?: string;
+    kebeleName?: string;
     latitude?: number;
     longitude?: number;
     address?: string;

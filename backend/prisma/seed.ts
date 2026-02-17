@@ -2312,13 +2312,7 @@ async function seedLeads(
 async function seedMajlisInstitutions(adminUser: { id: string }) {
   console.log("🕌 Seeding Majlis Institutions...");
 
-  const existing = await prisma.institution.count();
-  if (existing > 0) {
-    console.log("ℹ️  Institutions already exist, skipping seed.");
-    return;
-  }
-
-  // Create sample regions, zones, woredas
+  // Always upsert geographic hierarchy (Oromia > East Hararge > woredas)
   const oromiaRegion = await prisma.region.upsert({
     where: { name: "Oromia" },
     update: {},
@@ -2338,6 +2332,44 @@ async function seedMajlisInstitutions(adminUser: { id: string }) {
     },
   });
 
+  // East Hararge Zone: all woredas (districts)
+  const eastHarargeWoredaNames = [
+    "Kombolcha",
+    "Jarso",
+    "Gursum",
+    "Babile",
+    "Fedis",
+    "Haro Maya",
+    "Kurfa Chele",
+    "Kersa",
+    "Meta",
+    "Goro Gutu",
+    "Deder",
+    "Melka Belo",
+    "Bedeno",
+    "Midga Tola",
+    "Chinaksan",
+    "Girawa",
+    "Gola Oda",
+    "Meyu",
+  ];
+
+  const woredaRecords: { id: string; name: string }[] = [];
+  for (let i = 0; i < eastHarargeWoredaNames.length; i++) {
+    const name = eastHarargeWoredaNames[i];
+    const woreda = await prisma.woreda.upsert({
+      where: { zoneId_name: { zoneId: eastHarargeZone.id, name } },
+      update: {},
+      create: {
+        name,
+        code: name.slice(0, 2).toUpperCase(),
+        zoneId: eastHarargeZone.id,
+      },
+    });
+    woredaRecords.push({ id: woreda.id, name: woreda.name });
+  }
+
+  // Keep Harar woreda for backward compatibility with existing sample institutions
   const hararWoreda = await prisma.woreda.upsert({
     where: { zoneId_name: { zoneId: eastHarargeZone.id, name: "Harar" } },
     update: {},
@@ -2357,6 +2389,12 @@ async function seedMajlisInstitutions(adminUser: { id: string }) {
       woredaId: hararWoreda.id,
     },
   });
+
+  const existing = await prisma.institution.count();
+  if (existing > 0) {
+    console.log("ℹ️  Institutions already exist, skipping sample institutions. Geographic hierarchy is up to date.");
+    return;
+  }
 
   // Sample institutions
   const institutions = [

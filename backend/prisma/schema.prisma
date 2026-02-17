@@ -2134,6 +2134,7 @@ model Institution {
   woreda            Woreda?            @relation(fields: [woredaId], references: [id])
   kebeleId          String?
   kebele            Kebele?           @relation(fields: [kebeleId], references: [id])
+  kebeleName        String?           // Manual kebele name when not selected from list
   
   // GPS coordinates
   latitude          Decimal?           @db.Decimal(10, 8)

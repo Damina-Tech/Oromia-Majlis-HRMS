@@ -70,6 +70,7 @@ export const CreateInstitutionDto = z.object({
   zoneId: z.string().optional(),
   woredaId: z.string().optional(),
   kebeleId: z.string().optional(),
+  kebeleName: z.string().optional(), // Manual kebele name (free text)
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   address: z.string().optional(),
