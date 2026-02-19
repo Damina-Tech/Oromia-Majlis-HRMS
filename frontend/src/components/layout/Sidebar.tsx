@@ -168,7 +168,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   // Check if user is EMPLOYEE role
   const isEmployee = user?.roles?.some(role => role.toUpperCase() === 'EMPLOYEE') || false;
 
+  const isHalalBusinessOnly = user?.roles?.some(r => r.toUpperCase() === 'HALAL_BUSINESS') &&
+    !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(r.toUpperCase()));
+
   const filteredMenuItems = menuItems.filter((item) => {
+    // Hide main Dashboard for HALAL_BUSINESS (their default is Halal dashboard)
+    if (item.title === 'Dashboard' && isHalalBusinessOnly) {
+      return false;
+    }
     // Hide Reports and Notifications for EMPLOYEE role
     if (isEmployee && (item.title === 'Reports' || item.title === 'Notifications')) {
       return false;

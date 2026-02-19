@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
@@ -8,6 +8,12 @@ import crypto from "crypto";
 const prisma = new PrismaClient();
 const router = Router();
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
+const RegisterHalalDto = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+});
 const ForgotPasswordDto = z.object({ email: z.string().email() });
 const ResetPasswordDto = z.object({ 
   token: z.string(), 
@@ -84,6 +90,83 @@ router.post("/login", async (req, res) => {
       avatarUrl
     } 
   });
+});
+
+// POST /api/v1/auth/register - Public self-registration for Halal Business Owners (Oromia Majlis website)
+router.post("/register", async (req, res) => {
+  try {
+    const dto = RegisterHalalDto.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({ where: { email: dto.email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already registered. Please log in instead." });
+    }
+
+    const halalBusinessRole = await prisma.role.findUnique({ where: { name: "HALAL_BUSINESS" } });
+    if (!halalBusinessRole) {
+      return res.status(500).json({ message: "Halal registration is not configured. Please contact support." });
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const newUser = await prisma.user.create({
+      data: {
+        email: dto.email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        status: "ACTIVE",
+        userRoles: {
+          create: [{ roleId: halalBusinessRole.id }],
+        },
+      },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                permissions: { include: { permission: true } },
+              },
+            },
+          },
+        },
+        employee: true,
+      },
+    });
+
+    const roles = newUser.userRoles.map((ur: any) => ur.role.name);
+    const permissionsSet = new Set<string>();
+    newUser.userRoles.forEach((ur: any) => {
+      ur.role.permissions.forEach((rp: any) => {
+        permissionsSet.add(rp.permission.name);
+      });
+    });
+    const permissions = Array.from(permissionsSet);
+
+    const accessToken = signAccess(newUser.id, roles, permissions, undefined);
+    const refreshToken = signRefresh(newUser.id, roles, permissions, undefined);
+    res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
+
+    res.status(201).json({
+      accessToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        roles,
+        permissions,
+        employeeId: null,
+        avatarUrl: null,
+      },
+      redirectTo: "/halal/dashboard",
+    });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({ message: error.errors?.[0]?.message ?? "Invalid input", errors: error.errors });
+    }
+    console.error("Register error:", error);
+    res.status(500).json({ message: "Registration failed" });
+  }
 });
 
 router.post("/refresh", async (req, res) => {

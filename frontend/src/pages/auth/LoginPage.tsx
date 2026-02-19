@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth, getLoginRedirect } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +29,8 @@ const LoginPage: React.FC = () => {
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,11 +39,13 @@ const LoginPage: React.FC = () => {
     try {
       const success = await login(email, password);
       if (success) {
+        const currentUser = JSON.parse(localStorage.getItem('hrms_user') || '{}');
+        const redirectTo = getLoginRedirect(currentUser, redirectParam || undefined);
         toast({
           title: "Login Successful",
           description: "Welcome to the HRMS dashboard!"
         });
-        navigate('/dashboard');
+        navigate(redirectTo);
       } else {
         toast({
           title: "Login Failed",

@@ -1,5 +1,23 @@
 import api from "./api";
 
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  user: { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[]; employeeId?: string; avatarUrl?: string | null };
+  redirectTo?: string;
+}
+
+export async function registerHalalBusiness(payload: RegisterPayload): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>("/auth/register", payload);
+  return data;
+}
+
 export async function forgotPassword(email: string) {
   const { data } = await api.post("/auth/forgot-password", { email });
   return data;

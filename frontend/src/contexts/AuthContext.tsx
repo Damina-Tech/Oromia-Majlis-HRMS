@@ -12,13 +12,26 @@ export interface User {
   avatarUrl?: string | null;
 }
 
+/** Default redirect path after login based on user role */
+export function getLoginRedirect(user: User, explicitRedirect?: string): string {
+  if (explicitRedirect && explicitRedirect.startsWith("/") && !explicitRedirect.startsWith("//")) {
+    return explicitRedirect;
+  }
+  if (user.roles?.includes("HALAL_BUSINESS") && user.permissions?.includes("halal.business")) {
+    return "/halal/dashboard";
+  }
+  return "/dashboard";
+}
+
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
+  register: (payload: { email: string; password: string; firstName: string; lastName: string }) => Promise<{ success: boolean; redirectTo?: string }>;
   loginWithSSO: (provider: string) => Promise<boolean>;
   logout: () => void;
   refreshUserData: () => Promise<boolean>;
   updateUserProfile: (patch: Partial<User>) => void;
+  storeAuthFromResponse: (accessToken: string, userData: { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[]; employeeId?: string; avatarUrl?: string | null }) => void;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
   isLoading: boolean;
@@ -118,30 +131,44 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     try {
       const response = await api.post('/auth/login', { email, password });
       const { accessToken, user: userData } = response.data;
-      
-      // Backend now returns permissions directly, no need to generate them
-      const user: User = {
-        id: userData.id,
-        email: userData.email,
-        firstName: userData.firstName || '',
-        lastName: userData.lastName || '',
-        roles: userData.roles || [],
-        permissions: userData.permissions || [], // Permissions from backend
-        employeeId: userData.employeeId,
-        avatarUrl: userData.avatarUrl ?? null,
-      };
-      
-      // Store token and complete user data (with permissions from backend)
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('hrms_user', JSON.stringify(user));
-      
-      setUser(user);
+      storeAuthFromResponse(accessToken, userData);
       setIsLoading(false);
       return true;
     } catch (error: any) {
       console.error('Login failed:', error);
       setIsLoading(false);
       return false;
+    }
+  };
+
+  const storeAuthFromResponse = (accessToken: string, userData: { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[]; employeeId?: string; avatarUrl?: string | null }) => {
+    const user: User = {
+      id: userData.id,
+      email: userData.email,
+      firstName: userData.firstName || '',
+      lastName: userData.lastName || '',
+      roles: userData.roles || [],
+      permissions: userData.permissions || [],
+      employeeId: userData.employeeId,
+      avatarUrl: userData.avatarUrl ?? null,
+    };
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('hrms_user', JSON.stringify(user));
+    setUser(user);
+  };
+
+  const register = async (payload: { email: string; password: string; firstName: string; lastName: string }): Promise<{ success: boolean; redirectTo?: string }> => {
+    setIsLoading(true);
+    try {
+      const response = await api.post('/auth/register', payload);
+      const { accessToken, user: userData, redirectTo } = response.data;
+      storeAuthFromResponse(accessToken, userData);
+      setIsLoading(false);
+      return { success: true, redirectTo };
+    } catch (error: any) {
+      console.error('Register failed:', error);
+      setIsLoading(false);
+      return { success: false };
     }
   };
 
@@ -171,10 +198,12 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
   const value = {
     user,
     login,
+    register,
     loginWithSSO,
     logout,
     refreshUserData,
     updateUserProfile,
+    storeAuthFromResponse,
     isAuthenticated: !!user,
     hasPermission,
     isLoading

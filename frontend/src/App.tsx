@@ -3,67 +3,68 @@ import { Toaster as SonnerToaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider, useAuth, getLoginRedirect } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeProvider";
 import Layout from "./components/layout/Layout";
 import "./i18n/config";
 
-import LoginPage from "./pages/LoginPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import Dashboard from "./pages/Dashboard";
-import EmployeesPage from "./pages/EmployeesPage";
-import AttendancePage from "./pages/AttendancePage";
-import AttendanceRecordsPage from "./pages/AttendanceRecordsPage";
-import LeaveManagement from "./pages/LeaveManagement";
-import LeaveBalancesPage from "./pages/LeaveBalancesPage";
-import LeaveRequestsPage from "./pages/LeaveRequestsPage";
-import PayrollPage from "./pages/PayrollPage";
-import PayrollRunsPage from "./pages/PayrollRunsPage";
-import PayrollRunItemsPage from "./pages/PayrollRunItemsPage";
-import SalaryGradesPage from "./pages/SalaryGradesPage";
-import LoansPage from "./pages/LoansPage";
-import AdvancesPage from "./pages/AdvancesPage";
-import AllowancesPage from "./pages/AllowancesPage";
-import TaxPensionPage from "./pages/TaxPensionPage";
-import EmployeeSalaryPortal from "./pages/EmployeeSalaryPortal";
-import OrganizationPage from "./pages/OrganizationPage";
-import TimesheetPage from "./pages/TimesheetPage";
-import AssetManagementPage from "./pages/AssetManagementPage";
-import AssetDashboardPage from "./pages/AssetDashboardPage";
-import AssetReportsPage from "./pages/AssetReportsPage";
-import DocumentTemplatesPage from "./pages/DocumentTemplatesPage";
-import DocumentGenerationPage from "./pages/DocumentGenerationPage";
-import DocumentSettingsPage from "./pages/DocumentSettingsPage";
-import DocumentRequestsPage from "./pages/DocumentRequestsPage";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import CreateAnnouncementPage from "./pages/CreateAnnouncementPage";
-import AnnouncementDetailPage from "./pages/AnnouncementDetailPage";
-import TasksKanbanPage from "./pages/TasksKanbanPage";
-import TasksListPage from "./pages/TasksListPage";
-import TaskDetailPage from "./pages/TaskDetailPage";
-import TasksDashboardPage from "./pages/TasksDashboardPage";
-import MyExpensesPage from "./pages/MyExpensesPage";
-import ExpenseApprovalQueuePage from "./pages/ExpenseApprovalQueuePage";
-import AllExpensesPage from "./pages/AllExpensesPage";
-import ExpenseDetailPage from "./pages/ExpenseDetailPage";
-import DocumentsPage from "./pages/DocumentsPage";
-import ReportsPage from "./pages/ReportsPage";
+import LoginPage from "./pages/auth/LoginPage";
+import ResetPasswordPage from "./pages/auth/ResetPasswordPage";
+import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
+import Dashboard from "./pages/dashboard/Dashboard";
+import EmployeesPage from "./pages/employees/EmployeesPage";
+import AttendancePage from "./pages/attendance/AttendancePage";
+import AttendanceRecordsPage from "./pages/attendance/AttendanceRecordsPage";
+import LeaveManagement from "./pages/leave/LeaveManagement";
+import LeaveBalancesPage from "./pages/leave/LeaveBalancesPage";
+import LeaveRequestsPage from "./pages/leave/LeaveRequestsPage";
+import PayrollPage from "./pages/payroll/PayrollPage";
+import PayrollRunsPage from "./pages/payroll/PayrollRunsPage";
+import PayrollRunItemsPage from "./pages/payroll/PayrollRunItemsPage";
+import SalaryGradesPage from "./pages/payroll/SalaryGradesPage";
+import LoansPage from "./pages/payroll/LoansPage";
+import AdvancesPage from "./pages/payroll/AdvancesPage";
+import AllowancesPage from "./pages/payroll/AllowancesPage";
+import TaxPensionPage from "./pages/payroll/TaxPensionPage";
+import EmployeeSalaryPortal from "./pages/payroll/EmployeeSalaryPortal";
+import OrganizationPage from "./pages/organization/OrganizationPage";
+import TimesheetPage from "./pages/timesheet/TimesheetPage";
+import AssetManagementPage from "./pages/assets/AssetManagementPage";
+import AssetDashboardPage from "./pages/assets/AssetDashboardPage";
+import AssetReportsPage from "./pages/assets/AssetReportsPage";
+import DocumentTemplatesPage from "./pages/documents/DocumentTemplatesPage";
+import DocumentGenerationPage from "./pages/documents/DocumentGenerationPage";
+import DocumentSettingsPage from "./pages/documents/DocumentSettingsPage";
+import DocumentRequestsPage from "./pages/documents/DocumentRequestsPage";
+import AnnouncementsPage from "./pages/announcements/AnnouncementsPage";
+import CreateAnnouncementPage from "./pages/announcements/CreateAnnouncementPage";
+import AnnouncementDetailPage from "./pages/announcements/AnnouncementDetailPage";
+import TasksKanbanPage from "./pages/tasks/TasksKanbanPage";
+import TasksListPage from "./pages/tasks/TasksListPage";
+import TaskDetailPage from "./pages/tasks/TaskDetailPage";
+import TasksDashboardPage from "./pages/tasks/TasksDashboardPage";
+import MyExpensesPage from "./pages/expenses/MyExpensesPage";
+import ExpenseApprovalQueuePage from "./pages/expenses/ExpenseApprovalQueuePage";
+import AllExpensesPage from "./pages/expenses/AllExpensesPage";
+import ExpenseDetailPage from "./pages/expenses/ExpenseDetailPage";
+import DocumentsPage from "./pages/documents/DocumentsPage";
+import ReportsPage from "./pages/reports/ReportsPage";
 import ReportBuilder from "./components/reports/ReportBuilder";
 import ReportViewer from "./components/reports/ReportViewer";
-import OnboardingPage from "./pages/OnboardingPage";
-import NotificationsPage from "./pages/NotificationsPage";
-import UsersPage from "./pages/UsersPage";
-import SettingsPage from "./pages/SettingsPage";
-import ProfilePage from "./pages/ProfilePage";
-import NotFound from "./pages/NotFound";
-import LeadsPage from "./pages/LeadsPage";
-import LeadDetailPage from "./pages/LeadDetailPage";
-import MajlisInstitutionsPage from "./pages/MajlisInstitutionsPage";
-import MajlisDashboardPage from "./pages/MajlisDashboardPage";
-import InstitutionDetailPage from "./pages/InstitutionDetailPage";
-import EditInstitutionPage from "./pages/EditInstitutionPage";
-import MajlisAssignmentsPage from "./pages/MajlisAssignmentsPage";
-import MajlisReportsPage from "./pages/MajlisReportsPage";
+import OnboardingPage from "./pages/onboarding/OnboardingPage";
+import NotificationsPage from "./pages/notifications/NotificationsPage";
+import UsersPage from "./pages/admin/UsersPage";
+import SettingsPage from "./pages/admin/SettingsPage";
+import ProfilePage from "./pages/profile/ProfilePage";
+import NotFound from "./pages/common/NotFound";
+import LeadsPage from "./pages/leads/LeadsPage";
+import LeadDetailPage from "./pages/leads/LeadDetailPage";
+import MajlisInstitutionsPage from "./pages/majlis/MajlisInstitutionsPage";
+import MajlisDashboardPage from "./pages/majlis/MajlisDashboardPage";
+import InstitutionDetailPage from "./pages/majlis/InstitutionDetailPage";
+import EditInstitutionPage from "./pages/majlis/EditInstitutionPage";
+import MajlisAssignmentsPage from "./pages/majlis/MajlisAssignmentsPage";
+import MajlisReportsPage from "./pages/majlis/MajlisReportsPage";
 import HalalDashboardPage from "./pages/halal/HalalDashboardPage";
 import HalalRegisterPage from "./pages/halal/HalalRegisterPage";
 import HalalApplyPage from "./pages/halal/HalalApplyPage";
@@ -104,9 +105,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Dashboard: redirect HALAL_BUSINESS to Halal dashboard
+function DashboardOrRedirect() {
+  const { user } = useAuth();
+  const isHalalBusiness = user?.roles?.some((r) => r.toUpperCase() === "HALAL_BUSINESS");
+  if (isHalalBusiness) {
+    return <Navigate to="/halal/dashboard" replace />;
+  }
+  return <Dashboard />;
+}
+
 // Public Route Component (redirects to dashboard if authenticated)
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -128,7 +139,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     <>{children}</>
   ) : (
     <Navigate
-      to="/dashboard"
+      to={user ? getLoginRedirect(user) : "/dashboard"}
       replace
       data-id="k95po2qvw"
       data-path="src/App.tsx"
@@ -171,6 +182,9 @@ function AppRoutes() {
         }
       />
 
+      {/* Oromia Majlis auth callback: receives token from fragment/query, stores auth, redirects */}
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
       {/* Public: Halal certificate verification (no auth required) */}
       <Route path="/verify/halal" element={<VerifyHalalPage />} />
       <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
@@ -186,12 +200,7 @@ function AppRoutes() {
         data-id="40tdjnt43"
         data-path="src/App.tsx"
       >
-        <Route
-          path="dashboard"
-          element={<Dashboard data-id="2qf7vwrd4" data-path="src/App.tsx" />}
-          data-id="uyypx0ak2"
-          data-path="src/App.tsx"
-        />
+        <Route path="dashboard" element={<DashboardOrRedirect />} />
         <Route
           path="employees"
           element={

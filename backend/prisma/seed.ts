@@ -117,6 +117,7 @@ async function seedPermissions() {
     HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view", "halal.business", "halal.review", "halal.inspector"],
     MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve", "majlis.institutions.read", "majlis.assignments.read", "majlis.dashboard.view"],
     EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
+    HALAL_BUSINESS: ["dashboard.view", "profile.read", "profile.write", "halal.business"],
   };
 
   for (const role of roles) {
@@ -142,7 +143,7 @@ async function main() {
   console.log("Starting database seeding...");
 
   // Create roles
-  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE"];
+  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS"];
   for (const name of roles) {
     await prisma.role.upsert({ 
       where: { name }, 
