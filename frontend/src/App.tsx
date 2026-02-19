@@ -64,6 +64,16 @@ import InstitutionDetailPage from "./pages/InstitutionDetailPage";
 import EditInstitutionPage from "./pages/EditInstitutionPage";
 import MajlisAssignmentsPage from "./pages/MajlisAssignmentsPage";
 import MajlisReportsPage from "./pages/MajlisReportsPage";
+import HalalDashboardPage from "./pages/halal/HalalDashboardPage";
+import HalalRegisterPage from "./pages/halal/HalalRegisterPage";
+import HalalApplyPage from "./pages/halal/HalalApplyPage";
+import HalalCertificatesPage from "./pages/halal/HalalCertificatesPage";
+import AdminHalalApplicationsPage from "./pages/halal/AdminHalalApplicationsPage";
+import HalalApplicationDetailPage from "./pages/halal/HalalApplicationDetailPage";
+import HalalInspectionAssignmentPage from "./pages/halal/HalalInspectionAssignmentPage";
+import HalalRenewalPage from "./pages/halal/HalalRenewalPage";
+import HalalViolationPage from "./pages/halal/HalalViolationPage";
+import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
 
 const queryClient = new QueryClient();
 
@@ -161,6 +171,10 @@ function AppRoutes() {
         }
       />
 
+      {/* Public: Halal certificate verification (no auth required) */}
+      <Route path="/verify/halal" element={<VerifyHalalPage />} />
+      <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
+
       {/* Protected Routes */}
       <Route
         path="/*"
@@ -194,6 +208,15 @@ function AppRoutes() {
         <Route path="majlis/institutions/:id" element={<InstitutionDetailPage />} />
         <Route path="majlis/assignments" element={<MajlisAssignmentsPage />} />
         <Route path="majlis/reports" element={<MajlisReportsPage />} />
+        <Route path="halal/dashboard" element={<HalalDashboardPage />} />
+        <Route path="halal/register" element={<HalalRegisterPage />} />
+        <Route path="halal/apply" element={<HalalApplyPage />} />
+        <Route path="halal/certificates" element={<HalalCertificatesPage />} />
+        <Route path="halal/renew" element={<HalalRenewalPage />} />
+        <Route path="admin/halal/applications" element={<AdminHalalApplicationsPage />} />
+        <Route path="admin/halal/applications/:id" element={<HalalApplicationDetailPage />} />
+        <Route path="admin/halal/inspections" element={<HalalInspectionAssignmentPage />} />
+        <Route path="admin/halal/violations" element={<HalalViolationPage />} />
         <Route
           path="attendance"
           element={

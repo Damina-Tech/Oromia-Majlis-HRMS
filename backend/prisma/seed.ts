@@ -78,6 +78,12 @@ async function seedPermissions() {
     { name: "majlis.assignments.write", module: "majlis", action: "assignments.write", description: "Create/Edit assignments" },
     { name: "majlis.assignments.approve", module: "majlis", action: "assignments.approve", description: "Approve assignments" },
     { name: "majlis.dashboard.view", module: "majlis", action: "dashboard.view", description: "View Majlis dashboard" },
+    { name: "halal.business", module: "halal", action: "business", description: "Register business and apply for certification" },
+    { name: "halal.inspector", module: "halal", action: "inspector", description: "Perform inspections" },
+    { name: "halal.review", module: "halal", action: "review", description: "Review applications" },
+    { name: "halal.admin", module: "halal", action: "admin", description: "Full halal certification control and final approval" },
+    { name: "halal.approve", module: "halal", action: "approve", description: "Approve/reject applications" },
+    { name: "halal.renew", module: "halal", action: "renew", description: "Process renewals" },
   ];
 
   // Create all permissions
@@ -108,7 +114,7 @@ async function seedPermissions() {
 
   // Assign permissions to other roles
   const rolePermissions = {
-    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view"],
+    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view", "halal.business", "halal.review", "halal.inspector"],
     MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve", "majlis.institutions.read", "majlis.assignments.read", "majlis.dashboard.view"],
     EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
   };
@@ -311,6 +317,7 @@ async function main() {
 
   // Seed Majlis institutions
   await seedMajlisInstitutions(admin);
+  await seedHalalCertification(admin);
 
   // Create additional department manager (Finance Department)
   const financeManagerEmail = "finance.manager@ciro.gov.et";
@@ -2484,6 +2491,111 @@ async function seedMajlisInstitutions(adminUser: { id: string }) {
   }
 
   console.log(`✅ Seeded ${institutions.length} Majlis institutions`);
+}
+
+async function seedHalalCertification(adminUser: { id: string }) {
+  console.log("🥩 Seeding Halal Certification...");
+
+  const oromiaRegion = await prisma.region.findFirst({ where: { name: "Oromia" } });
+  if (!oromiaRegion) {
+    console.log("ℹ️  Skipping Halal seed: Regions not found. Run Majlis seed first.");
+    return;
+  }
+
+  const eastHarargeZone = await prisma.zone.findFirst({
+    where: { regionId: oromiaRegion.id, name: "East Hararge" },
+  });
+  if (!eastHarargeZone) {
+    console.log("ℹ️  Skipping Halal seed: Zones not found.");
+    return;
+  }
+
+  const hararWoreda = await prisma.woreda.findFirst({
+    where: { zoneId: eastHarargeZone.id, name: "Harar" },
+  });
+  if (!hararWoreda) {
+    console.log("ℹ️  Skipping Halal seed: Woredas not found.");
+    return;
+  }
+
+  const existingBiz = await prisma.halalBusiness.count();
+  if (existingBiz > 0) {
+    console.log("ℹ️  Halal businesses already exist, skipping.");
+    return;
+  }
+
+  const business = await prisma.halalBusiness.create({
+    data: {
+      name: "Ethiopian Halal Foods PLC",
+      category: "FOOD",
+      contactName: "Ahmed Mohammed",
+      contactEmail: "ahmed@ethiohalalfoods.et",
+      contactPhone: "+251911234567",
+      userId: adminUser.id,
+      regionId: oromiaRegion.id,
+      zoneId: eastHarargeZone.id,
+      woredaId: hararWoreda.id,
+      kebeleName: "Kebele 03",
+      latitude: new Prisma.Decimal(9.0320),
+      longitude: new Prisma.Decimal(38.7469),
+      address: "Bole Road, Addis Ababa",
+    },
+  });
+
+  const application = await prisma.halalApplication.create({
+    data: {
+      businessId: business.id,
+      status: "SUBMITTED",
+      submittedAt: new Date(),
+      productList: [
+        { name: "Halal Beef", description: "Processed halal beef products" },
+        { name: "Halal Chicken", description: "Frozen halal chicken" },
+      ],
+      ingredients: [
+        { name: "Beef", source: "Local farms", halalStatus: "Certified" },
+        { name: "Spices", source: "Verified suppliers", halalStatus: "Verified" },
+      ],
+      supplierInfo: [
+        { name: "Oromia Livestock", certification: "Halal certified" },
+      ],
+    },
+  });
+
+  const inspectorUser = await prisma.user.findFirst({ where: { email: "admin@ciro.gov.et" } });
+  if (inspectorUser) {
+    await prisma.halalInspection.create({
+      data: {
+        applicationId: application.id,
+        inspectorId: inspectorUser.id,
+        scheduledAt: new Date(),
+        completedAt: new Date(),
+        checklistData: { hygiene: "PASS", storage: "PASS", processing: "PASS" },
+        evidence: [],
+        gpsLat: new Prisma.Decimal(9.0320),
+        gpsLng: new Prisma.Decimal(38.7469),
+        notes: "Initial inspection completed successfully.",
+      },
+    });
+
+    await prisma.halalApplication.update({
+      where: { id: application.id },
+      data: { status: "APPROVED", approvedById: adminUser.id, approvedAt: new Date() },
+    });
+
+    const expiresAt = new Date();
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    const cert = await prisma.halalCertificate.create({
+      data: {
+        applicationId: application.id,
+        certificateId: "HAL-2025-0001",
+        issuedAt: new Date(),
+        expiresAt,
+        status: "VALID",
+      },
+    });
+  }
+
+  console.log("✅ Seeded Halal certification demo data");
 }
 
 main()

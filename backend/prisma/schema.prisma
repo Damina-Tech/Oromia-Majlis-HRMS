@@ -65,6 +65,11 @@ model User {
   institutionsApproved             Institution[]           @relation("InstitutionApprovedBy")
   assignmentsApproved              InstitutionAssignment[] @relation("AssignmentApprovedBy")
   institutionAuditLogs             InstitutionAuditLog[]   @relation("InstitutionAuditActor")
+  halalBusinesses                  HalalBusiness[]
+  halalInspectionsPerformed        HalalInspection[]      @relation("HalalInspector")
+  halalApplicationsReviewed        HalalApplication[]      @relation("HalalReviewer")
+  halalApplicationsApproved        HalalApplication[]      @relation("HalalApprover")
+  halalAuditLogs                   HalalAuditLog[]
 }
 
 model Role {
@@ -2064,13 +2069,14 @@ enum InstitutionAuditAction {
 
 // Geographic Hierarchy
 model Region {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  code      String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  zones     Zone[]
-  institutions Institution[]
+  id             String          @id @default(cuid())
+  name           String          @unique
+  code           String?         @unique
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  zones          Zone[]
+  institutions   Institution[]
+  halalBusinesses HalalBusiness[]
 }
 
 model Zone {
@@ -2081,8 +2087,9 @@ model Zone {
   region    Region  @relation(fields: [regionId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  woredas  Woreda[]
-  institutions Institution[]
+  woredas         Woreda[]
+  institutions    Institution[]
+  halalBusinesses HalalBusiness[]
 
   @@unique([regionId, name])
   @@index([regionId])
@@ -2096,8 +2103,9 @@ model Woreda {
   zone      Zone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  kebeles   Kebele[]
-  institutions Institution[]
+  kebeles         Kebele[]
+  institutions    Institution[]
+  halalBusinesses HalalBusiness[]
 
   @@unique([zoneId, name])
   @@index([zoneId])
@@ -2111,7 +2119,7 @@ model Kebele {
   woreda    Woreda  @relation(fields: [woredaId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  institutions Institution[]
+  institutions    Institution[]
 
   @@unique([woredaId, name])
   @@index([woredaId])
@@ -2219,5 +2227,193 @@ model InstitutionAuditLog {
   @@index([action])
 }
 
-// Extend User model with new relations
-// (Adding to existing User model relations)
+// ============================================
+// Halal Certification Module
+// ============================================
+
+enum HalalBusinessCategory {
+  FOOD
+  DRINKS
+  COSMETICS
+  MEDICINE
+  RESTAURANT
+  FACTORY
+  SLAUGHTERHOUSE
+}
+
+enum HalalApplicationStatus {
+  DRAFT
+  SUBMITTED
+  REVIEW
+  INSPECTION
+  APPROVED
+  REJECTED
+}
+
+enum HalalCertificateStatus {
+  VALID
+  EXPIRED
+  REVOKED
+  SUSPENDED
+}
+
+enum HalalAuditAction {
+  BUSINESS_REGISTERED
+  APPLICATION_CREATED
+  APPLICATION_SUBMITTED
+  APPLICATION_REVIEWED
+  INSPECTION_ASSIGNED
+  INSPECTION_COMPLETED
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  CERTIFICATE_ISSUED
+  CERTIFICATE_RENEWED
+  CERTIFICATE_REVOKED
+  VIOLATION_RECORDED
+}
+
+model HalalBusiness {
+  id            String               @id @default(cuid())
+  name          String
+  category      HalalBusinessCategory
+  licenseUrl    String?              // Path to uploaded license
+  contactName   String
+  contactEmail  String
+  contactPhone  String
+  userId        String               // Business owner (User)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  regionId      String?
+  region        Region?              @relation(fields: [regionId], references: [id])
+  zoneId        String?
+  zone          Zone?               @relation(fields: [zoneId], references: [id])
+  woredaId      String?
+  woreda        Woreda?             @relation(fields: [woredaId], references: [id])
+  kebeleName    String?
+  latitude      Decimal?             @db.Decimal(10, 8)
+  longitude     Decimal?             @db.Decimal(11, 8)
+  address       String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  applications  HalalApplication[]
+
+  @@index([userId])
+  @@index([category])
+  @@index([regionId])
+}
+
+model HalalApplication {
+  id              String                 @id @default(cuid())
+  businessId      String
+  business        HalalBusiness          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status          HalalApplicationStatus @default(DRAFT)
+  productList     Json?                   // [{ name, description }]
+  ingredients     Json?                   // [{ name, source, halalStatus }]
+  supplierInfo    Json?                   // [{ name, certification }]
+  documents       Json?                   // [{ name, url, type }]
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewer        User?                  @relation("HalalReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  approvedById    String?
+  approver        User?                  @relation("HalalApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  inspections     HalalInspection[]
+  certificate     HalalCertificate?
+  auditLogs       HalalAuditLog[]
+
+  @@index([businessId])
+  @@index([status])
+}
+
+model HalalInspection {
+  id            String         @id @default(cuid())
+  applicationId String
+  application   HalalApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  inspectorId   String
+  inspector     User           @relation("HalalInspector", fields: [inspectorId], references: [id])
+  scheduledAt   DateTime?
+  completedAt   DateTime?
+  checklistData Json?          // Category-based checklist results
+  evidence      Json?          // [{ url, type: "photo"|"video" }]
+  gpsLat        Decimal?       @db.Decimal(10, 8)
+  gpsLng        Decimal?       @db.Decimal(11, 8)
+  digitalSignature String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([applicationId])
+  @@index([inspectorId])
+}
+
+model HalalCertificate {
+  id            String              @id @default(cuid())
+  certificateId String              @unique // Auto: HAL-YYYY-NNNN
+  applicationId String              @unique
+  application   HalalApplication   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  pdfUrl        String?
+  qrCode        String?             // QR data or stored image path
+  issuedAt      DateTime           @default(now())
+  expiresAt     DateTime
+  status        HalalCertificateStatus @default(VALID)
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  renewals      HalalRenewal[]
+  violations    HalalViolation[]
+
+  @@index([certificateId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model HalalRenewal {
+  id            String         @id @default(cuid())
+  certificateId String
+  certificate   HalalCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  renewedAt     DateTime       @default(now())
+  previousExpiry DateTime
+  newExpiry     DateTime
+  status        String         // PENDING, APPROVED, REJECTED
+  createdAt     DateTime       @default(now())
+
+  @@index([certificateId])
+}
+
+model HalalViolation {
+  id            String           @id @default(cuid())
+  certificateId String
+  certificate   HalalCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  description   String
+  severity      String           // MINOR, MAJOR, CRITICAL
+  recordedAt    DateTime         @default(now())
+  resolvedAt    DateTime?
+  action        String?          // WARNING, SUSPENSION, REVOCATION
+
+  @@index([certificateId])
+}
+
+model HalalAuditLog {
+  id            String         @id @default(cuid())
+  action        HalalAuditAction
+  actorId       String
+  actor         User           @relation(fields: [actorId], references: [id])
+  entityType    String         // Business, Application, Inspection, Certificate
+  entityId      String?
+  applicationId String?
+  application   HalalApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  oldValue     Json?
+  newValue     Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime       @default(now())
+
+  @@index([actorId])
+  @@index([applicationId])
+  @@index([action])
+  @@index([createdAt])
+}

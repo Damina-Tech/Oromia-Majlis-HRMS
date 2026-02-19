@@ -27,6 +27,7 @@ import {
   CheckSquare,
   Handshake,
   Landmark,
+  ShieldCheck,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -57,6 +58,13 @@ const menuItems = [
   icon: Landmark,
   href: '/majlis/institutions',
   permission: 'majlis.institutions.read',
+  submenu: true,
+},
+{
+  title: 'Halal Certification',
+  icon: ShieldCheck,
+  href: '/halal/dashboard',
+  permission: 'halal.business', // also show for halal.admin, halal.inspector, halal.review - checked in filteredMenuItems
   submenu: true,
 },
 {
@@ -168,6 +176,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     // Always show items with '*' permission (for authenticated users)
     if (item.permission === '*') {
       return true;
+    }
+    // Halal Certification: show for any halal permission
+    if (item.title === 'Halal Certification') {
+      return (
+        hasPermission('halal.business') ||
+        hasPermission('halal.admin') ||
+        hasPermission('halal.inspector') ||
+        hasPermission('halal.review') ||
+        hasPermission('halal.renew')
+      );
     }
     // Check specific permission
     return hasPermission(item.permission);
@@ -298,6 +316,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     expenseSubmenuItems.push({ title: 'All Expenses', href: '/expenses/all', permission: 'expense.view_all' });
   }
 
+  // Halal Certification submenu items
+  const halalSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.review') || hasPermission('halal.renew')) {
+    halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Register', href: '/halal/register', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Apply', href: '/halal/apply', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
+    if (hasPermission('halal.admin') || hasPermission('halal.renew')) {
+      halalSubmenuItems.push({ title: 'Renew', href: '/halal/renew', permission: 'halal.renew' });
+    }
+    if (hasPermission('halal.admin') || hasPermission('halal.review') || hasPermission('halal.inspector')) {
+      halalSubmenuItems.push({ title: 'Applications', href: '/admin/halal/applications', permission: 'halal.admin' });
+    }
+    if (hasPermission('halal.admin') || hasPermission('halal.inspector')) {
+      halalSubmenuItems.push({ title: 'Assign Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
+    }
+    if (hasPermission('halal.admin')) {
+      halalSubmenuItems.push({ title: 'Violations', href: '/admin/halal/violations', permission: 'halal.admin' });
+    }
+  }
+
   // Majlis Institutions submenu items
   const majlisSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
   
@@ -339,6 +378,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       newExpandedItems.add('Tasks');
     } else if (location.pathname.startsWith('/majlis')) {
       newExpandedItems.add('Majlis Institutions');
+    } else if (location.pathname.startsWith('/halal') || location.pathname.startsWith('/admin/halal')) {
+      newExpandedItems.add('Halal Certification');
     }
     
     // Only update if the active submenu has changed
@@ -359,7 +400,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         (item === 'Documents' && location.pathname.startsWith('/documents')) ||
         (item === 'Announcements' && location.pathname.startsWith('/announcements')) ||
         (item === 'Tasks' && location.pathname.startsWith('/tasks')) ||
-        (item === 'Majlis Institutions' && location.pathname.startsWith('/majlis'))
+        (item === 'Majlis Institutions' && location.pathname.startsWith('/majlis')) ||
+        (item === 'Halal Certification' && (location.pathname.startsWith('/halal') || location.pathname.startsWith('/admin/halal')))
       );
       
       // If clicking on the currently active submenu, keep it open (don't allow closing)
@@ -389,7 +431,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
           </div>
           {!isCollapsed &&
           <div data-id="vhsmmnm2b" data-path="src/components/layout/Sidebar.tsx">
-              <h1 className="text-lg font-bold text-gray-900" data-id="00zu1xik0" data-path="src/components/layout/Sidebar.tsx">Chiro HRMS</h1>
+              <h1 className="text-lg font-bold text-gray-900" data-id="00zu1xik0" data-path="src/components/layout/Sidebar.tsx">Oromia Majlis HRMS</h1>
               <p className="text-xs text-gray-500" data-id="fix24iosm" data-path="src/components/layout/Sidebar.tsx">Portal</p>
             </div>
           }
@@ -757,6 +799,49 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
                       {majlisSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isHalal = item.title === 'Halal Certification';
+            const isHalalPage = location.pathname.startsWith('/halal') || location.pathname.startsWith('/admin/halal');
+            if (isHalal && halalSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isHalalPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {halalSubmenuItems.map((subItem) => (
                         <NavLink
                           key={subItem.href}
                           to={subItem.href}

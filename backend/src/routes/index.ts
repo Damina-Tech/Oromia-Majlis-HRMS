@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { requireAuth, hasPermission, hasAnyPermission } from "../middleware/auth.js";
 import authRoutes from "../modules/auth/auth.routes.js";
 import usersRoutes from "../modules/users/users.routes.js";
@@ -20,6 +20,7 @@ import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
 import institutionRoutes from "../modules/institutions/institution.routes.js";
+import halalRoutes from "../modules/halal/halal.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -85,5 +86,8 @@ router.use(
   requireAuth,
   institutionRoutes
 );
+
+// Halal certification - some routes public (verify), most require auth
+router.use("/v1/halal", halalRoutes);
 
 export default router;

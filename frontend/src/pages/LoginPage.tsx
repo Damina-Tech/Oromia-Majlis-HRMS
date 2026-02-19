@@ -168,15 +168,15 @@ const LoginPage: React.FC = () => {
           <div className="mx-auto h-16 w-16 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl flex items-center justify-center mb-4" data-id="wkufmetdd" data-path="src/pages/LoginPage.tsx">
             <Building2 className="h-8 w-8 text-white" data-id="famyievx9" data-path="src/pages/LoginPage.tsx" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900" data-id="5gnil7qud" data-path="src/pages/LoginPage.tsx">Chiro HRMS Portal</h1>
+          <h1 className="text-3xl font-bold text-gray-900" data-id="5gnil7qud" data-path="src/pages/LoginPage.tsx">Oromia Majlis HRMS Portal</h1>
           <p className="text-gray-600 mt-2" data-id="51tyo77m1" data-path="src/pages/LoginPage.tsx">Sign in to your account</p>
         </div>
 
-        <Card className="shadow-lg" data-id="nn7m6b787" data-path="src/pages/LoginPage.tsx">
+        <Card className="shadow-lg" data-id="nn7m6b787" data-path="src/pages/LoginPage.tsx">      
           <CardHeader data-id="p34dd2tkz" data-path="src/pages/LoginPage.tsx">
             <CardTitle data-id="q4zut3pka" data-path="src/pages/LoginPage.tsx">Sign In</CardTitle>
             <CardDescription data-id="uhnm8n78z" data-path="src/pages/LoginPage.tsx">
-              Enter your credentials to access the Chiro HRMS system
+              Enter your credentials to access the Oromia Majlis HRMS system
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6" data-id="1mt5nb4b9" data-path="src/pages/LoginPage.tsx">
@@ -273,7 +273,7 @@ const LoginPage: React.FC = () => {
 
         {/* Additional Info */}
         <div className="text-center text-xs text-gray-500" data-id="7bfqzi4e3" data-path="src/pages/LoginPage.tsx">
-          <p data-id="rsplyivqd" data-path="src/pages/LoginPage.tsx">© 2025 Chiro HRMS Portal. All rights reserved.</p>
+          <p data-id="rsplyivqd" data-path="src/pages/LoginPage.tsx">© 2025 Oromia Majlis HRMS Portal. All rights reserved.</p>
           <p data-id="5nmpf7z9b" data-path="src/pages/LoginPage.tsx">Powered by Damina Tech</p>
         </div>
       </div>
