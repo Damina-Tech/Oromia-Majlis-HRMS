@@ -63,6 +63,7 @@ export default function AdminHalalApplicationsPage() {
                 <TableRow>
                   <TableHead>Business</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead>Submitted</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -72,6 +73,15 @@ export default function AdminHalalApplicationsPage() {
                   <TableRow key={a.id}>
                     <TableCell className="font-medium">{a.business?.name ?? "—"}</TableCell>
                     <TableCell><Badge>{a.status}</Badge></TableCell>
+                    <TableCell>
+                      {a.status === "DRAFT" ? (
+                        "—"
+                      ) : a.feePaidAt ? (
+                        <span className="text-green-600 text-sm">Paid</span>
+                      ) : (
+                        <span className="text-amber-600 text-sm">Pending</span>
+                      )}
+                    </TableCell>
                     <TableCell>{a.submittedAt ? new Date(a.submittedAt).toLocaleDateString() : "—"}</TableCell>
                     <TableCell>
                       <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/halal/applications/${a.id}`)}>
@@ -95,6 +105,8 @@ export default function AdminHalalApplicationsPage() {
                   <p className="font-medium">{a.business?.name ?? "—"}</p>
                   <p className="text-sm text-muted-foreground">
                     {a.submittedAt ? new Date(a.submittedAt).toLocaleDateString() : "—"}
+                    {a.status !== "DRAFT" &&
+                      (a.feePaidAt ? " • Paid" : " • Fee pending")}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

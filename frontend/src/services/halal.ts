@@ -49,6 +49,8 @@ export interface HalalApplication {
   businessId: string;
   business?: HalalBusiness;
   status: HalalApplicationStatus;
+  feeAmount?: number | string;
+  feePaidAt?: string | null;
   productList?: { name: string; description?: string }[];
   ingredients?: { name: string; source?: string; halalStatus?: string }[];
   supplierInfo?: { name: string; certification?: string }[];
@@ -109,6 +111,7 @@ export const halalApi = {
     get: (id: string) => api.get<HalalBusiness>(`/halal/businesses/${id}`).then((r) => r.data),
     create: (data: Partial<HalalBusiness>) => api.post<HalalBusiness>("/halal/businesses", data).then((r) => r.data),
     update: (id: string, data: Partial<HalalBusiness>) => api.patch<HalalBusiness>(`/halal/businesses/${id}`, data).then((r) => r.data),
+    delete: (id: string) => api.delete(`/halal/businesses/${id}`),
     uploadLicense: (id: string, file: File) => {
       const form = new FormData();
       form.append("license", file);
@@ -122,7 +125,9 @@ export const halalApi = {
     create: (data: { businessId: string; productList?: any; ingredients?: any; supplierInfo?: any; documents?: any }) =>
       api.post<HalalApplication>("/halal/applications", data).then((r) => r.data),
     update: (id: string, data: Partial<HalalApplication>) => api.patch<HalalApplication>(`/halal/applications/${id}`, data).then((r) => r.data),
+    delete: (id: string) => api.delete(`/halal/applications/${id}`),
     submit: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/submit`).then((r) => r.data),
+    confirmPayment: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/confirm-payment`).then((r) => r.data),
     approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
   },

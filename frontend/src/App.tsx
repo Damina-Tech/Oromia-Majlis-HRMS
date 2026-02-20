@@ -67,11 +67,17 @@ import MajlisAssignmentsPage from "./pages/majlis/MajlisAssignmentsPage";
 import MajlisReportsPage from "./pages/majlis/MajlisReportsPage";
 import HalalDashboardPage from "./pages/halal/HalalDashboardPage";
 import HalalRegisterPage from "./pages/halal/HalalRegisterPage";
+import HalalRegisterFormPage from "./pages/halal/HalalRegisterFormPage";
+import HalalBusinessDetailPage from "./pages/halal/HalalBusinessDetailPage";
 import HalalApplyPage from "./pages/halal/HalalApplyPage";
+import HalalApplyFormPage from "./pages/halal/HalalApplyFormPage";
 import HalalCertificatesPage from "./pages/halal/HalalCertificatesPage";
+import HalalMyApplicationDetailPage from "./pages/halal/HalalMyApplicationDetailPage";
 import AdminHalalApplicationsPage from "./pages/halal/AdminHalalApplicationsPage";
 import HalalApplicationDetailPage from "./pages/halal/HalalApplicationDetailPage";
 import HalalInspectionAssignmentPage from "./pages/halal/HalalInspectionAssignmentPage";
+import HalalInspectionCompletePage from "./pages/halal/HalalInspectionCompletePage";
+import HalalMyInspectionsPage from "./pages/halal/HalalMyInspectionsPage";
 import HalalRenewalPage from "./pages/halal/HalalRenewalPage";
 import HalalViolationPage from "./pages/halal/HalalViolationPage";
 import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
@@ -219,12 +225,20 @@ function AppRoutes() {
         <Route path="majlis/reports" element={<MajlisReportsPage />} />
         <Route path="halal/dashboard" element={<HalalDashboardPage />} />
         <Route path="halal/register" element={<HalalRegisterPage />} />
+        <Route path="halal/register/new" element={<HalalRegisterFormPage />} />
+        <Route path="halal/register/:id/edit" element={<HalalRegisterFormPage />} />
+        <Route path="halal/businesses/:id" element={<HalalBusinessDetailPage />} />
         <Route path="halal/apply" element={<HalalApplyPage />} />
+        <Route path="halal/apply/new" element={<HalalApplyFormPage />} />
+        <Route path="halal/apply/:id/edit" element={<HalalApplyFormPage />} />
         <Route path="halal/certificates" element={<HalalCertificatesPage />} />
+        <Route path="halal/applications/:id" element={<HalalMyApplicationDetailPage />} />
         <Route path="halal/renew" element={<HalalRenewalPage />} />
         <Route path="admin/halal/applications" element={<AdminHalalApplicationsPage />} />
         <Route path="admin/halal/applications/:id" element={<HalalApplicationDetailPage />} />
         <Route path="admin/halal/inspections" element={<HalalInspectionAssignmentPage />} />
+        <Route path="admin/halal/inspections/:id/complete" element={<HalalInspectionCompletePage />} />
+        <Route path="admin/halal/my-inspections" element={<HalalMyInspectionsPage />} />
         <Route path="admin/halal/violations" element={<HalalViolationPage />} />
         <Route
           path="attendance"

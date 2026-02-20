@@ -6,12 +6,15 @@ import {
   listInspectors,
   getBusiness,
   updateBusiness,
+  deleteBusiness,
   uploadBusinessLicense,
   createApplication,
   listApplications,
   getApplication,
   updateApplication,
+  deleteApplication,
   submitApplication,
+  confirmPayment,
   approveApplication,
   assignInspection,
   listInspections,
@@ -36,6 +39,7 @@ router.post("/businesses", requireAuth, registerBusiness);
 router.get("/businesses", requireAuth, listBusinesses);
 router.get("/businesses/:id", requireAuth, getBusiness);
 router.patch("/businesses/:id", requireAuth, updateBusiness);
+router.delete("/businesses/:id", requireAuth, deleteBusiness);
 router.post(
   "/businesses/:id/license",
   requireAuth,
@@ -48,7 +52,9 @@ router.post("/applications", requireAuth, createApplication);
 router.get("/applications", requireAuth, listApplications);
 router.get("/applications/:id", requireAuth, getApplication);
 router.patch("/applications/:id", requireAuth, updateApplication);
+router.delete("/applications/:id", requireAuth, deleteApplication);
 router.post("/applications/:id/submit", requireAuth, submitApplication);
+router.post("/applications/:id/confirm-payment", requireAuth, confirmPayment);
 
 // Admin: approve (halal.admin or similar)
 router.post("/applications/:id/approve", requireAuth, hasAnyPermission("halal.admin", "halal.approve"), approveApplication);

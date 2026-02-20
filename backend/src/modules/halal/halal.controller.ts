@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, HalalApplicationStatus, HalalCertificateStatus, HalalAuditAction } from "@prisma/client";
+import { Prisma, PrismaClient, HalalApplicationStatus, HalalCertificateStatus, HalalAuditAction } from "@prisma/client";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
   CreateHalalBusinessDto,
@@ -160,13 +160,56 @@ export async function uploadBusinessLicense(req: Request, res: Response) {
   }
 }
 
+export async function deleteBusiness(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const biz = await prisma.halalBusiness.findUnique({
+      where: { id },
+      include: { _count: { select: { applications: true } } },
+    });
+    if (!biz) return res.status(404).json({ message: "Business not found" });
+    if (biz.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    if (biz._count.applications > 0) {
+      return res.status(400).json({
+        message: "Cannot delete a business that has applications. Withdraw or complete all applications first.",
+      });
+    }
+    await prisma.halalBusiness.delete({ where: { id } });
+    res.status(204).send();
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to delete business" });
+  }
+}
+
 // ========== Applications ==========
 export async function createApplication(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const data = CreateHalalApplicationDto.parse(req.body);
+    // One active application per business (exclude REJECTED - they can reapply)
+    const existing = await prisma.halalApplication.findFirst({
+      where: {
+        businessId: data.businessId,
+        status: { not: HalalApplicationStatus.REJECTED },
+      },
+    });
+    if (existing) {
+      return res.status(400).json({
+        message: "This business already has an active Halal certification application. Complete or withdraw the existing application before submitting a new one.",
+      });
+    }
+    const createData: Prisma.HalalApplicationCreateInput = {
+      business: { connect: { id: data.businessId } },
+      status: HalalApplicationStatus.DRAFT,
+      feeAmount: new Prisma.Decimal(DEFAULT_CERTIFICATION_FEE),
+      productList: data.productList && data.productList.length > 0 ? data.productList : undefined,
+      ingredients: data.ingredients && data.ingredients.length > 0 ? data.ingredients : undefined,
+      supplierInfo: data.supplierInfo && data.supplierInfo.length > 0 ? data.supplierInfo : undefined,
+      documents: data.documents && data.documents.length > 0 ? data.documents : undefined,
+    };
     const app = await prisma.halalApplication.create({
-      data: { ...data, status: HalalApplicationStatus.DRAFT },
+      data: createData,
       include: { business: { include: { region: true, zone: true, woreda: true } } },
     });
     await createAuditLog(HalalAuditAction.APPLICATION_CREATED, userId, "HalalApplication", app.id, app.id, undefined, app, req.ip, req.get("user-agent"));
@@ -204,8 +247,13 @@ export async function listApplications(req: Request, res: Response) {
   }
 }
 
+const DEFAULT_CERTIFICATION_FEE = 500;
+
 export async function getApplication(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review") || perms?.includes("halal.inspector");
     const { id } = req.params;
     const app = await prisma.halalApplication.findUnique({
       where: { id },
@@ -216,6 +264,9 @@ export async function getApplication(req: Request, res: Response) {
       },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
+    if (!isAdmin && app.business.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
     res.json(app);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get application" });
@@ -234,6 +285,54 @@ export async function updateApplication(req: Request, res: Response) {
     res.json(app);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to update application" });
+  }
+}
+
+export async function deleteApplication(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    if (app.status !== HalalApplicationStatus.DRAFT) {
+      return res.status(400).json({
+        message: "Only draft applications can be deleted. Submitted or processed applications cannot be removed.",
+      });
+    }
+    await prisma.halalApplication.delete({ where: { id } });
+    res.status(204).send();
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to delete application" });
+  }
+}
+
+export async function confirmPayment(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    if (app.status !== HalalApplicationStatus.SUBMITTED) {
+      return res.status(400).json({ message: "Payment can only be confirmed for submitted applications" });
+    }
+    if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: { feePaidAt: new Date() },
+      include: { business: true },
+    });
+    await createAuditLog(HalalAuditAction.APPLICATION_SUBMITTED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    res.json(updated);
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to confirm payment" });
   }
 }
 

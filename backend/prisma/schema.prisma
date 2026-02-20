@@ -2306,6 +2306,8 @@ model HalalApplication {
   businessId      String
   business        HalalBusiness          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   status          HalalApplicationStatus @default(DRAFT)
+  feeAmount       Decimal?               @db.Decimal(12, 2) // Certification fee (e.g. 500 ETB)
+  feePaidAt       DateTime?              // When payment was confirmed
   productList     Json?                   // [{ name, description }]
   ingredients     Json?                   // [{ name, source, halalStatus }]
   supplierInfo    Json?                   // [{ name, certification }]

@@ -135,7 +135,7 @@ export default function HalalDashboardPage() {
                       <p className="font-medium">{b.name}</p>
                       <p className="text-sm text-muted-foreground">{b.category.replace("_", " ")}</p>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate("/halal/apply", { state: { businessId: b.id } }); }}>
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate("/halal/apply/new", { state: { businessId: b.id } }); }}>
                       Apply
                     </Button>
                   </li>
@@ -155,18 +155,33 @@ export default function HalalDashboardPage() {
               <p className="text-muted-foreground text-sm py-4">No applications yet.</p>
             ) : (
               <ul className="space-y-2">
-                {applications?.items?.slice(0, 5).map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
-                    onClick={() => navigate(`/halal/applications/${a.id}`)}
-                  >
-                    <div>
-                      <p className="font-medium">{a.business?.name ?? a.businessId}</p>
-                      <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
-                    </div>
-                  </li>
-                ))}
+                {applications?.items?.slice(0, 5).map((a) => {
+                  const nextAction =
+                    a.status === "DRAFT"
+                      ? "Submit"
+                      : a.status === "SUBMITTED" && !a.feePaidAt
+                        ? "Pay fee"
+                        : a.status === "APPROVED"
+                          ? "Download certificate"
+                          : null;
+                  return (
+                    <li
+                      key={a.id}
+                      className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
+                      onClick={() => navigate(`/halal/applications/${a.id}`)}
+                    >
+                      <div>
+                        <p className="font-medium">{a.business?.name ?? a.businessId}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                          {nextAction && (
+                            <span className="text-xs text-muted-foreground">→ {nextAction}</span>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>

@@ -338,6 +338,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     }
     if (hasPermission('halal.admin') || hasPermission('halal.inspector')) {
       halalSubmenuItems.push({ title: 'Assign Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
+      halalSubmenuItems.push({ title: 'My Inspections', href: '/admin/halal/my-inspections', permission: 'halal.inspector' });
     }
     if (hasPermission('halal.admin')) {
       halalSubmenuItems.push({ title: 'Violations', href: '/admin/halal/violations', permission: 'halal.admin' });

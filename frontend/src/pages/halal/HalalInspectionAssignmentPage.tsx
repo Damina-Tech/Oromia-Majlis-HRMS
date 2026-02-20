@@ -1,6 +1,6 @@
 "use client";
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,10 +19,16 @@ import { toast } from "sonner";
 
 export default function HalalInspectionAssignmentPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const [applicationId, setApplicationId] = useState("");
+  const preselectedAppId = (location.state as any)?.applicationId;
+  const [applicationId, setApplicationId] = useState(preselectedAppId || "");
   const [inspectorId, setInspectorId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
+
+  useEffect(() => {
+    if (preselectedAppId) setApplicationId(preselectedAppId);
+  }, [preselectedAppId]);
 
   const { data: applications, isLoading: loadingApps } = useQuery({
     queryKey: ["halal-applications-assignable"],
@@ -115,6 +121,8 @@ export default function HalalInspectionAssignmentPage() {
                   {assignableApps.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.business?.name ?? a.businessId} — {a.status}
+                      {a.status === "SUBMITTED" &&
+                        (a.feePaidAt ? " • Fee paid" : " • Fee pending")}
                     </SelectItem>
                   ))}
                   {assignableApps.length === 0 && !loadingApps && (

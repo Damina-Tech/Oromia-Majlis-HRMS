@@ -22,6 +22,7 @@ import {
   Building2,
   UserPlus,
   ExternalLink,
+  CreditCard,
 } from "lucide-react";
 import { halalApi, type HalalApplication } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,9 +70,14 @@ export default function HalalApplicationDetailPage() {
     },
   });
 
+  const hasCompletedInspection =
+    application?.inspections?.some((i) => i.completedAt != null) ?? false;
   const canApprove =
     application &&
-    ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status);
+    ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status) &&
+    hasCompletedInspection;
+  const canReject =
+    application && ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status);
   const isApproved = application?.status === "APPROVED";
   const isRejected = application?.status === "REJECTED";
 
@@ -103,31 +109,38 @@ export default function HalalApplicationDetailPage() {
           <Badge className={STATUS_COLORS[app.status] ?? "bg-gray-500"}>
             {app.status}
           </Badge>
+          {canReject && !canApprove && (
+            <span className="text-xs text-muted-foreground">
+              Complete an inspection before approving
+            </span>
+          )}
           {canApprove && (
-            <>
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => setApproveOpen(true)}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Approve
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => setRejectOpen(true)}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject
-              </Button>
-            </>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => setApproveOpen(true)}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Approve
+            </Button>
+          )}
+          {canReject && (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setRejectOpen(true)}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Reject
+            </Button>
           )}
           {["SUBMITTED", "REVIEW", "INSPECTION"].includes(app.status) && (
             <Button
               size="sm"
               variant="outline"
-              onClick={() => navigate("/admin/halal/inspections")}
+              onClick={() =>
+                navigate("/admin/halal/inspections", { state: { applicationId: app.id } })
+              }
             >
               <UserPlus className="h-4 w-4 mr-2" />
               Assign inspection
@@ -135,6 +148,27 @@ export default function HalalApplicationDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Payment status */}
+      {app.status !== "DRAFT" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" /> Certification fee
+            </CardTitle>
+            <CardDescription>
+              Fee: {app.feeAmount != null ? Number(app.feeAmount) : 500} ETB
+              {app.feePaidAt ? (
+                <span className="ml-2 text-green-600">
+                  • Paid on {new Date(app.feePaidAt).toLocaleDateString()}
+                </span>
+              ) : (
+                <span className="ml-2 text-amber-600">• Payment pending</span>
+              )}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Business info */}
       <Card>
@@ -256,7 +290,16 @@ export default function HalalApplicationDetailPage() {
                     {ins.completedAt ? (
                       <Badge variant="default">Completed</Badge>
                     ) : (
-                      <Badge variant="secondary">Pending</Badge>
+                      <>
+                        <Badge variant="secondary">Pending</Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/admin/halal/inspections/${ins.id}/complete`)}
+                        >
+                          Complete
+                        </Button>
+                      </>
                     )}
                   </div>
                 </li>
@@ -285,7 +328,7 @@ export default function HalalApplicationDetailPage() {
             <CardTitle>Certificate</CardTitle>
             <CardDescription>{app.certificate.certificateId}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex gap-2">
             <Button
               variant="outline"
               onClick={() =>
@@ -293,6 +336,14 @@ export default function HalalApplicationDetailPage() {
               }
             >
               View certificate
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                halalApi.certificates.download(app.certificate!.id, app.certificate!.certificateId)
+              }
+            >
+              Download PDF
             </Button>
           </CardContent>
         </Card>
