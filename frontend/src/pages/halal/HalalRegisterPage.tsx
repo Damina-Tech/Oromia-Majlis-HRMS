@@ -21,19 +21,33 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ArrowLeft, Building2, Loader2, Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Building2, Loader2, Plus, Eye, Pencil, Trash2, Search } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+const BUSINESS_STATUS_COLORS: Record<string, string> = {
+  PENDING_APPROVAL: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  APPROVED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+const BUSINESS_STATUS_LABELS: Record<string, string> = {
+  PENDING_APPROVAL: "Pending Approval",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+};
 
 export default function HalalRegisterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: businessesData, isLoading } = useQuery({
-    queryKey: ["halal-businesses"],
-    queryFn: () => halalApi.businesses.list({ limit: 100 }),
+    queryKey: ["halal-businesses", searchQuery],
+    queryFn: () => halalApi.businesses.list({ limit: 100, search: searchQuery || undefined }),
   });
   const businesses = businessesData?.items ?? [];
 
@@ -49,30 +63,45 @@ export default function HalalRegisterPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/halal/dashboard")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Register Business</h1>
-            <p className="text-muted-foreground text-sm">Manage your registered businesses</p>
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500/10 to-transparent dark:from-emerald-600/20 border border-emerald-200/50 dark:border-emerald-800/30 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/halal/dashboard")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Register Business</h1>
+              <p className="text-muted-foreground text-sm">Manage your registered businesses</p>
+            </div>
           </div>
+          <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/halal/register/new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            Register Business
+          </Button>
         </div>
-        <Button size="sm" className="shrink-0" onClick={() => navigate("/halal/register/new")}>
-          <Plus className="h-4 w-4 mr-2" />
-          Register Business
-        </Button>
       </div>
 
-      <Card>
+      <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Registered Businesses
-          </CardTitle>
-          <CardDescription>Your businesses registered for Halal certification</CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
+                <Building2 className="h-5 w-5 text-emerald-600" />
+                Registered Businesses
+              </CardTitle>
+              <CardDescription>Your businesses registered for Halal certification</CardDescription>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search businesses..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -97,6 +126,7 @@ export default function HalalRegisterPage() {
                     <TableRow>
                       <TableHead>Business Name</TableHead>
                       <TableHead className="hidden sm:table-cell">Category</TableHead>
+                      <TableHead className="hidden sm:table-cell">Status</TableHead>
                       <TableHead className="hidden md:table-cell">Contact</TableHead>
                       <TableHead className="hidden lg:table-cell">Location</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -112,6 +142,11 @@ export default function HalalRegisterPage() {
                         <TableCell className="font-medium">{b.name}</TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground">
                           {b.category.replace("_", " ")}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <Badge className={BUSINESS_STATUS_COLORS[b.status ?? "PENDING_APPROVAL"] || "bg-muted"}>
+                            {BUSINESS_STATUS_LABELS[b.status ?? "PENDING_APPROVAL"] ?? (b.status ?? "Pending Approval")}
+                          </Badge>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-sm">
                           {b.contactName}
@@ -159,7 +194,12 @@ export default function HalalRegisterPage() {
                   >
                     <div>
                       <p className="font-medium">{b.name}</p>
-                      <p className="text-sm text-muted-foreground">{b.category.replace("_", " ")} • {b.contactName}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {b.category.replace("_", " ")} • {b.contactName}
+                        <Badge className={`ml-2 ${BUSINESS_STATUS_COLORS[b.status ?? "PENDING_APPROVAL"] || "bg-muted"}`}>
+                          {BUSINESS_STATUS_LABELS[b.status ?? "PENDING_APPROVAL"] ?? (b.status ?? "Pending Approval")}
+                        </Badge>
+                      </p>
                     </div>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/businesses/${b.id}`)}>

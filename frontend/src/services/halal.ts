@@ -21,10 +21,13 @@ export type HalalApplicationStatus =
 
 export type HalalCertificateStatus = "VALID" | "EXPIRED" | "REVOKED" | "SUSPENDED";
 
+export type HalalBusinessStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
+
 export interface HalalBusiness {
   id: string;
   name: string;
   category: HalalBusinessCategory;
+  status?: HalalBusinessStatus;
   licenseUrl?: string;
   contactName: string;
   contactEmail: string;
@@ -40,8 +43,22 @@ export interface HalalBusiness {
   latitude?: number;
   longitude?: number;
   address?: string;
+  ownerNationalId?: string;
+  ownerGender?: string;
+  ownerDateOfBirth?: string;
+  ownerHomeAddress?: string;
+  ownerRole?: string;
+  brandName?: string;
+  yearEstablished?: number;
+  businessType?: string;
+  tinNumber?: string;
+  declarationSignature?: string;
+  declarationSignedAt?: string;
+  productList?: { name: string; description?: string }[];
+  documents?: { name: string; url: string; type?: string }[];
   createdAt: string;
   updatedAt: string;
+  applications?: HalalApplication[];
 }
 
 export interface HalalApplication {
@@ -51,6 +68,9 @@ export interface HalalApplication {
   status: HalalApplicationStatus;
   feeAmount?: number | string;
   feePaidAt?: string | null;
+  paymentMethod?: string;
+  paymentBankName?: string | null;
+  paymentReceiptUrl?: string | null;
   productList?: { name: string; description?: string }[];
   ingredients?: { name: string; source?: string; halalStatus?: string }[];
   supplierInfo?: { name: string; certification?: string }[];
@@ -97,6 +117,17 @@ export interface HalalCertificate {
   revokedReason?: string;
 }
 
+export interface HalalViolation {
+  id: string;
+  certificateId: string;
+  certificate?: HalalCertificate;
+  description: string;
+  severity: string;
+  recordedAt: string;
+  resolvedAt?: string | null;
+  action?: string | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -106,16 +137,22 @@ export interface PaginatedResponse<T> {
 
 export const halalApi = {
   businesses: {
-    list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string }) =>
+    list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string; status?: HalalBusinessStatus }) =>
       api.get<PaginatedResponse<HalalBusiness>>("/halal/businesses", { params }).then((r) => r.data),
     get: (id: string) => api.get<HalalBusiness>(`/halal/businesses/${id}`).then((r) => r.data),
     create: (data: Partial<HalalBusiness>) => api.post<HalalBusiness>("/halal/businesses", data).then((r) => r.data),
     update: (id: string, data: Partial<HalalBusiness>) => api.patch<HalalBusiness>(`/halal/businesses/${id}`, data).then((r) => r.data),
     delete: (id: string) => api.delete(`/halal/businesses/${id}`),
+    approve: (id: string) => api.post<HalalBusiness>(`/halal/businesses/${id}/approve`).then((r) => r.data),
     uploadLicense: (id: string, file: File) => {
       const form = new FormData();
       form.append("license", file);
       return api.post<HalalBusiness>(`/halal/businesses/${id}/license`, form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+    },
+    uploadDocument: (file: File) => {
+      const form = new FormData();
+      form.append("document", file);
+      return api.post<{ url: string }>("/halal/documents/upload", form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
     },
   },
   applications: {
@@ -128,6 +165,16 @@ export const halalApi = {
     delete: (id: string) => api.delete(`/halal/applications/${id}`),
     submit: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/submit`).then((r) => r.data),
     confirmPayment: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/confirm-payment`).then((r) => r.data),
+    initChapaPayment: (id: string) =>
+      api.post<{ checkoutUrl: string; txRef: string }>(`/halal/applications/${id}/payment/chapa-init`).then((r) => r.data),
+    confirmManualPayment: (id: string, data: { bankName: string; receipt: File }) => {
+      const form = new FormData();
+      form.append("bankName", data.bankName);
+      form.append("receipt", data.receipt);
+      return api.post<HalalApplication>(`/halal/applications/${id}/payment/manual`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
     approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
   },
@@ -164,6 +211,8 @@ export const halalApi = {
     create: (data: { certificateId: string; newExpiry: string }) => api.post("/halal/renewals", data).then((r) => r.data),
   },
   violations: {
+    list: (params?: { page?: number; limit?: number; certificateId?: string }) =>
+      api.get<PaginatedResponse<HalalViolation>>("/halal/violations", { params }).then((r) => r.data),
     create: (data: { certificateId: string; description: string; severity: string; action?: string }) =>
       api.post("/halal/violations", data).then((r) => r.data),
   },

@@ -2241,6 +2241,12 @@ enum HalalBusinessCategory {
   SLAUGHTERHOUSE
 }
 
+enum HalalBusinessStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 enum HalalApplicationStatus {
   DRAFT
   SUBMITTED
@@ -2259,6 +2265,7 @@ enum HalalCertificateStatus {
 
 enum HalalAuditAction {
   BUSINESS_REGISTERED
+  BUSINESS_APPROVED
   APPLICATION_CREATED
   APPLICATION_SUBMITTED
   APPLICATION_REVIEWED
@@ -2276,11 +2283,27 @@ model HalalBusiness {
   id            String               @id @default(cuid())
   name          String
   category      HalalBusinessCategory
+  status        HalalBusinessStatus   @default(PENDING_APPROVAL)
   licenseUrl    String?              // Path to uploaded license
   contactName   String
   contactEmail  String
   contactPhone  String
   userId        String               // Business owner (User)
+  // Extended owner info (from registration form)
+  ownerNationalId  String?
+  ownerGender      String?
+  ownerDateOfBirth DateTime?
+  ownerHomeAddress String?
+  ownerRole        String?
+  // Extended business info
+  brandName       String?
+  yearEstablished Int?
+  businessType    String?
+  tinNumber       String?
+  declarationSignedAt   DateTime?
+  declarationSignature  String?
+  productList    Json?                // [{ name, description }] from registration
+  documents      Json?                // [{ name, url }] from registration (Registration Cert, TIN Cert, Owner ID)
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   regionId      String?
   region        Region?              @relation(fields: [regionId], references: [id])
@@ -2308,6 +2331,11 @@ model HalalApplication {
   status          HalalApplicationStatus @default(DRAFT)
   feeAmount       Decimal?               @db.Decimal(12, 2) // Certification fee (e.g. 500 ETB)
   feePaidAt       DateTime?              // When payment was confirmed
+  paymentMethod   String?                // CHAPA | MANUAL
+  paymentBankName String?                // For manual: bank name
+  paymentReceiptUrl String?              // For manual: receipt file URL
+  chapaTxRef      String?                // Chapa transaction reference
+  chapaRefId      String?                // Chapa internal reference ID
   productList     Json?                   // [{ name, description }]
   ingredients     Json?                   // [{ name, source, halalStatus }]
   supplierInfo    Json?                   // [{ name, certification }]

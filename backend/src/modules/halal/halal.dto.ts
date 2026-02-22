@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HalalBusinessCategory, HalalApplicationStatus } from "@prisma/client";
+import { HalalBusinessCategory, HalalApplicationStatus, HalalBusinessStatus } from "@prisma/client";
 
 export const CreateHalalBusinessDto = z.object({
   name: z.string().min(1),
@@ -14,6 +14,25 @@ export const CreateHalalBusinessDto = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   address: z.string().optional(),
+  ownerNationalId: z.string().optional(),
+  ownerGender: z.string().optional(),
+  ownerDateOfBirth: z.string().optional(),
+  ownerHomeAddress: z.string().optional(),
+  ownerRole: z.string().optional(),
+  brandName: z.string().optional(),
+  yearEstablished: z.coerce.number().optional(),
+  businessType: z.string().optional(),
+  tinNumber: z.string().optional(),
+  declarationSignature: z.string().optional(),
+  productList: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+  })).optional(),
+  documents: z.array(z.object({
+    name: z.string(),
+    url: z.string(),
+    type: z.string().optional(),
+  })).optional(),
 });
 
 export const UpdateHalalBusinessDto = CreateHalalBusinessDto.partial();
@@ -50,6 +69,10 @@ export const UpdateHalalApplicationDto = z.object({
 });
 
 export const SubmitHalalApplicationDto = z.object({});
+
+export const ManualPaymentDto = z.object({
+  bankName: z.string().min(1, "Bank name is required"),
+});
 
 export const AssignInspectionDto = z.object({
   applicationId: z.string(),
@@ -93,6 +116,7 @@ export const ListHalalBusinessesQuery = z.object({
   category: z.nativeEnum(HalalBusinessCategory).optional(),
   search: z.string().optional(),
   regionId: z.string().optional(),
+  status: z.nativeEnum(HalalBusinessStatus).optional(),
 });
 
 export const ListHalalApplicationsQuery = z.object({
@@ -109,4 +133,10 @@ export const ListHalalInspectionsQuery = z.object({
   inspectorId: z.string().optional(),
   applicationId: z.string().optional(),
   completed: z.enum(["true", "false"]).optional(),
+});
+
+export const ListHalalViolationsQuery = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  certificateId: z.string().optional(),
 });

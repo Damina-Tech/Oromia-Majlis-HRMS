@@ -31,7 +31,7 @@ export default function HalalInspectionCompletePage() {
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
       toast.success("Inspection completed");
       const appId = inspection?.applicationId;
-      navigate(appId ? `/admin/halal/applications/${appId}` : "/admin/halal/inspections");
+      navigate(appId ? `/halal/applications/${appId}` : "/admin/halal/inspections");
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to complete"),
   });

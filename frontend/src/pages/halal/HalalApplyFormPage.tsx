@@ -1,9 +1,8 @@
 "use client";
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,30 +12,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, AlertCircle } from "lucide-react";
+import { ArrowLeft, AlertCircle, Loader2, Building2, FileCheck, Sparkles } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function HalalApplyFormPage() {
-  const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const preselectedBusinessId = (location.state as any)?.businessId;
-  const editApplicationId = id || (location.state as any)?.applicationId;
-  const isEdit = !!editApplicationId;
 
   const [businessId, setBusinessId] = useState(preselectedBusinessId || "");
-  const [productList, setProductList] = useState<{ name: string; description?: string }[]>([]);
-  const [newProduct, setNewProduct] = useState({ name: "", description: "" });
-  const [ingredientList, setIngredientList] = useState<{ name: string; source?: string; halalStatus?: string }[]>([]);
-  const [newIngredient, setNewIngredient] = useState({ name: "", source: "", halalStatus: "" });
-
-  const { data: existingApp, isLoading: loadingApp } = useQuery({
-    queryKey: ["halal-application", editApplicationId],
-    queryFn: () => halalApi.applications.get(editApplicationId!),
-    enabled: isEdit && !!editApplicationId,
-  });
 
   const { data: applicationsData } = useQuery({
     queryKey: ["halal-applications"],
@@ -61,145 +47,95 @@ export default function HalalApplyFormPage() {
   const eligibleBusinesses = useMemo(() => {
     return businesses.filter(
       (b) =>
-        !businessIdsWithActiveApp.has(b.id) ||
-        (editApplicationId && b.id === existingApp?.businessId)
+        b.status === "APPROVED" &&
+        !businessIdsWithActiveApp.has(b.id)
     );
-  }, [businesses, businessIdsWithActiveApp, editApplicationId, existingApp?.businessId]);
+  }, [businesses, businessIdsWithActiveApp]);
 
   useEffect(() => {
-    if (existingApp && editApplicationId) {
-      if (existingApp.status !== "DRAFT") {
-        toast.error("Only draft applications can be edited");
-        navigate("/halal/applications/" + editApplicationId, { replace: true });
-        return;
-      }
-      setBusinessId(existingApp.businessId);
-      setProductList(
-        (existingApp.productList || []).map((p: any) => ({
-          name: p.name || "",
-          description: p.description,
-        }))
-      );
-      setIngredientList(
-        (existingApp.ingredients || []).map((i: any) => ({
-          name: i.name || "",
-          source: i.source,
-          halalStatus: i.halalStatus,
-        }))
-      );
-    } else if (preselectedBusinessId) {
+    if (preselectedBusinessId) {
       setBusinessId(preselectedBusinessId);
     }
-  }, [existingApp, editApplicationId, preselectedBusinessId, navigate]);
+  }, [preselectedBusinessId]);
 
   const createMutation = useMutation({
-    mutationFn: halalApi.applications.create,
+    mutationFn: async (bid: string) => {
+      const app = await halalApi.applications.create({ businessId: bid });
+      await halalApi.applications.submit(app.id);
+      return app;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
-      toast.success("Application created");
+      toast.success("Application submitted successfully. You can now pay the certification fee.");
       navigate("/halal/applications/" + data.id);
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || "Failed to create"),
+    onError: (e: any) =>
+      toast.error(e.response?.data?.message || "Failed to create and submit application"),
   });
-
-  const updateMutation = useMutation({
-    mutationFn: (data: { productList?: any; ingredients?: any }) =>
-      halalApi.applications.update(editApplicationId!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
-      queryClient.invalidateQueries({ queryKey: ["halal-application", editApplicationId] });
-      toast.success("Application updated");
-      navigate("/halal/applications/" + editApplicationId);
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message || "Failed to update"),
-  });
-
-  const addProduct = () => {
-    if (!newProduct.name.trim()) return;
-    setProductList((p) => [...p, { name: newProduct.name, description: newProduct.description || undefined }]);
-    setNewProduct({ name: "", description: "" });
-  };
-  const removeProduct = (i: number) => setProductList((p) => p.filter((_, idx) => idx !== i));
-
-  const addIngredient = () => {
-    if (!newIngredient.name.trim()) return;
-    setIngredientList((p) => [
-      ...p,
-      { name: newIngredient.name, source: newIngredient.source || undefined, halalStatus: newIngredient.halalStatus || undefined },
-    ]);
-    setNewIngredient({ name: "", source: "", halalStatus: "" });
-  };
-  const removeIngredient = (i: number) => setIngredientList((p) => p.filter((_, idx) => idx !== i));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!businessId && !isEdit) {
+    if (!businessId) {
       toast.error("Select a business");
       return;
     }
-    if (!isEdit && businessIdsWithActiveApp.has(businessId)) {
+    if (businessIdsWithActiveApp.has(businessId)) {
       toast.error("This business already has an active application");
       return;
     }
-    const payload = {
-      productList: productList.length > 0 ? productList : undefined,
-      ingredients: ingredientList.length > 0 ? ingredientList : undefined,
-    };
-    if (isEdit) {
-      updateMutation.mutate(payload);
-    } else {
-      createMutation.mutate({ businessId, ...payload });
-    }
+    createMutation.mutate(businessId);
   };
 
-  const isSubmitting = createMutation.isPending || updateMutation.isPending;
-
-  if (isEdit && loadingApp) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[200px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
+  const isSubmitting = createMutation.isPending;
 
   return (
-    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/halal/apply")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold">
-            {isEdit ? "Edit Application" : "New Application"}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {isEdit ? "Update products and ingredients" : "Apply for Halal certification"}
-          </p>
+    <div className="p-4 sm:p-6 w-full max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500/10 via-teal-500/5 to-transparent dark:from-blue-600/20 dark:via-teal-600/10 border border-blue-200/50 dark:border-blue-800/30 p-4 sm:p-6 mb-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/halal/apply")}
+            className="text-blue-800 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-blue-600" />
+              New Halal Certification Application
+            </h1>
+            <p className="text-blue-700/80 dark:text-blue-300/80 text-sm mt-1">
+              Select an approved business to apply for Halal certification
+            </p>
+          </div>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Application Details</CardTitle>
-          <CardDescription>
-            {isEdit
-              ? "Update products and ingredients"
-              : "Select a business and add products/ingredients (one application per business)"}
+      {/* Main card */}
+      <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30 bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-950/30">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-200">
+            <Building2 className="h-5 w-5 text-blue-600" />
+            Select Business
+          </CardTitle>
+          <CardDescription className="text-base">
+            Products and documents from your business registration will be used for this application. Only approved businesses are eligible. Your application will be submitted immediately for admin review.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <Label>Business *</Label>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Business *</Label>
               <Select
                 value={businessId}
                 onValueChange={setBusinessId}
-                required={!isEdit}
-                disabled={isEdit}
+                required
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select business" />
+                <SelectTrigger className="h-11 border-blue-200/70 dark:border-blue-800/50 focus:ring-blue-500/30">
+                  <SelectValue placeholder="Select approved business" />
                 </SelectTrigger>
                 <SelectContent>
                   {eligibleBusinesses.map((b) => (
@@ -207,100 +143,58 @@ export default function HalalApplyFormPage() {
                       {b.name} ({b.category.replace("_", " ")})
                     </SelectItem>
                   ))}
-                  {eligibleBusinesses.length === 0 && !isEdit && (
+                  {businesses.length > 0 && eligibleBusinesses.length === 0 && (
                     <SelectItem value="_none" disabled>
-                      No businesses available (all have active applications)
+                      No approved businesses available
                     </SelectItem>
                   )}
                 </SelectContent>
               </Select>
-              {!isEdit && businesses.length > 0 && eligibleBusinesses.length === 0 && (
-                <p className="text-sm text-amber-600 mt-2 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  Each business can have only one active application at a time.
-                </p>
+              {businesses.length > 0 && eligibleBusinesses.length === 0 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-800/30">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    No approved businesses available. Each business can have only one active application at a time. If all your businesses have active applications, withdraw one first to create a new application.
+                  </p>
+                </div>
               )}
             </div>
 
-            <div>
-              <Label>Products</Label>
-              <div className="space-y-2">
-                {productList.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2 p-2 border rounded">
-                    <span className="flex-1 font-medium">{p.name}</span>
-                    {p.description ? (
-                      <span className="text-sm text-muted-foreground max-sm:hidden">{p.description}</span>
-                    ) : null}
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeProduct(i)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    placeholder="Product name"
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                  />
-                  <Input
-                    placeholder="Description (optional)"
-                    value={newProduct.description}
-                    onChange={(e) => setNewProduct((p) => ({ ...p, description: e.target.value }))}
-                    className="sm:min-w-[140px]"
-                  />
-                  <Button type="button" variant="outline" onClick={addProduct}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <Label>Ingredients</Label>
-              <div className="space-y-2">
-                {ingredientList.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2 p-2 border rounded">
-                    <span className="flex-1 font-medium">{p.name}</span>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeIngredient(i)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                  <Input
-                    placeholder="Ingredient name"
-                    value={newIngredient.name}
-                    onChange={(e) => setNewIngredient((p) => ({ ...p, name: e.target.value }))}
-                    className="sm:min-w-[120px]"
-                  />
-                  <Input
-                    placeholder="Source"
-                    value={newIngredient.source}
-                    onChange={(e) => setNewIngredient((p) => ({ ...p, source: e.target.value }))}
-                  />
-                  <Input
-                    placeholder="Halal status"
-                    value={newIngredient.halalStatus}
-                    onChange={(e) => setNewIngredient((p) => ({ ...p, halalStatus: e.target.value }))}
-                  />
-                  <Button type="button" variant="outline" onClick={addIngredient}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate("/halal/apply")}>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate("/halal/apply")}
+                className="sm:mr-auto"
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting || (!isEdit && eligibleBusinesses.length === 0)}>
-                {isSubmitting ? "Saving…" : isEdit ? "Save changes" : "Create Application (Draft)"}
+              <Button
+                type="submit"
+                disabled={isSubmitting || eligibleBusinesses.length === 0}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Submitting…
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="h-4 w-4 mr-2" />
+                    Create & Submit Application
+                  </>
+                )}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
+
+      {/* Info hint */}
+      <p className="text-xs text-muted-foreground text-center mt-4">
+        After submission, you will be directed to pay the certification fee. Admins can then review and process your application.
+      </p>
     </div>
   );
 }

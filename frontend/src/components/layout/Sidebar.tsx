@@ -327,18 +327,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const halalSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
   if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.review') || hasPermission('halal.renew')) {
     halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'halal.business' });
-    halalSubmenuItems.push({ title: 'Register', href: '/halal/register', permission: 'halal.business' });
-    halalSubmenuItems.push({ title: 'Apply', href: '/halal/apply', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Businesses', href: '/halal/register', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Applications', href: '/halal/apply', permission: 'halal.business' });
     halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
-    if (hasPermission('halal.admin') || hasPermission('halal.renew')) {
-      halalSubmenuItems.push({ title: 'Renew', href: '/halal/renew', permission: 'halal.renew' });
-    }
-    if (hasPermission('halal.admin') || hasPermission('halal.review') || hasPermission('halal.inspector')) {
-      halalSubmenuItems.push({ title: 'Applications', href: '/admin/halal/applications', permission: 'halal.admin' });
-    }
-    if (hasPermission('halal.admin') || hasPermission('halal.inspector')) {
-      halalSubmenuItems.push({ title: 'Assign Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
-      halalSubmenuItems.push({ title: 'My Inspections', href: '/admin/halal/my-inspections', permission: 'halal.inspector' });
+    if (hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.review')) {
+      halalSubmenuItems.push({ title: 'Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
     }
     if (hasPermission('halal.admin')) {
       halalSubmenuItems.push({ title: 'Violations', href: '/admin/halal/violations', permission: 'halal.admin' });

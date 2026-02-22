@@ -7,7 +7,9 @@ import {
   getBusiness,
   updateBusiness,
   deleteBusiness,
+  approveBusiness,
   uploadBusinessLicense,
+  uploadHalalDocument,
   createApplication,
   listApplications,
   getApplication,
@@ -15,6 +17,9 @@ import {
   deleteApplication,
   submitApplication,
   confirmPayment,
+  initChapaPayment,
+  chapaCallback,
+  confirmManualPayment,
   approveApplication,
   assignInspection,
   listInspections,
@@ -24,6 +29,7 @@ import {
   getCertificate,
   downloadCertificate,
   createRenewal,
+  listViolations,
   createViolation,
 } from "./halal.controller.js";
 import { uploadHalalFile } from "../../lib/upload.js";
@@ -40,6 +46,13 @@ router.get("/businesses", requireAuth, listBusinesses);
 router.get("/businesses/:id", requireAuth, getBusiness);
 router.patch("/businesses/:id", requireAuth, updateBusiness);
 router.delete("/businesses/:id", requireAuth, deleteBusiness);
+router.post("/businesses/:id/approve", requireAuth, hasAnyPermission("halal.admin", "halal.review"), approveBusiness);
+router.post(
+  "/documents/upload",
+  requireAuth,
+  uploadHalalFile.single("document"),
+  uploadHalalDocument
+);
 router.post(
   "/businesses/:id/license",
   requireAuth,
@@ -55,6 +68,14 @@ router.patch("/applications/:id", requireAuth, updateApplication);
 router.delete("/applications/:id", requireAuth, deleteApplication);
 router.post("/applications/:id/submit", requireAuth, submitApplication);
 router.post("/applications/:id/confirm-payment", requireAuth, confirmPayment);
+router.post("/applications/:id/payment/chapa-init", requireAuth, initChapaPayment);
+router.get("/applications/:id/payment/chapa-callback", chapaCallback); // Public - Chapa calls this
+router.post(
+  "/applications/:id/payment/manual",
+  requireAuth,
+  uploadHalalFile.single("receipt"),
+  confirmManualPayment
+);
 
 // Admin: approve (halal.admin or similar)
 router.post("/applications/:id/approve", requireAuth, hasAnyPermission("halal.admin", "halal.approve"), approveApplication);
@@ -75,6 +96,7 @@ router.get("/certificates/:id", requireAuth, getCertificate);
 
 // Renewals & violations (admin)
 router.post("/renewals", requireAuth, hasAnyPermission("halal.admin", "halal.renew"), createRenewal);
+router.get("/violations", requireAuth, hasAnyPermission("halal.admin"), listViolations);
 router.post("/violations", requireAuth, hasAnyPermission("halal.admin"), createViolation);
 
 export default router;

@@ -22,28 +22,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, FileText, Eye, Pencil, Trash2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, FileText, Eye, Trash2, AlertCircle, Search } from "lucide-react";
 import { halalApi, type HalalApplicationStatus } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
-  DRAFT: "bg-gray-100 text-gray-800",
-  SUBMITTED: "bg-blue-100 text-blue-800",
-  REVIEW: "bg-amber-100 text-amber-800",
-  INSPECTION: "bg-purple-100 text-purple-800",
-  APPROVED: "bg-green-100 text-green-800",
-  REJECTED: "bg-red-100 text-red-800",
+  DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  SUBMITTED: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  REVIEW: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  INSPECTION: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
+  APPROVED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
 export default function HalalApplyPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: applicationsData } = useQuery({
-    queryKey: ["halal-applications"],
-    queryFn: () => halalApi.applications.list({ limit: 100 }),
+    queryKey: ["halal-applications", searchQuery],
+    queryFn: () => halalApi.applications.list({ limit: 100, search: searchQuery || undefined }),
   });
   const applications = applicationsData?.items ?? [];
 
@@ -65,7 +67,9 @@ export default function HalalApplyPage() {
     businesses.length > 0 &&
     businesses.every((b) => businessIdsWithActiveApp.has(b.id));
 
-  const eligibleBusinesses = businesses.filter((b) => !businessIdsWithActiveApp.has(b.id));
+  const eligibleBusinesses = businesses.filter(
+    (b) => b.status === "APPROVED" && !businessIdsWithActiveApp.has(b.id)
+  );
 
   const deleteMutation = useMutation({
     mutationFn: halalApi.applications.delete,
@@ -87,21 +91,23 @@ export default function HalalApplyPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/halal/dashboard")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Halal Certification</h1>
-            <p className="text-muted-foreground text-sm">Apply for Halal certification</p>
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500/10 to-transparent dark:from-blue-600/20 border border-blue-200/50 dark:border-blue-800/30 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/halal/dashboard")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Halal Certification</h1>
+              <p className="text-muted-foreground text-sm">Apply for Halal certification</p>
+            </div>
           </div>
+          <Button size="sm" className="shrink-0 bg-blue-600 hover:bg-blue-700" onClick={() => navigate("/halal/apply/new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Application
+          </Button>
         </div>
-        <Button size="sm" className="shrink-0" onClick={() => navigate("/halal/apply/new")}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Application
-        </Button>
       </div>
 
       {hasAllBusinessesWithApps && (
@@ -120,13 +126,26 @@ export default function HalalApplyPage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            My Applications
-          </CardTitle>
-          <CardDescription>Your Halal certification applications</CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                <FileText className="h-5 w-5 text-blue-600" />
+                My Applications
+              </CardTitle>
+              <CardDescription>Your Halal certification applications</CardDescription>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by business name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {applications.length === 0 ? (
@@ -157,6 +176,7 @@ export default function HalalApplyPage() {
                     <TableRow>
                       <TableHead>Business</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Payment</TableHead>
                       <TableHead className="hidden sm:table-cell">Submitted</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -172,6 +192,15 @@ export default function HalalApplyPage() {
                         <TableCell>
                           <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
                         </TableCell>
+                        <TableCell>
+                          {a.status === "DRAFT" ? (
+                            "—"
+                          ) : a.feePaidAt ? (
+                            <span className="text-green-600 dark:text-green-500 text-sm font-medium">Paid</span>
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-500 text-sm font-medium">Pending</span>
+                          )}
+                        </TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
                           {a.submittedAt ? new Date(a.submittedAt).toLocaleDateString() : "—"}
                         </TableCell>
@@ -182,13 +211,6 @@ export default function HalalApplyPage() {
                             </Button>
                             {a.status === "DRAFT" && (
                               <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => navigate(`/halal/apply/${a.id}/edit`, { state: { applicationId: a.id } })}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
                                 <Button variant="ghost" size="icon" onClick={() => handleDelete(a)}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
@@ -210,7 +232,14 @@ export default function HalalApplyPage() {
                   >
                     <div>
                       <p className="font-medium">{a.business?.name ?? a.businessId}</p>
-                      <Badge className={`mt-1 ${STATUS_COLORS[a.status]}`}>{a.status}</Badge>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                        {a.status !== "DRAFT" && (
+                          <span className={`text-xs font-medium ${a.feePaidAt ? "text-green-600 dark:text-green-500" : "text-amber-600 dark:text-amber-500"}`}>
+                            {a.feePaidAt ? "Paid" : "Fee pending"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/applications/${a.id}`)}>
@@ -218,13 +247,6 @@ export default function HalalApplyPage() {
                       </Button>
                       {a.status === "DRAFT" && (
                         <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(`/halal/apply/${a.id}/edit`, { state: { applicationId: a.id } })}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(a)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
