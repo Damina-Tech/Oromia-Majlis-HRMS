@@ -207,3 +207,28 @@ export const uploadHalalFile = multer({
   fileFilter: halalFileFilter,
 });
 
+// Membership (profile photo, receipts)
+const membershipUploadsDir = path.join(__dirname, "../../uploads/membership");
+if (!fs.existsSync(membershipUploadsDir)) {
+  fs.mkdirSync(membershipUploadsDir, { recursive: true });
+}
+const membershipStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, membershipUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".jpg";
+    const base = path.basename(file.originalname, ext);
+    cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+const membershipFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = /jpeg|jpg|png/;
+  const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+  if (allowed.test(ext) || /image\//.test(file.mimetype)) cb(null, true);
+  else cb(new Error("Invalid file type. Allowed: JPEG, PNG"));
+};
+export const uploadMembershipFile = multer({
+  storage: membershipStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: membershipFileFilter,
+});
+

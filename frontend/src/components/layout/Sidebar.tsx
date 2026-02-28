@@ -61,6 +61,13 @@ const menuItems = [
   submenu: true,
 },
 {
+  title: 'Membership',
+  icon: UserPlus,
+  href: '/majlis/membership',
+  permission: 'majlis.membership.view',
+  submenu: true,
+},
+{
   title: 'Halal Certification',
   icon: ShieldCheck,
   href: '/halal/dashboard',
@@ -183,6 +190,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     // Always show items with '*' permission (for authenticated users)
     if (item.permission === '*') {
       return true;
+    }
+    // Membership: show for admin/representative or for member portal
+    if (item.title === 'Membership') {
+      return (
+        hasPermission('majlis.membership.view') ||
+        hasPermission('majlis.membership.register') ||
+        hasPermission('majlis.membership.admin') ||
+        hasPermission('majlis.member')
+      );
     }
     // Halal Certification: show for any halal permission
     if (item.title === 'Halal Certification') {
@@ -353,6 +369,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       majlisSubmenuItems.push({ title: 'Reports', href: '/majlis/reports', permission: 'reports.view' });
     }
   }
+
+  // Membership submenu items
+  const membershipSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  if (hasPermission('majlis.membership.view') || hasPermission('majlis.membership.register') || hasPermission('majlis.membership.admin')) {
+    membershipSubmenuItems.push({ title: 'Dashboard', href: '/majlis/membership', permission: 'majlis.membership.view' });
+    membershipSubmenuItems.push({ title: 'Members', href: '/majlis/membership/members', permission: 'majlis.membership.view' });
+    membershipSubmenuItems.push({ title: 'Register member', href: '/majlis/membership/register', permission: 'majlis.membership.register' });
+  }
+  if (hasPermission('majlis.member')) {
+    membershipSubmenuItems.push({ title: 'My Membership', href: '/my-membership', permission: 'majlis.member' });
+  }
   
   // Create Task is handled via dialog on the tasks list page, no separate route needed
 
@@ -377,6 +404,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       newExpandedItems.add('Announcements');
     } else if (location.pathname.startsWith('/tasks')) {
       newExpandedItems.add('Tasks');
+    } else if (location.pathname.startsWith('/majlis/membership') || location.pathname.startsWith('/my-membership')) {
+      newExpandedItems.add('Membership');
     } else if (location.pathname.startsWith('/majlis')) {
       newExpandedItems.add('Majlis Institutions');
     } else if (location.pathname.startsWith('/halal') || location.pathname.startsWith('/admin/halal')) {
@@ -402,6 +431,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         (item === 'Announcements' && location.pathname.startsWith('/announcements')) ||
         (item === 'Tasks' && location.pathname.startsWith('/tasks')) ||
         (item === 'Majlis Institutions' && location.pathname.startsWith('/majlis')) ||
+        (item === 'Membership' && (location.pathname.startsWith('/majlis/membership') || location.pathname.startsWith('/my-membership'))) ||
         (item === 'Halal Certification' && (location.pathname.startsWith('/halal') || location.pathname.startsWith('/admin/halal')))
       );
       
@@ -800,6 +830,49 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
                       {majlisSubmenuItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.href}
+                          to={subItem.href}
+                          className={({ isActive }) =>
+                            `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+                              isActive ?
+                              'bg-blue-100 text-blue-800 font-medium' :
+                              'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            }`
+                          }
+                        >
+                          <span className="ml-5">{subItem.title}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isMembership = item.title === 'Membership';
+            const isMembershipPage = location.pathname.startsWith('/majlis/membership');
+            if (isMembership && membershipSubmenuItems.length > 0 && !isCollapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => toggleExpand(item.title)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isExpanded || isMembershipPage ?
+                      'bg-blue-50 text-blue-700 border-r-2 border-blue-700' :
+                      'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 mr-3" />
+                    {item.title}
+                    {isExpanded ? 
+                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" /> :
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
+                    }
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {membershipSubmenuItems.map((subItem) => (
                         <NavLink
                           key={subItem.href}
                           to={subItem.href}

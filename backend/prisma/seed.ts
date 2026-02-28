@@ -84,6 +84,10 @@ async function seedPermissions() {
     { name: "halal.admin", module: "halal", action: "admin", description: "Full halal certification control and final approval" },
     { name: "halal.approve", module: "halal", action: "approve", description: "Approve/reject applications" },
     { name: "halal.renew", module: "halal", action: "renew", description: "Process renewals" },
+    { name: "majlis.membership.view", module: "majlis", action: "membership.view", description: "View members and subscriptions" },
+    { name: "majlis.membership.register", module: "majlis", action: "membership.register", description: "Register members and process payments" },
+    { name: "majlis.membership.admin", module: "majlis", action: "membership.admin", description: "Full membership admin and manual payment" },
+    { name: "majlis.member", module: "majlis", action: "member", description: "Registered member - view profile, certificate, renew" },
   ];
 
   // Create all permissions
@@ -114,10 +118,12 @@ async function seedPermissions() {
 
   // Assign permissions to other roles
   const rolePermissions = {
-    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view", "halal.business", "halal.review", "halal.inspector"],
+    HR: ["dashboard.view", "employees.read", "employees.write", "employees.delete", "employees.id.manage", "employees.id.generate", "employees.id.batch", "departments.read", "departments.write", "attendance.mark", "attendance.view", "attendance.manage", "leave.apply", "leave.view", "leave.read", "leave.approve", "leave.manage", "payroll.view", "payroll.process", "reports.view", "reports.generate", "reports.export", "reports.manage", "users.read", "users.write", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.delete", "announcements.publish", "onboarding.view", "notifications.view", "notifications.manage", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.delete", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.edit", "expense.approve", "expense.pay", "majlis.institutions.read", "majlis.institutions.write", "majlis.assignments.read", "majlis.assignments.write", "majlis.dashboard.view", "majlis.membership.view", "majlis.membership.register", "halal.business", "halal.review", "halal.inspector"],
     MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve", "majlis.institutions.read", "majlis.assignments.read", "majlis.dashboard.view"],
     EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view"],
     HALAL_BUSINESS: ["dashboard.view", "profile.read", "profile.write", "halal.business"],
+    MAJLIS_REPRESENTATIVE: ["dashboard.view", "profile.read", "profile.write", "majlis.membership.view", "majlis.membership.register", "majlis.dashboard.view", "majlis.institutions.read", "majlis.assignments.read"],
+    MEMBER: ["dashboard.view", "profile.read", "profile.write", "majlis.member"],
   };
 
   for (const role of roles) {
@@ -143,7 +149,7 @@ async function main() {
   console.log("Starting database seeding...");
 
   // Create roles
-  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS"];
+  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS", "MAJLIS_REPRESENTATIVE", "MEMBER"];
   for (const name of roles) {
     await prisma.role.upsert({ 
       where: { name }, 
@@ -319,6 +325,8 @@ async function main() {
   // Seed Majlis institutions
   await seedMajlisInstitutions(admin);
   await seedHalalCertification(admin);
+  await seedMembershipPlans();
+  await seedMemberTestUser(admin);
 
   // Create additional department manager (Finance Department)
   const financeManagerEmail = "finance.manager@ciro.gov.et";
@@ -813,6 +821,12 @@ async function main() {
   console.log("   Email: hr@ciro.gov.et");
   console.log("   Password: HrUser123!");
   console.log("   Access: HR management features");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🟣 MEMBERSHIP ROLES:");
+  console.log("   Member (portal - profile/certificate/renewal):");
+  console.log("      Email: member@ciro.gov.et");
+  console.log("      Password: Member123!");
+  console.log("   Representative (register members, mark payment): use ADMIN or create user with MAJLIS_REPRESENTATIVE role");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
@@ -2597,6 +2611,90 @@ async function seedHalalCertification(adminUser: { id: string }) {
   }
 
   console.log("✅ Seeded Halal certification demo data");
+}
+
+async function seedMembershipPlans() {
+  const { MembershipPlanType } = await import("@prisma/client");
+  const plans = [
+    { name: "Monthly", planType: MembershipPlanType.MONTHLY, feeAmount: 150, durationMonths: 1 },
+    { name: "Quarterly", planType: MembershipPlanType.QUARTERLY, feeAmount: 300, durationMonths: 3 },
+    { name: "Yearly", planType: MembershipPlanType.YEARLY, feeAmount: 600, durationMonths: 12 },
+  ];
+  for (const p of plans) {
+    await prisma.membershipPlan.upsert({
+      where: { planType: p.planType },
+      update: { name: p.name, feeAmount: p.feeAmount, durationMonths: p.durationMonths, isActive: true },
+      create: { name: p.name, planType: p.planType, feeAmount: p.feeAmount, durationMonths: p.durationMonths, isActive: true },
+    });
+  }
+  console.log("✅ Seeded membership plans (Monthly, Quarterly, Yearly)");
+}
+
+async function seedMemberTestUser(adminUser: { id: string }) {
+  const { MemberCategory } = await import("@prisma/client");
+  const memberRole = await prisma.role.findUnique({ where: { name: "MEMBER" } });
+  if (!memberRole) return;
+
+  const memberEmail = "member@ciro.gov.et";
+  const memberPassword = await bcrypt.hash("Member123!", 10);
+  const memberUser = await prisma.user.upsert({
+    where: { email: memberEmail },
+    update: {},
+    create: {
+      email: memberEmail,
+      passwordHash: memberPassword,
+      firstName: "Test",
+      lastName: "Member",
+    },
+  });
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: memberUser.id, roleId: memberRole.id } },
+    update: {},
+    create: { userId: memberUser.id, roleId: memberRole.id },
+  });
+
+  const yearlyPlan = await prisma.membershipPlan.findFirst({ where: { planType: "YEARLY" } });
+  if (!yearlyPlan) return;
+
+  const existingMember = await prisma.member.findFirst({ where: { userId: memberUser.id } });
+  if (existingMember) {
+    console.log("✅ Member test user already linked to a member:", memberEmail);
+    return;
+  }
+
+  const memberRecord = await prisma.member.create({
+    data: {
+      fullName: "Test Member",
+      phone: "+251911000099",
+      email: memberEmail,
+      category: MemberCategory.REGULAR_MEMBER,
+      userId: memberUser.id,
+      registeredById: adminUser.id,
+    },
+  });
+
+  const sub = await prisma.membershipSubscription.create({
+    data: {
+      memberId: memberRecord.id,
+      planId: yearlyPlan.id,
+      status: "ACTIVE",
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  await prisma.membershipCertificate.create({
+    data: {
+      certificateId: `MAJ-${new Date().getFullYear()}-SEED1`,
+      subscriptionId: sub.id,
+      memberId: memberRecord.id,
+      issuedAt: new Date(),
+      expiresAt,
+    },
+  });
+  console.log("✅ Created member test user:", memberEmail, "(linked member with active certificate)");
 }
 
 main()

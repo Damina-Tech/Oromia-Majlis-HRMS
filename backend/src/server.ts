@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/index.js";
 import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/announcements/scheduler.js";
+import { processMembershipExpiryReminders } from "./modules/membership/membership-reminder.scheduler.js";
 import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -138,4 +139,14 @@ app.listen(PORT, () => {
   // Run immediately on startup
   processScheduledAnnouncements().catch(console.error);
   console.log("Γ£à Announcement scheduler started");
+
+  // Membership expiry reminders: run daily at 9:00 (check every hour for simplicity, or use cron)
+  setInterval(async () => {
+    try {
+      await processMembershipExpiryReminders();
+    } catch (err) {
+      console.error("Membership reminder error:", err);
+    }
+  }, 60 * 60 * 1000); // every hour
+  processMembershipExpiryReminders().catch(console.error);
 });

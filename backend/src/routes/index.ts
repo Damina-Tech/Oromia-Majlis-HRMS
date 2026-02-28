@@ -21,6 +21,7 @@ import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
 import institutionRoutes from "../modules/institutions/institution.routes.js";
 import halalRoutes from "../modules/halal/halal.routes.js";
+import membershipRoutes from "../modules/membership/membership.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -89,5 +90,8 @@ router.use(
 
 // Halal certification - some routes public (verify), most require auth
 router.use("/v1/halal", halalRoutes);
+
+// Majlis membership - public registration + admin/representative
+router.use("/v1/membership", membershipRoutes);
 
 export default router;

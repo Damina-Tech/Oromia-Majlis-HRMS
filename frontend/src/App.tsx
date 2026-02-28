@@ -78,6 +78,13 @@ import HalalInspectionCompletePage from "./pages/halal/HalalInspectionCompletePa
 import HalalMyInspectionsPage from "./pages/halal/HalalMyInspectionsPage";
 import HalalViolationPage from "./pages/halal/HalalViolationPage";
 import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
+import MembershipRegisterPage from "./pages/membership/MembershipRegisterPage";
+import MembershipDashboardPage from "./pages/membership/MembershipDashboardPage";
+import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
+import MembershipRegisterAdminPage from "./pages/membership/MembershipRegisterAdminPage";
+import MemberDetailPage from "./pages/membership/MemberDetailPage";
+import MyMembershipPage from "./pages/membership/MyMembershipPage";
+import VerifyMembershipPage from "./pages/membership/VerifyMembershipPage";
 
 const queryClient = new QueryClient();
 
@@ -192,6 +199,11 @@ function AppRoutes() {
       <Route path="/verify/halal" element={<VerifyHalalPage />} />
       <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
 
+      {/* Public: Majlis membership registration (no auth required) */}
+      <Route path="/register/membership" element={<MembershipRegisterPage />} />
+      <Route path="/verify/membership" element={<VerifyMembershipPage />} />
+      <Route path="/verify/membership/:certificateId" element={<VerifyMembershipPage />} />
+
       {/* Protected Routes */}
       <Route
         path="/*"
@@ -220,6 +232,11 @@ function AppRoutes() {
         <Route path="majlis/institutions/:id" element={<InstitutionDetailPage />} />
         <Route path="majlis/assignments" element={<MajlisAssignmentsPage />} />
         <Route path="majlis/reports" element={<MajlisReportsPage />} />
+        <Route path="majlis/membership" element={<MembershipDashboardPage />} />
+        <Route path="majlis/membership/register" element={<MembershipRegisterAdminPage />} />
+        <Route path="majlis/membership/members" element={<MembershipMembersPage />} />
+        <Route path="majlis/membership/members/:id" element={<MemberDetailPage />} />
+        <Route path="my-membership" element={<MyMembershipPage />} />
         <Route path="halal/dashboard" element={<HalalDashboardPage />} />
         <Route path="halal/register" element={<HalalRegisterPage />} />
         <Route path="halal/register/new" element={<HalalRegisterFormPage />} />

@@ -29,6 +29,7 @@ const DEFAULT_MODULE_PREFS: Record<string, boolean> = {
   DOCUMENT: true,
   ANNOUNCEMENT: true,
   SYSTEM: true,
+  MEMBERSHIP: true,
 };
 
 type NotificationTargets = {
