@@ -63,6 +63,7 @@ export interface MembershipPayment {
   currency: string;
   method: PaymentMethod;
   status: PaymentStatus;
+  bankName?: string | null;
   paidAt?: string | null;
   receiptUrl?: string | null;
   createdAt: string;
@@ -84,15 +85,27 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+export interface UpcomingExpiry {
+  memberId: string;
+  memberName: string;
+  category: string;
+  expiryDate: string | null;
+  status: string;
+  planName: string | null;
+}
+
 export interface MembershipAnalytics {
   totalMembers: number;
   activeSubscriptions: number;
   expiredSubscriptions: number;
+  expiredMembers: number;
   newRegistrationsToday: number;
   newRegistrationsMonth: number;
   paymentsCompleted: number;
   revenue: number;
+  revenueByPlanType: Record<string, number>;
   categoryDistribution: { category: string; count: number }[];
+  upcomingExpiries: UpcomingExpiry[];
 }
 
 const base = "/membership";
@@ -111,24 +124,41 @@ export const membershipApi = {
       }
       return api.post<Member>(`${base}/members`, data).then((r) => r.data);
     },
-    list: (params?: { page?: number; limit?: number; search?: string; category?: MemberCategory }) =>
+    list: (params?: { page?: number; limit?: number; search?: string; category?: MemberCategory; membershipStatus?: "ACTIVE" | "PENDING_PAYMENT" | "EXPIRED" | "NONE" }) =>
       api.get<PaginatedResponse<Member>>(`${base}/members`, { params }).then((r) => r.data),
     get: (id: string) => api.get<Member>(`${base}/members/${id}`).then((r) => r.data),
     getMe: () => api.get<Member>(`${base}/me`).then((r) => r.data),
+    updateMe: (data: FormData | Record<string, unknown>) => {
+      if (data instanceof FormData) {
+        return api.patch<Member>(`${base}/me`, data, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+      }
+      return api.patch<Member>(`${base}/me`, data).then((r) => r.data);
+    },
     update: (id: string, data: { userId?: string | null }) => api.patch<Member>(`${base}/members/${id}`, data).then((r) => r.data),
+    updateProfile: (id: string, data: FormData | Record<string, unknown>) => {
+      if (data instanceof FormData) {
+        return api.patch<Member>(`${base}/members/${id}/profile`, data, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+      }
+      return api.patch<Member>(`${base}/members/${id}/profile`, data).then((r) => r.data);
+    },
+    delete: (id: string) => api.delete(`${base}/members/${id}`).then(() => {}),
   },
   subscriptions: {
     create: (data: { memberId: string; planId: string }) =>
       api.post<{ subscription: MembershipSubscription; payment: MembershipPayment }>(`${base}/subscriptions`, data).then((r) => r.data),
+    renew: (planId: string) =>
+      api.post<{ subscription: MembershipSubscription; payment: MembershipPayment }>(`${base}/subscriptions/renew`, { planId }).then((r) => r.data),
     get: (id: string) => api.get<MembershipSubscription>(`${base}/subscriptions/${id}`).then((r) => r.data),
     list: (params?: { page?: number; limit?: number; memberId?: string; status?: string }) =>
       api.get<PaginatedResponse<MembershipSubscription>>(`${base}/subscriptions`, { params }).then((r) => r.data),
     initChapa: (subscriptionId: string) =>
       api.post<{ checkoutUrl: string; txRef: string }>(`${base}/subscriptions/${subscriptionId}/payment/chapa-init`).then((r) => r.data),
     confirmManual: (subscriptionId: string, formData: FormData) =>
-      api.post<MembershipSubscription>(`${base}/subscriptions/${subscriptionId}/payment/manual`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      }).then((r) => r.data),
+      api.post<MembershipSubscription>(`${base}/subscriptions/${subscriptionId}/payment/manual`, formData).then((r) => r.data),
+    confirmManualPublic: (subscriptionId: string, formData: FormData) =>
+      api.post<MembershipSubscription>(`${base}/subscriptions/${subscriptionId}/payment/manual-public`, formData).then((r) => r.data),
+    completeAccount: (subscriptionId: string, password: string) =>
+      api.post<{ message: string; email?: string }>(`${base}/subscriptions/${subscriptionId}/complete-account`, { password }).then((r) => r.data),
   },
   certificates: {
     downloadUrl: (certificateIdOrId: string) => `${API_BASE_URL}/api/v1${base}/certificates/${certificateIdOrId}/download`,
@@ -141,5 +171,6 @@ export const membershipApi = {
     list: (params?: { page?: number; limit?: number; subscriptionId?: string }) =>
       api.get<PaginatedResponse<MembershipPayment>>(`${base}/payments`, { params }).then((r) => r.data),
   },
-  analytics: () => api.get<MembershipAnalytics>(`${base}/analytics`).then((r) => r.data),
+  analytics: (params?: { category?: MemberCategory }) =>
+    api.get<MembershipAnalytics>(`${base}/analytics`, { params }).then((r) => r.data),
 };

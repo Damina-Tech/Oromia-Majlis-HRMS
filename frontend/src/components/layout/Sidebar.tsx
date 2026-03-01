@@ -183,6 +183,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     if (item.title === 'Dashboard' && isHalalBusinessOnly) {
       return false;
     }
+    // Hide main Dashboard for Majlis members (their default is My Membership)
+    if (item.title === 'Dashboard' && hasPermission('majlis.member')) {
+      return false;
+    }
     // Hide Reports and Notifications for EMPLOYEE role
     if (isEmployee && (item.title === 'Reports' || item.title === 'Notifications')) {
       return false;

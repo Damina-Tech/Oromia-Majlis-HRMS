@@ -81,7 +81,6 @@ import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
 import MembershipRegisterPage from "./pages/membership/MembershipRegisterPage";
 import MembershipDashboardPage from "./pages/membership/MembershipDashboardPage";
 import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
-import MembershipRegisterAdminPage from "./pages/membership/MembershipRegisterAdminPage";
 import MemberDetailPage from "./pages/membership/MemberDetailPage";
 import MyMembershipPage from "./pages/membership/MyMembershipPage";
 import VerifyMembershipPage from "./pages/membership/VerifyMembershipPage";
@@ -199,8 +198,15 @@ function AppRoutes() {
       <Route path="/verify/halal" element={<VerifyHalalPage />} />
       <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
 
-      {/* Public: Majlis membership registration (no auth required) */}
-      <Route path="/register/membership" element={<MembershipRegisterPage />} />
+      {/* Public: Majlis membership registration (redirects to dashboard if already logged in) */}
+      <Route
+        path="/register/membership"
+        element={
+          <PublicRoute>
+            <MembershipRegisterPage />
+          </PublicRoute>
+        }
+      />
       <Route path="/verify/membership" element={<VerifyMembershipPage />} />
       <Route path="/verify/membership/:certificateId" element={<VerifyMembershipPage />} />
 
@@ -233,7 +239,7 @@ function AppRoutes() {
         <Route path="majlis/assignments" element={<MajlisAssignmentsPage />} />
         <Route path="majlis/reports" element={<MajlisReportsPage />} />
         <Route path="majlis/membership" element={<MembershipDashboardPage />} />
-        <Route path="majlis/membership/register" element={<MembershipRegisterAdminPage />} />
+        <Route path="majlis/membership/register" element={<MembershipRegisterPage />} />
         <Route path="majlis/membership/members" element={<MembershipMembersPage />} />
         <Route path="majlis/membership/members/:id" element={<MemberDetailPage />} />
         <Route path="my-membership" element={<MyMembershipPage />} />

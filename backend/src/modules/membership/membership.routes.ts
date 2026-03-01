@@ -8,13 +8,19 @@ import {
   listMembers,
   getMember,
   getMyMember,
+  updateMyMember,
   updateMember,
+  updateMemberProfile,
+  deleteMember,
   createSubscription,
+  renewSubscription,
   listSubscriptions,
   getSubscription,
   initChapaPayment,
   chapaCallback,
   confirmManualPayment,
+  confirmManualPaymentPublic,
+  completeMembershipAccount,
   downloadCertificate,
   downloadCertificatePublic,
   verifyCertificate,
@@ -32,6 +38,8 @@ router.post("/members", uploadMembershipFile.single("profilePhoto"), createMembe
 router.post("/subscriptions", createSubscription);
 router.get("/subscriptions/:id/payment/chapa-callback", chapaCallback);
 router.post("/subscriptions/:id/payment/chapa-init", initChapaPayment);
+router.post("/subscriptions/:id/payment/manual-public", uploadMembershipFile.single("receipt"), confirmManualPaymentPublic);
+router.post("/subscriptions/:id/complete-account", completeMembershipAccount);
 router.get("/subscriptions/:id", getSubscription); // Public so success page can show status
 router.get("/verify/:certificateId", verifyCertificate);
 router.get("/certificates/by-id/:certificateId/download", downloadCertificatePublic); // Public download for success page
@@ -40,8 +48,12 @@ router.get("/certificates/by-id/:certificateId/download", downloadCertificatePub
 router.get("/plans", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), listPlans);
 router.get("/members", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), listMembers);
 router.get("/me", requireAuth, hasAnyPermission("majlis.member"), getMyMember);
+router.patch("/me", requireAuth, hasAnyPermission("majlis.member"), uploadMembershipFile.single("profilePhoto"), updateMyMember);
+router.post("/subscriptions/renew", requireAuth, hasAnyPermission("majlis.member"), renewSubscription);
 router.get("/members/:id", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), getMember);
 router.patch("/members/:id", requireAuth, hasAnyPermission("majlis.membership.admin"), updateMember);
+router.patch("/members/:id/profile", requireAuth, hasAnyPermission("majlis.membership.admin"), uploadMembershipFile.single("profilePhoto"), updateMemberProfile);
+router.delete("/members/:id", requireAuth, hasAnyPermission("majlis.membership.admin"), deleteMember);
 router.get("/subscriptions", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), listSubscriptions);
 router.post(
   "/subscriptions/:id/payment/manual",

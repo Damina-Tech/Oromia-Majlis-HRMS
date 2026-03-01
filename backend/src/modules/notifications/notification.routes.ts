@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, hasPermission } from "../../middleware/auth.js";
+import { requireAuth, hasPermission, hasAnyPermission } from "../../middleware/auth.js";
 import {
   getNotificationPreferences,
   getDeliveryLogs,
@@ -14,10 +14,13 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get("/", hasPermission("notifications.view"), listNotifications);
-router.post("/mark-read", hasPermission("notifications.view"), markNotifications);
-router.get("/preferences", hasPermission("notifications.view"), getNotificationPreferences);
-router.put("/preferences", hasPermission("notifications.view"), updateNotificationPreferences);
+// Allow employees (notifications.view) and members (majlis.member) to list and manage their own notifications
+const canViewNotifications = hasAnyPermission("notifications.view", "majlis.member");
+
+router.get("/", canViewNotifications, listNotifications);
+router.post("/mark-read", canViewNotifications, markNotifications);
+router.get("/preferences", canViewNotifications, getNotificationPreferences);
+router.put("/preferences", canViewNotifications, updateNotificationPreferences);
 router.post("/test", hasPermission("notifications.manage"), sendTestNotification);
 
 router.get(

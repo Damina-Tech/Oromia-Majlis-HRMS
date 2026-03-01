@@ -20,6 +20,9 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
   if (user.roles?.includes("HALAL_BUSINESS") && user.permissions?.includes("halal.business")) {
     return "/halal/dashboard";
   }
+  if (user.roles?.includes("MEMBER") && user.permissions?.includes("majlis.member")) {
+    return "/my-membership";
+  }
   return "/dashboard";
 }
 

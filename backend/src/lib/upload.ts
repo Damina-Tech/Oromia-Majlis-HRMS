@@ -221,10 +221,10 @@ const membershipStorage = multer.diskStorage({
   },
 });
 const membershipFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = /jpeg|jpg|png/;
+  const allowed = /jpeg|jpg|png|pdf/;
   const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
-  if (allowed.test(ext) || /image\//.test(file.mimetype)) cb(null, true);
-  else cb(new Error("Invalid file type. Allowed: JPEG, PNG"));
+  if (allowed.test(ext) || /image\//.test(file.mimetype) || file.mimetype === "application/pdf") cb(null, true);
+  else cb(new Error("Invalid file type. Allowed: JPEG, PNG, PDF"));
 };
 export const uploadMembershipFile = multer({
   storage: membershipStorage,

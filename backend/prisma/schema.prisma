@@ -2563,6 +2563,7 @@ model MembershipPayment {
   currency        String                    @default("ETB")
   method          MembershipPaymentMethod
   status          MembershipPaymentStatus   @default(PENDING)
+  bankName        String?                   // Bank name when method is MANUAL and payment type is transfer
   chapaTxRef      String?
   chapaRefId      String?
   receiptUrl      String?
