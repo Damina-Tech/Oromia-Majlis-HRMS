@@ -24,6 +24,12 @@ export const CreateHalalBusinessDto = z.object({
   businessType: z.string().optional(),
   tinNumber: z.string().optional(),
   declarationSignature: z.string().optional(),
+  declarationChecklist: z.object({
+    noAlcohol: z.boolean(),
+    noProhibited: z.boolean(),
+    majlisCompliance: z.boolean(),
+    dataAccurate: z.boolean(),
+  }).optional(),
   productList: z.array(z.object({
     name: z.string(),
     description: z.string().optional(),
@@ -81,7 +87,7 @@ export const AssignInspectionDto = z.object({
 });
 
 export const CompleteInspectionDto = z.object({
-  checklistData: z.record(z.any()).optional(),
+  checklistData: z.record(z.string(), z.unknown()).optional(),
   evidence: z.array(z.object({
     url: z.string(),
     type: z.enum(["photo", "video"]),

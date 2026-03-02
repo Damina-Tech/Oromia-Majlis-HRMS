@@ -443,6 +443,15 @@ export default function HalalRegisterFormPage() {
       businessType: formData.businessType || undefined,
       tinNumber: formData.tinNumber || undefined,
       declarationSignature: formData.signatureData || undefined,
+      declarationChecklist:
+        formData.declNoAlcohol && formData.declNoProhibited && formData.declMajlisCompliance && formData.declDataAccurate
+          ? {
+              noAlcohol: formData.declNoAlcohol,
+              noProhibited: formData.declNoProhibited,
+              majlisCompliance: formData.declMajlisCompliance,
+              dataAccurate: formData.declDataAccurate,
+            }
+          : undefined,
     };
 
     const buildProductList = () =>
@@ -1186,11 +1195,6 @@ export default function HalalRegisterFormPage() {
                   By typing your name, you agree to the declarations above.
                 </p>
               </div>
-              <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-                <p>Date: {new Date().toLocaleDateString()} (auto)</p>
-                <p>IP: (recorded at submit)</p>
-                <p>User: (your account)</p>
-              </div>
             </div>
           )}
 
@@ -1260,10 +1264,78 @@ export default function HalalRegisterFormPage() {
                   <FileText className="h-4 w-4" /> Uploaded Documents
                 </h4>
                 <ul className="space-y-2 text-sm">
-                  {formData.businessLicenseFile && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Business License: {formData.businessLicenseFile.name}</li>}
-                  {formData.registrationCertFile && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Registration Certificate: {formData.registrationCertFile.name}</li>}
-                  {formData.tinCertFile && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> TIN Certificate: {formData.tinCertFile.name}</li>}
-                  {formData.ownerIdFile && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Owner ID/Passport: {formData.ownerIdFile.name}</li>}
+                  {formData.businessLicenseFile && (
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Business License: {formData.businessLicenseFile.name}</span>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = URL.createObjectURL(formData.businessLicenseFile!);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline ml-1"
+                      >
+                        View
+                      </a>
+                    </li>
+                  )}
+                  {formData.registrationCertFile && (
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Registration Certificate: {formData.registrationCertFile.name}</span>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = URL.createObjectURL(formData.registrationCertFile!);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline ml-1"
+                      >
+                        View
+                      </a>
+                    </li>
+                  )}
+                  {formData.tinCertFile && (
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>TIN Certificate: {formData.tinCertFile.name}</span>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = URL.createObjectURL(formData.tinCertFile!);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline ml-1"
+                      >
+                        View
+                      </a>
+                    </li>
+                  )}
+                  {formData.ownerIdFile && (
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Owner ID/Passport: {formData.ownerIdFile.name}</span>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = URL.createObjectURL(formData.ownerIdFile!);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline ml-1"
+                      >
+                        View
+                      </a>
+                    </li>
+                  )}
                   {!formData.businessLicenseFile && !formData.registrationCertFile && !formData.tinCertFile && !formData.ownerIdFile && (
                     <li className="text-muted-foreground">No documents uploaded</li>
                   )}

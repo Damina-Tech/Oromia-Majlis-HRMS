@@ -2308,6 +2308,7 @@ model HalalBusiness {
   tinNumber       String?
   declarationSignedAt   DateTime?
   declarationSignature  String?
+  declarationChecklist  Json?                // { noAlcohol, noProhibited, majlisCompliance, dataAccurate } from registration
   productList    Json?                // [{ name, description }] from registration
   documents      Json?                // [{ name, url }] from registration (Registration Cert, TIN Cert, Owner ID)
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)

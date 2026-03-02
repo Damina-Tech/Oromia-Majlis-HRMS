@@ -61,7 +61,7 @@ export default function HalalInspectionAssignmentPage() {
   });
   const assignableApps =
     applications?.items?.filter((a) =>
-      ["SUBMITTED", "REVIEW"].includes(a.status)
+      ["SUBMITTED", "REVIEW", "INSPECTION"].includes(a.status)
     ) ?? [];
 
   const { data: inspectors, isLoading: loadingInspectors } = useQuery({
@@ -102,7 +102,7 @@ export default function HalalInspectionAssignmentPage() {
     assignMutation.mutate({
       applicationId,
       inspectorId,
-      scheduledAt: scheduledAt || undefined,
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
     });
   };
 

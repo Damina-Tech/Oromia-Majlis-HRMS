@@ -23,6 +23,7 @@ export default function HalalDashboardPage() {
   const { hasPermission } = useAuth();
   const isStaff = hasPermission("halal.admin") || hasPermission("halal.review") || hasPermission("halal.inspector");
   const isBusinessOwner = hasPermission("halal.business");
+  const isBusinessOwnerOnly = isBusinessOwner && !isStaff;
 
   const { data: businesses, isLoading } = useQuery({
     queryKey: ["halal-businesses"],
@@ -59,11 +60,237 @@ export default function HalalDashboardPage() {
     );
   }
 
+  // Minimal dashboard for users with only Halal Business role
+  if (isBusinessOwnerOnly) {
+    return (
+      <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
+        <header className="text-center sm:text-left pb-2">
+          <h1 className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">Halal Certification</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage your businesses and certification applications</p>
+        </header>
+
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card
+            className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600 cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 transition-colors"
+            onClick={() => navigate("/halal/register")}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{stats.businesses}</p>
+              <p className="text-xs text-muted-foreground">My Businesses</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-l-blue-600 cursor-pointer hover:bg-blue-100/50 dark:hover:bg-blue-950/30 transition-colors"
+            onClick={() => navigate("/halal/apply")}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-blue-800 dark:text-blue-200">{stats.applications}</p>
+              <p className="text-xs text-muted-foreground">My Applications</p>
+            </CardContent>
+          </Card>
+          <Card
+            className={`border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20 dark:border-l-amber-600 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-950/30 transition-colors`}
+            onClick={() => {
+              if (stats.pendingBusinesses > 0 && pendingApprovalBiz[0]) navigate(`/halal/businesses/${pendingApprovalBiz[0].id}`);
+              else if (stats.pending > 0 && apps[0]) navigate(`/halal/applications/${apps[0].id}`);
+              else navigate("/halal/apply");
+            }}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-amber-800 dark:text-amber-200">{stats.pending + stats.pendingBusinesses}</p>
+              <p className="text-xs text-muted-foreground">Needs attention</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="border-l-4 border-l-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-l-violet-600 cursor-pointer hover:bg-violet-100/50 dark:hover:bg-violet-950/30 transition-colors"
+            onClick={() => navigate("/halal/certificates")}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-violet-800 dark:text-violet-200">{stats.certificates}</p>
+              <p className="text-xs text-muted-foreground">My Certificates</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-6">
+            {pendingApprovalBiz.length > 0 && (
+              <Card className="shadow-sm border-amber-200/50 dark:border-amber-900/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-amber-800 dark:text-amber-200">Action needed</CardTitle>
+                  <CardDescription>Businesses awaiting admin approval. You can apply for Halal once approved.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {pendingApprovalBiz.slice(0, 4).map((b) => (
+                      <li
+                        key={b.id}
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-amber-100 dark:border-amber-900/40 hover:bg-amber-50/50 dark:hover:bg-amber-950/30 cursor-pointer transition-colors"
+                        onClick={() => navigate(`/halal/businesses/${b.id}`)}
+                      >
+                        <span className="font-medium text-sm">{b.name}</span>
+                        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs">Pending</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                  {pendingApprovalBiz.length > 4 && (
+                    <Button variant="ghost" size="sm" className="w-full mt-2 text-amber-600" onClick={() => navigate("/halal/register")}>
+                      View all
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-emerald-600" />
+                  My Businesses
+                </CardTitle>
+                <CardDescription>Register more or apply for certification on approved businesses</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {bizList.length === 0 ? (
+                  <div className="py-6 text-center text-muted-foreground rounded-lg bg-muted/30">
+                    <p className="text-sm">No businesses yet.</p>
+                    <Button size="sm" className="mt-2" onClick={() => navigate("/halal/register/new")}>
+                      Register your first business
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {bizList.slice(0, 5).map((b) => {
+                      const status = b.status ?? "PENDING_APPROVAL";
+                      const canApply = status === "APPROVED";
+                      return (
+                        <li
+                          key={b.id}
+                          className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/40 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/halal/businesses/${b.id}`)}
+                        >
+                          <div>
+                            <p className="font-medium text-sm">{b.name}</p>
+                            <p className="text-xs text-muted-foreground">{b.category.replace("_", " ")}</p>
+                          </div>
+                          {canApply ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate("/halal/apply/new", { state: { businessId: b.id } });
+                              }}
+                            >
+                              Apply
+                            </Button>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">{status === "REJECTED" ? "Rejected" : "Pending"}</Badge>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {bizList.length > 5 && (
+                  <Button variant="ghost" size="sm" className="w-full mt-2 text-emerald-600" onClick={() => navigate("/halal/register")}>
+                    View all businesses
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  My Applications
+                </CardTitle>
+                <CardDescription>Track status and next steps</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {apps.length === 0 ? (
+                  <div className="py-6 text-center text-muted-foreground rounded-lg bg-muted/30">
+                    <p className="text-sm">No applications yet.</p>
+                    <Button size="sm" className="mt-2" onClick={() => navigate("/halal/apply/new")}>
+                      Start an application
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {apps.slice(0, 5).map((a) => {
+                      const nextAction =
+                        a.status === "DRAFT"
+                          ? "Submit"
+                          : a.status === "SUBMITTED" && !a.feePaidAt
+                            ? "Pay fee"
+                            : a.status === "APPROVED"
+                              ? "Get certificate"
+                              : null;
+                      return (
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/halal/applications/${a.id}`)}
+                        >
+                          <div>
+                            <p className="font-medium text-sm">{a.business?.name ?? a.businessId}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <Badge className={`${STATUS_COLORS[a.status]} text-xs`}>{a.status}</Badge>
+                              {nextAction && <span className="text-xs text-muted-foreground">→ {nextAction}</span>}
+                            </div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {apps.length > 5 && (
+                  <Button variant="ghost" size="sm" className="w-full mt-2 text-blue-600" onClick={() => navigate("/halal/apply")}>
+                    View all applications
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-500/5 to-transparent dark:from-emerald-600/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Quick actions</CardTitle>
+                <CardDescription>Shortcuts</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => navigate("/halal/register")}>
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Register Business
+                </Button>
+                <Button size="sm" className="w-full justify-start bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate("/halal/apply/new")}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Application
+                </Button>
+                <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => navigate("/halal/certificates")}>
+                  <Award className="h-4 w-4 mr-2" />
+                  My Certificates
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-8 max-w-6xl mx-auto">
       {/* Stats cards with subtle colors */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600">
+        <Card
+          className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600 cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 transition-colors"
+          onClick={() => navigate("/halal/register")}
+        >
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
@@ -76,7 +303,10 @@ export default function HalalDashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-l-blue-600">
+        <Card
+          className="border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-l-blue-600 cursor-pointer hover:bg-blue-100/50 dark:hover:bg-blue-950/30 transition-colors"
+          onClick={() => navigate("/halal/apply")}
+        >
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
@@ -89,7 +319,10 @@ export default function HalalDashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20 dark:border-l-amber-600">
+        <Card
+          className="border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20 dark:border-l-amber-600 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-950/30 transition-colors"
+          onClick={() => navigate("/halal/apply")}
+        >
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
@@ -101,8 +334,12 @@ export default function HalalDashboardPage() {
           </CardContent>
         </Card>
         <Card
-          className={`border-l-4 border-l-orange-500 bg-orange-50/50 dark:bg-orange-950/20 dark:border-l-orange-600 ${stats.pendingBusinesses > 0 ? "cursor-pointer hover:bg-orange-100/50 dark:hover:bg-orange-950/30 transition-colors" : ""}`}
-          onClick={() => stats.pendingBusinesses > 0 && pendingApprovalBiz[0] && navigate(`/halal/businesses/${pendingApprovalBiz[0].id}`)}
+          className="border-l-4 border-l-orange-500 bg-orange-50/50 dark:bg-orange-950/20 dark:border-l-orange-600 cursor-pointer hover:bg-orange-100/50 dark:hover:bg-orange-950/30 transition-colors"
+          onClick={() =>
+            stats.pendingBusinesses > 0 && pendingApprovalBiz[0]
+              ? navigate(`/halal/businesses/${pendingApprovalBiz[0].id}`)
+              : navigate("/halal/register")
+          }
         >
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
@@ -113,7 +350,10 @@ export default function HalalDashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-l-violet-600">
+        <Card
+          className="border-l-4 border-l-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-l-violet-600 cursor-pointer hover:bg-violet-100/50 dark:hover:bg-violet-950/30 transition-colors"
+          onClick={() => navigate("/halal/certificates")}
+        >
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>

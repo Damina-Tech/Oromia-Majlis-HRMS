@@ -178,18 +178,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const isHalalBusinessOnly = user?.roles?.some(r => r.toUpperCase() === 'HALAL_BUSINESS') &&
     !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(r.toUpperCase()));
 
+  // Member-only: has MEMBER (or majlis.member) and no staff roles — their default is My Membership
+  const isMemberOnly = hasPermission('majlis.member') &&
+    !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'MAJLIS_REPRESENTATIVE'].includes(r.toUpperCase()));
+
   const filteredMenuItems = menuItems.filter((item) => {
-    // Hide main Dashboard for HALAL_BUSINESS (their default is Halal dashboard)
-    if (item.title === 'Dashboard' && isHalalBusinessOnly) {
-      return false;
-    }
-    // Hide main Dashboard for Majlis members (their default is My Membership)
-    if (item.title === 'Dashboard' && hasPermission('majlis.member')) {
-      return false;
-    }
-    // Hide Reports and Notifications for EMPLOYEE role
-    if (isEmployee && (item.title === 'Reports' || item.title === 'Notifications')) {
-      return false;
+    // Hide main Dashboard only for Halal-only or Member-only users (permission-based: show when user has dashboard.view)
+    if (item.title === 'Dashboard') {
+      if (isHalalBusinessOnly) return false;
+      if (isMemberOnly) return false;
+      return hasPermission('dashboard.view');
     }
     // Always show items with '*' permission (for authenticated users)
     if (item.permission === '*') {

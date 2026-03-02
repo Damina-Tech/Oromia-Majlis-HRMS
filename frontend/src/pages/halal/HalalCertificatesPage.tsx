@@ -200,11 +200,11 @@ export default function HalalCertificatesPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => window.open(`/verify/halal/${c.certificateId}`, "_blank")}
+                      onClick={() => halalApi.certificates.openInNewTab(c.id)}
                       className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Verify
+                      View
                     </Button>
                     {c.status === "VALID" && (
                       <Button

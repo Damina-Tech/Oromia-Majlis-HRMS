@@ -90,6 +90,7 @@ export async function registerBusiness(req: Request, res: Response) {
         tinNumber: data.tinNumber || undefined,
         declarationSignature: data.declarationSignature || undefined,
         declarationSignedAt: data.declarationSignature ? new Date() : undefined,
+        declarationChecklist: data.declarationChecklist ?? undefined,
         productList: data.productList && data.productList.length > 0 ? data.productList : undefined,
         documents: data.documents && data.documents.length > 0 ? data.documents : undefined,
         userId,
@@ -182,6 +183,7 @@ export async function updateBusiness(req: Request, res: Response) {
       updateData.declarationSignature = data.declarationSignature || null;
       updateData.declarationSignedAt = data.declarationSignature ? new Date() : null;
     }
+    if (data.declarationChecklist !== undefined) updateData.declarationChecklist = data.declarationChecklist ?? null;
     if (data.productList !== undefined) updateData.productList = data.productList ?? null;
     if (data.documents !== undefined) updateData.documents = data.documents ?? null;
     const updated = await prisma.halalBusiness.update({
@@ -432,7 +434,7 @@ export async function confirmPayment(req: Request, res: Response) {
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const updated = await prisma.halalApplication.update({
       where: { id },
-      data: { feePaidAt: new Date() },
+      data: { feePaidAt: new Date(), status: HalalApplicationStatus.REVIEW },
       include: { business: true },
     });
     await createAuditLog(HalalAuditAction.APPLICATION_SUBMITTED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
@@ -541,6 +543,7 @@ export async function chapaCallback(req: Request, res: Response) {
       where: { id },
       data: {
         feePaidAt: new Date(),
+        status: HalalApplicationStatus.REVIEW,
         paymentMethod: "CHAPA",
         chapaTxRef: trx_ref,
         chapaRefId: ref_id || null,
@@ -576,6 +579,7 @@ export async function confirmManualPayment(req: Request, res: Response) {
       where: { id },
       data: {
         feePaidAt: new Date(),
+        status: HalalApplicationStatus.REVIEW,
         paymentMethod: "MANUAL",
         paymentBankName: body.bankName,
         paymentReceiptUrl: receiptUrl,
@@ -729,24 +733,45 @@ export async function assignInspection(req: Request, res: Response) {
     const applicationId = body.applicationId || (req.params as any).applicationId;
     const { inspectorId, scheduledAt } = AssignInspectionDto.parse({ ...body, applicationId });
     if (!applicationId) return res.status(400).json({ message: "applicationId is required" });
-    const app = await prisma.halalApplication.findUnique({ where: { id: applicationId } });
-    if (!app) return res.status(404).json({ message: "Application not found" });
-    if (app.status !== HalalApplicationStatus.SUBMITTED && app.status !== HalalApplicationStatus.REVIEW) {
-      return res.status(400).json({ message: "Application must be Submitted or in Review" });
-    }
-    const ins = await prisma.halalInspection.create({
-      data: {
-        applicationId,
-        inspectorId,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-      },
-      include: { application: { include: { business: true } }, inspector: true },
-    });
-    await prisma.halalApplication.update({
+    const app = await prisma.halalApplication.findUnique({
       where: { id: applicationId },
-      data: { status: HalalApplicationStatus.INSPECTION },
+      include: { inspections: true },
     });
-    await createAuditLog(HalalAuditAction.INSPECTION_ASSIGNED, userId, "HalalInspection", ins.id, applicationId, undefined, ins, req.ip, req.get("user-agent"));
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (![HalalApplicationStatus.SUBMITTED, HalalApplicationStatus.REVIEW, HalalApplicationStatus.INSPECTION].includes(app.status)) {
+      return res.status(400).json({ message: "Application must be Submitted, in Review, or in Inspection" });
+    }
+    const hasCompletedInspection = app.inspections.some((i) => i.completedAt != null);
+    if (hasCompletedInspection) {
+      return res.status(400).json({ message: "Inspection already completed for this application; cannot assign or reassign." });
+    }
+    const pendingInspection = app.inspections.find((i) => i.completedAt == null);
+    let ins;
+    if (pendingInspection) {
+      ins = await prisma.halalInspection.update({
+        where: { id: pendingInspection.id },
+        data: {
+          inspectorId,
+          scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        },
+        include: { application: { include: { business: true } }, inspector: true },
+      });
+      await createAuditLog(HalalAuditAction.INSPECTION_ASSIGNED, userId, "HalalInspection", ins.id, applicationId, pendingInspection, ins, req.ip, req.get("user-agent"));
+    } else {
+      ins = await prisma.halalInspection.create({
+        data: {
+          applicationId,
+          inspectorId,
+          scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        },
+        include: { application: { include: { business: true } }, inspector: true },
+      });
+      await prisma.halalApplication.update({
+        where: { id: applicationId },
+        data: { status: HalalApplicationStatus.INSPECTION },
+      });
+      await createAuditLog(HalalAuditAction.INSPECTION_ASSIGNED, userId, "HalalInspection", ins.id, applicationId, undefined, ins, req.ip, req.get("user-agent"));
+    }
     res.status(201).json(ins);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to assign inspection" });
@@ -794,7 +819,8 @@ export async function completeInspection(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const { id } = req.params;
-    const data = CompleteInspectionDto.parse(req.body);
+    const body = typeof req.body === "object" && req.body !== null ? req.body : {};
+    const data = CompleteInspectionDto.parse(body);
     const old = await prisma.halalInspection.findUnique({ where: { id } });
     if (!old) return res.status(404).json({ message: "Inspection not found" });
     if (old.inspectorId !== userId) return res.status(403).json({ message: "Only assigned inspector can complete" });

@@ -54,6 +54,12 @@ export interface HalalBusiness {
   tinNumber?: string;
   declarationSignature?: string;
   declarationSignedAt?: string;
+  declarationChecklist?: {
+    noAlcohol: boolean;
+    noProhibited: boolean;
+    majlisCompliance: boolean;
+    dataAccurate: boolean;
+  };
   productList?: { name: string; description?: string }[];
   documents?: { name: string; url: string; type?: string }[];
   createdAt: string;
@@ -202,6 +208,13 @@ export const halalApi = {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+    },
+    /** Load certificate PDF and open in a new tab (no verify page). */
+    openInNewTab: async (id: string) => {
+      const { data } = await api.get(`/halal/certificates/${id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     },
   },
   inspectors: {

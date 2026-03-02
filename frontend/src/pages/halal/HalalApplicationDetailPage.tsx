@@ -72,16 +72,16 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
     description: "Pay the required fee to proceed. After payment, Oromia Majlis will review your application.",
   },
   REVIEW: {
-    title: "Application under review",
-    description: "Oromia Majlis staff are reviewing your application. An inspector may be assigned soon.",
+    title: "Under review",
+    description: "Your payment has been received. Oromia Majlis staff are reviewing your application. An inspector may be assigned soon.",
   },
   INSPECTION: {
-    title: "Inspection in progress",
-    description: "An inspector has been assigned. They will visit your premises to complete the inspection.",
+    title: "Inspection",
+    description: "An inspector has been assigned. They will visit your premises, upload the inspection result, and Oromia Majlis admin will review and approve for certification.",
   },
   APPROVED: {
     title: "Certificate issued",
-    description: "Your application was approved. Download your Halal certificate from the Certificates page.",
+    description: "Your application was approved. Download your Halal certificate below.",
   },
   REJECTED: {
     title: "Application not approved",
@@ -261,15 +261,25 @@ export default function HalalMyApplicationDetailPage() {
   const application = app as HalalApplication;
   const feeAmount = application.feeAmount != null ? Number(application.feeAmount) : 500;
   const isPaid = !!application.feePaidAt;
-  const currentStepIndex = WORKFLOW_STEPS.findIndex((s) => s.key === application.status);
-  const hint = NEXT_ACTION_HINTS[application.status];
+  const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
+  // When paid, treat SUBMITTED as REVIEW for display
+  const effectiveStatus = (application.status === "SUBMITTED" && isPaid) ? "REVIEW" : application.status;
+  const currentStepIndex = WORKFLOW_STEPS.findIndex((s) => s.key === effectiveStatus);
+  const baseHint = NEXT_ACTION_HINTS[effectiveStatus];
+  // When inspection is completed, show awaiting-admin message
+  const hint =
+    effectiveStatus === "INSPECTION" && hasCompletedInspection
+      ? {
+          title: "Inspection completed",
+          description:
+            "The inspector has completed the inspection and uploaded the result. Oromia Majlis admin will review and approve your certification shortly.",
+        }
+      : baseHint;
   const isRejected = application.status === "REJECTED";
   const bizDocs = application.documents ?? application.business?.documents ?? [];
   const ownerIdUrl = getOwnerIdDocumentUrl(bizDocs);
 
   const biz = application.business;
-
-  const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
   const canApprove =
     isStaff &&
     ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status) &&
@@ -299,8 +309,12 @@ export default function HalalMyApplicationDetailPage() {
               {application.business?.name ?? application.businessId}
             </p>
           </div>
-          <Badge className={`text-sm font-medium px-3 py-1 ${STATUS_COLORS[application.status]}`}>
-            {application.status}
+          <Badge className={`text-sm font-medium px-3 py-1 ${STATUS_COLORS[effectiveStatus]}`}>
+            {effectiveStatus === "REVIEW"
+              ? "Under review"
+              : effectiveStatus === "INSPECTION"
+                ? "Inspection"
+                : effectiveStatus}
           </Badge>
         </div>
       </div>
@@ -317,7 +331,7 @@ export default function HalalMyApplicationDetailPage() {
               const Icon = step.icon;
               const isPast = isRejected ? i < 4 : i < currentStepIndex;
               const isCurrent =
-                !isRejected && application.status === step.key;
+                !isRejected && effectiveStatus === step.key;
               const isFuture = !isPast && !isCurrent;
               const isLast = i === WORKFLOW_STEPS.length - 1;
 
@@ -407,6 +421,42 @@ export default function HalalMyApplicationDetailPage() {
                 Withdraw application
               </Button>
             </>
+          )}
+          {(application.status === "SUBMITTED" || application.status === "REVIEW") && isPaid && (
+            <div className="w-full space-y-3">
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-100/80 dark:bg-emerald-900/30 px-3 py-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200 font-medium">
+                    Certification fee: {feeAmount} ETB
+                  </p>
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                    Paid on{" "}
+                    {application.feePaidAt
+                      ? new Date(application.feePaidAt).toLocaleDateString()
+                      : "—"}
+                    {(application as any).paymentMethod === "MANUAL" && (application as any).paymentBankName && (
+                      <span className="text-emerald-700/80 dark:text-emerald-300/80">
+                        {" "}via {(application as any).paymentBankName}
+                      </span>
+                    )}
+                    {(application as any).paymentMethod === "CHAPA" && (
+                      <span className="text-emerald-700/80 dark:text-emerald-300/80"> via Chapa</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              {(application as any).paymentReceiptUrl && (
+                <a
+                  href={resolveFileUrl((application as any).paymentReceiptUrl) ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-500 hover:underline flex items-center gap-1"
+                >
+                  <Eye className="h-4 w-4" /> View receipt
+                </a>
+              )}
+            </div>
           )}
           {application.status === "SUBMITTED" && !isPaid && (
             <>
@@ -605,57 +655,8 @@ export default function HalalMyApplicationDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Products & Ingredients - from application or business registration */}
-      {((application.productList?.length || application.ingredients?.length) ||
-        application.business?.productList?.length ||
-        application.business?.documents?.length) ? (
-        <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-teal-600" /> Products & ingredients
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {((application.productList && application.productList.length > 0) ||
-              (application.business?.productList && application.business.productList.length > 0)) && (
-              <div>
-                <p className="text-sm font-medium mb-2">Products</p>
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {(
-                    application.productList?.length
-                      ? application.productList
-                      : application.business?.productList ?? []
-                  ).map((p, i) => (
-                    <li key={i}>
-                      {p.name}
-                      {p.description && (
-                        <span className="text-muted-foreground"> — {p.description}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {application.ingredients && application.ingredients.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-2">Ingredients</p>
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {application.ingredients.map((ing, i) => (
-                    <li key={i}>
-                      {ing.name}
-                      {ing.source && (
-                        <span className="text-muted-foreground"> — {ing.source}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {/* Payment status */}
+      {/* Payment status
       {application.status !== "DRAFT" && (
         <Card
           className={`shadow-sm ${
@@ -706,19 +707,12 @@ export default function HalalMyApplicationDetailPage() {
                   </a>
                 )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg bg-amber-100/80 dark:bg-amber-900/30 px-3 py-2">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
-                  Payment pending. Click "Confirm payment" above after you have made the payment.
-                </p>
-              </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
-      )}
+      )} */}
 
-      {/* Inspections - read-only for owner; staff sees Complete button */}
+      {/* Inspections - read-only for owner; staff sees Complete button + result when completed */}
       {application.inspections && application.inspections.length > 0 && (
         <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
           <CardHeader>
@@ -728,44 +722,91 @@ export default function HalalMyApplicationDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {application.inspections.map((ins) => (
-                <li
-                  key={ins.id}
-                  className={`flex justify-between items-center p-3 rounded-lg border ${canCompleteInspection ? "" : "bg-muted/30"}`}
-                >
-                  <span className="font-medium">
-                    {ins.inspector?.firstName} {ins.inspector?.lastName}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {ins.scheduledAt && canCompleteInspection && (
-                      <span className="text-xs text-muted-foreground">
-                        Scheduled: {new Date(ins.scheduledAt).toLocaleString()}
+            <ul className="space-y-3">
+              {application.inspections.map((ins) => {
+                const data = ins.checklistData as Record<string, unknown> | undefined;
+                const overallPassed = data?.overallPassed as boolean | undefined;
+                const observations = (data?.observations as string) || ins.notes || "";
+                const recommendations = data?.recommendations as string | undefined;
+                const checklistKeys = ["premisesClean", "equipmentHalalCompliant", "storageProper", "ingredientTraceability", "noProhibitedSubstances", "personnelTrained"];
+                const checklistMet = checklistKeys.filter((k) => data?.[k] === true).length;
+                const hasResult = ins.completedAt && data;
+
+                return (
+                  <li
+                    key={ins.id}
+                    className={`rounded-lg border overflow-hidden ${canCompleteInspection ? "" : "bg-muted/30"}`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3">
+                      <span className="font-medium">
+                        {ins.inspector?.firstName} {ins.inspector?.lastName}
                       </span>
-                    )}
-                    {ins.completedAt ? (
-                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
-                        Completed
-                      </Badge>
-                    ) : (
-                      <>
-                        <Badge variant="secondary">
-                          {canCompleteInspection ? "Pending" : "Scheduled"}
-                        </Badge>
-                        {canCompleteInspection && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => navigate(`/admin/halal/inspections/${ins.id}/complete`)}
-                          >
-                            Complete
-                          </Button>
+                      <div className="flex items-center gap-2">
+                        {ins.scheduledAt && canCompleteInspection && (
+                          <span className="text-xs text-muted-foreground">
+                            Scheduled: {new Date(ins.scheduledAt).toLocaleString()}
+                          </span>
                         )}
-                      </>
+                        {ins.completedAt ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                            Completed
+                          </Badge>
+                        ) : (
+                          <>
+                            <Badge variant="secondary">
+                              {canCompleteInspection ? "Pending" : "Scheduled"}
+                            </Badge>
+                            {canCompleteInspection && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => navigate(`/admin/halal/inspections/${ins.id}/complete`)}
+                              >
+                                Complete
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {hasResult && (
+                      <div className="border-t bg-muted/20 px-3 py-3 space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Result</span>
+                          <Badge
+                            className={
+                              overallPassed === true
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border-0"
+                                : overallPassed === false
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-0"
+                                  : "bg-muted text-muted-foreground border-0"
+                            }
+                          >
+                            {overallPassed === true ? "Passed" : overallPassed === false ? "Failed" : "—"}
+                          </Badge>
+                          {typeof checklistMet === "number" && checklistKeys.length > 0 && (
+                            <span className="text-xs font-medium text-foreground/70">
+                              Checklist: {checklistMet}/{checklistKeys.length} items met
+                            </span>
+                          )}
+                        </div>
+                        {observations && (
+                          <div>
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Observations</p>
+                            <p className="text-sm text-foreground/90 line-clamp-3">{observations}</p>
+                          </div>
+                        )}
+                        {recommendations && (
+                          <div>
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Recommendations</p>
+                            <p className="text-sm text-foreground/90 line-clamp-2">{recommendations}</p>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </CardContent>
         </Card>
@@ -781,34 +822,6 @@ export default function HalalMyApplicationDetailPage() {
             <p className="text-red-800/90 dark:text-red-200/90">
               {application.rejectionReason}
             </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Staff-only: Documents */}
-      {isStaff && ((application.documents?.length ?? 0) > 0 || (biz?.documents?.length ?? 0) > 0) && (
-        <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ExternalLink className="h-5 w-5" /> Documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {(application.documents?.length ? application.documents : biz?.documents ?? []).map((d, i) => (
-                <li key={i}>
-                  <a
-                    href={resolveFileUrl(d.url) ?? "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-primary hover:underline"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    {d.name}
-                  </a>
-                </li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       )}
@@ -844,7 +857,7 @@ export default function HalalMyApplicationDetailPage() {
             <Button
               variant="outline"
               onClick={() =>
-                window.open(`/verify/halal/${application.certificate!.certificateId}`, "_blank")
+                halalApi.certificates.openInNewTab(application.certificate!.id)
               }
             >
               View certificate
@@ -893,6 +906,8 @@ export default function HalalMyApplicationDetailPage() {
               <Button
                 size="sm"
                 variant="outline"
+                disabled={hasCompletedInspection}
+                title={hasCompletedInspection ? "Inspection already completed; cannot reassign" : undefined}
                 onClick={() =>
                   navigate("/admin/halal/inspections", { state: { applicationId: application.id } })
                 }
