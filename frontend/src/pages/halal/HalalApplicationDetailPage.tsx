@@ -99,6 +99,7 @@ const WORKFLOW_STEPS = [
 
 const ETHIOPIAN_BANKS = [
   "Commercial Bank of Ethiopia (CBE)",
+  "Hijra Bank",
   "Awash Bank",
   "Dashen Bank",
   "Bank of Abyssinia",
@@ -119,6 +120,7 @@ const ETHIOPIAN_BANKS = [
 // Bank account details for manual transfer (update with actual Oromia Majlis account info)
 const BANK_ACCOUNT_DETAILS: Record<string, { accountName: string; accountNumber: string }> = {
   "Commercial Bank of Ethiopia (CBE)": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1000123456789" },
+  "Hijra Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
   "Awash Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "0132076543210" },
   "Dashen Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
   "Bank of Abyssinia": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },

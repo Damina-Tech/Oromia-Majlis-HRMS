@@ -37,6 +37,7 @@ const RequiredLabel = ({ children, required }: { children: React.ReactNode; requ
 
 const BANKS = [
   { id: "cbe", name: "Commercial Bank of Ethiopia", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "CBETETAA" },
+  { id: "hijra", name: "Hijra Bank", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "HIJRAETAA" },
   { id: "awash", name: "Awash Bank", accountName: "Oromia Majlis", accountNumber: "0132081234567", swiftCode: "AWINETAA" },
   { id: "dashen", name: "Dashen Bank", accountName: "Oromia Majlis", accountNumber: "0168123456789", swiftCode: "DASHETAA" },
   { id: "boi", name: "Bank of Abyssinia", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "ABYSETAA" },

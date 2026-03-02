@@ -19,6 +19,7 @@ import {
 } from "./halal.dto.js";
 import { paginate } from "../../lib/paginate.js";
 import fetch from "node-fetch";
+import { sendBusinessApprovedSms, sendCertificateReadySms } from "./halal-sms.js";
 
 const prisma = new PrismaClient();
 
@@ -261,6 +262,7 @@ export async function approveBusiness(req: Request, res: Response) {
       include: { region: true, zone: true, woreda: true },
     });
     await createAuditLog(HalalAuditAction.BUSINESS_APPROVED, userId, "HalalBusiness", id, undefined, { status: biz.status }, { status: updated.status }, req.ip, req.get("user-agent"));
+    sendBusinessApprovedSms(updated.contactPhone, updated.name).catch(() => {});
     res.json(updated);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to approve business" });
@@ -680,6 +682,9 @@ export async function approveApplication(req: Request, res: Response) {
         },
       });
       await createAuditLog(HalalAuditAction.CERTIFICATE_ISSUED, userId, "HalalCertificate", certId, id, undefined, { certificateId: certId }, req.ip, req.get("user-agent"));
+      if (business?.contactPhone) {
+        sendCertificateReadySms(business.contactPhone, certId).catch(() => {});
+      }
     }
     const updated = await prisma.halalApplication.findUnique({
       where: { id },
