@@ -14,6 +14,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { NotificationService } from "../notifications/notification.service.js";
 import { NotificationModule, NotificationType } from "@prisma/client";
+import { sendMembershipCertificateReadySms } from "./membership-sms.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -741,6 +742,9 @@ export async function chapaCallback(req: Request, res: Response) {
         targets: { userIds: [sub.member.userId] },
       });
     }
+    if (sub.member.phone) {
+      sendMembershipCertificateReadySms(sub.member.phone).catch(() => {});
+    }
     res.status(200).send("OK");
   } catch (e: any) {
     console.error("Membership Chapa callback error:", e);
@@ -834,6 +838,10 @@ export async function confirmManualPayment(req: Request, res: Response) {
         expiresAt: newEndDate,
       },
     });
+
+    if (sub.member.phone) {
+      sendMembershipCertificateReadySms(sub.member.phone).catch(() => {});
+    }
 
     const updated = await prisma.membershipSubscription.findUnique({
       where: { id },
