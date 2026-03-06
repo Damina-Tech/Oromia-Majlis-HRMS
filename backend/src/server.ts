@@ -25,8 +25,11 @@ app.use(
     crossOriginEmbedderPolicy: false,
   })
 );
+// Allow multiple origins (e.g. localhost + network IP when testing from another device)
+const corsOriginRaw = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8080";
+const corsOrigins = corsOriginRaw.split(",").map((o) => o.trim()).filter(Boolean);
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true
 }));
 

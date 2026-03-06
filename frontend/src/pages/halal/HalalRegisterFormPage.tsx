@@ -36,6 +36,7 @@ import { regionsApi } from "@/services/institutions";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
 import { resolveFileUrl } from "@/config/api";
+import { randomUUID } from "@/utils/uuid";
 
 const DRAFT_KEY = "halal-registration-draft";
 
@@ -146,7 +147,7 @@ const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 const emptyProduct = (): ProductItem => ({
-  id: crypto.randomUUID(),
+  id: randomUUID(),
   name: "",
   category: "FOOD",
   ingredients: "",
@@ -167,7 +168,7 @@ function parseProductFromApplication(p: { name: string; description?: string }):
   };
   const cat = parts[0] && CATEGORIES.includes(parts[0] as HalalBusinessCategory) ? parts[0] : "FOOD";
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: p.name,
     category: cat,
     ingredients: getVal("Ingredients: "),

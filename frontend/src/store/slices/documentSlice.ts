@@ -1,4 +1,5 @@
 import { StateCreator } from "zustand";
+import { randomUUID } from "@/utils/uuid";
 
 export interface DocumentTemplate {
   id: string;
@@ -223,7 +224,7 @@ export const documentSlice: StateCreator<DocumentSlice> = (set, get) => ({
   addDocument: (documentData) => {
     const document: Document = {
       ...documentData,
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       createdAt: new Date(),
       updatedAt: new Date(),
       pdfUrl: undefined,
@@ -256,7 +257,7 @@ export const documentSlice: StateCreator<DocumentSlice> = (set, get) => ({
   addTemplate: (templateData) => {
     const template: DocumentTemplate = {
       ...templateData,
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -292,7 +293,7 @@ export const documentSlice: StateCreator<DocumentSlice> = (set, get) => ({
       content = content.replace(regex, String(value));
     });
 
-    const documentId = crypto.randomUUID();
+    const documentId = randomUUID();
 
     const document: Document = {
       id: documentId,
