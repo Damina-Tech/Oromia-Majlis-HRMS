@@ -92,6 +92,7 @@ export default function HalalBusinessDetailPage() {
   const biz = business as HalalBusiness & { applications?: any[] };
   const applications = biz.applications ?? [];
   const activeApplication = applications.find((a) => a.status !== "REJECTED");
+  const hasApprovedApplication = applications.some((a) => a.status === "APPROVED");
   const bizStatus = biz.status ?? "PENDING_APPROVAL";
   const canApply = !activeApplication && bizStatus === "APPROVED";
   const locationParts = [biz.region?.name, biz.zone?.name, biz.woreda?.name, biz.kebeleName].filter(Boolean);
@@ -441,24 +442,26 @@ export default function HalalBusinessDetailPage() {
       )}
 
       {/* Primary action */}
-      <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-500/5 to-transparent">
-        <CardContent className="py-4 px-4">
-          <Button
-            onClick={() => navigate("/halal/apply/new", { state: { businessId: biz.id } })}
-            disabled={!canApply}
-            className={canApply ? "bg-emerald-600 hover:bg-emerald-700" : ""}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Apply for Halal certification
-          </Button>
-          {bizStatus !== "APPROVED" && (
-            <p className="text-sm text-muted-foreground mt-2">Apply for Halal only after this business is approved.</p>
-          )}
-          {!canApply && bizStatus === "APPROVED" && (
-            <p className="text-sm text-muted-foreground mt-2">Complete or withdraw the current application first.</p>
-          )}
-        </CardContent>
-      </Card>
+      {!hasApprovedApplication && (
+        <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-500/5 to-transparent">
+          <CardContent className="py-4 px-4">
+            <Button
+              onClick={() => navigate("/halal/apply/new", { state: { businessId: biz.id } })}
+              disabled={!canApply}
+              className={canApply ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Apply for Halal certification
+            </Button>
+            {bizStatus !== "APPROVED" && (
+              <p className="text-sm text-muted-foreground mt-2">Apply for Halal only after this business is approved.</p>
+            )}
+            {!canApply && bizStatus === "APPROVED" && (
+              <p className="text-sm text-muted-foreground mt-2">Complete or withdraw the current application first.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <AlertDialog open={!!withdrawId} onOpenChange={() => !withdrawMutation.isPending && setWithdrawId(null)}>
         <AlertDialogContent>

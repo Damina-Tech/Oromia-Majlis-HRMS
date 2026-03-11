@@ -234,7 +234,10 @@ export async function deleteBusiness(req: Request, res: Response) {
       include: { _count: { select: { applications: true } } },
     });
     if (!biz) return res.status(404).json({ message: "Business not found" });
-    if (biz.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review");
+    const isOwner = biz.userId === userId;
+    if (!isOwner && !isAdmin) return res.status(403).json({ message: "Access denied" });
     if (biz._count.applications > 0) {
       return res.status(400).json({
         message: "Cannot delete a business that has applications. Withdraw or complete all applications first.",
@@ -398,20 +401,25 @@ export async function deleteApplication(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const { id } = req.params;
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review");
     const app = await prisma.halalApplication.findUnique({
       where: { id },
       include: { business: true },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
-    if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
-    // Withdraw: DRAFT or SUBMITTED (only before payment)
-    const canWithdraw =
-      app.status === HalalApplicationStatus.DRAFT ||
-      (app.status === HalalApplicationStatus.SUBMITTED && !app.feePaidAt);
-    if (!canWithdraw) {
-      return res.status(400).json({
-        message: "Only draft or unpaid submitted applications can be withdrawn. Once payment is confirmed, withdrawal is not allowed.",
-      });
+    const isOwner = app.business.userId === userId;
+    if (!isAdmin && !isOwner) return res.status(403).json({ message: "Access denied" });
+    if (!isAdmin) {
+      // Owner: only DRAFT or SUBMITTED (before payment)
+      const canWithdraw =
+        app.status === HalalApplicationStatus.DRAFT ||
+        (app.status === HalalApplicationStatus.SUBMITTED && !app.feePaidAt);
+      if (!canWithdraw) {
+        return res.status(400).json({
+          message: "Only draft or unpaid submitted applications can be withdrawn. Once payment is confirmed, withdrawal is not allowed.",
+        });
+      }
     }
     await prisma.halalApplication.delete({ where: { id } });
     res.status(204).send();

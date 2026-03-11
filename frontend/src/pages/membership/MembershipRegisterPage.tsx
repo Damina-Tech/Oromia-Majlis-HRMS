@@ -36,11 +36,14 @@ const RequiredLabel = ({ children, required }: { children: React.ReactNode; requ
 );
 
 const BANKS = [
-  { id: "cbe", name: "Commercial Bank of Ethiopia", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "CBETETAA" },
-  { id: "hijra", name: "Hijra Bank", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "HIJRAETAA" },
-  { id: "awash", name: "Awash Bank", accountName: "Oromia Majlis", accountNumber: "0132081234567", swiftCode: "AWINETAA" },
-  { id: "dashen", name: "Dashen Bank", accountName: "Oromia Majlis", accountNumber: "0168123456789", swiftCode: "DASHETAA" },
-  { id: "boi", name: "Bank of Abyssinia", accountName: "Oromia Majlis", accountNumber: "1000123456789", swiftCode: "ABYSETAA" },
+  { id: "cbe", name: "Commercial Bank of Ethiopia", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1000600162447", swiftCode: "" },
+  { id: "coop", name: "Cooperative Bank of Oromia", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1042200124748", swiftCode: "" },
+  { id: "oromia", name: "Oromia Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1371866200002", swiftCode: "" },
+  { id: "awash", name: "Awash Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "014100449821400", swiftCode: "" },
+  { id: "hijra", name: "Hijra Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1000044440001", swiftCode: "" },
+  { id: "ramis", name: "Ramis Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1030000551101", swiftCode: "" },
+  { id: "sinqee", name: "Sinqee Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "1058169471818", swiftCode: "" },
+  { id: "zemzem", name: "Zemzem Bank", accountName: "Oromia Islamic Affairs Supreme Council", accountNumber: "0006692210301", swiftCode: "" },
 ];
 
 const CATEGORIES: { value: MemberCategory; label: string }[] = [

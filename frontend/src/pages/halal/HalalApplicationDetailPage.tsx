@@ -98,43 +98,28 @@ const WORKFLOW_STEPS = [
 ];
 
 const ETHIOPIAN_BANKS = [
-  "Commercial Bank of Ethiopia (CBE)",
-  "Hijra Bank",
-  "Awash Bank",
-  "Dashen Bank",
-  "Bank of Abyssinia",
-  "Wegagen Bank",
-  "United Bank",
-  "Nib International Bank",
-  "Abay Bank",
-  "Addis International Bank",
-  "Bunna International Bank",
+  "Commercial Bank of Ethiopia",
   "Cooperative Bank of Oromia",
-  "Oromia International Bank",
-  "Zemen Bank",
-  "Telebirr",
-  "M-Pesa",
+  "Oromia Bank",
+  "Awash Bank",
+  "Hijra Bank",
+  "Ramis Bank",
+  "Sinqee Bank",
+  "Zemzem Bank",
   "Other",
 ];
 
-// Bank account details for manual transfer (update with actual Oromia Majlis account info)
+const ACCOUNT_NAME = "Oromia Islamic Affairs Supreme Council";
+
 const BANK_ACCOUNT_DETAILS: Record<string, { accountName: string; accountNumber: string }> = {
-  "Commercial Bank of Ethiopia (CBE)": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1000123456789" },
-  "Hijra Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Awash Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "0132076543210" },
-  "Dashen Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Bank of Abyssinia": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Wegagen Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "United Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Nib International Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Abay Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Addis International Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Bunna International Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Cooperative Bank of Oromia": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Oromia International Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Zemen Bank": { accountName: "Oromia Regional Islamic Affairs Supreme Council", accountNumber: "1234567890123" },
-  "Telebirr": { accountName: "Oromia Majlis Halal", accountNumber: "0912345678" },
-  "M-Pesa": { accountName: "Oromia Majlis Halal", accountNumber: "0912345678" },
+  "Commercial Bank of Ethiopia": { accountName: ACCOUNT_NAME, accountNumber: "1000600162447" },
+  "Cooperative Bank of Oromia": { accountName: ACCOUNT_NAME, accountNumber: "1042200124748" },
+  "Oromia Bank": { accountName: ACCOUNT_NAME, accountNumber: "1371866200002" },
+  "Awash Bank": { accountName: ACCOUNT_NAME, accountNumber: "014100449821400" },
+  "Hijra Bank": { accountName: ACCOUNT_NAME, accountNumber: "1000044440001" },
+  "Ramis Bank": { accountName: ACCOUNT_NAME, accountNumber: "1030000551101" },
+  "Sinqee Bank": { accountName: ACCOUNT_NAME, accountNumber: "1058169471818" },
+  "Zemzem Bank": { accountName: ACCOUNT_NAME, accountNumber: "0006692210301" },
   "Other": { accountName: "Contact admin for account details", accountNumber: "—" },
 };
 

@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Plus, FileText, Eye, Trash2, AlertCircle, Search } from "lucide-react";
 import { halalApi, type HalalApplicationStatus } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -40,6 +41,8 @@ const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
 export default function HalalApplyPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission("halal.admin") || hasPermission("halal.review");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -75,6 +78,8 @@ export default function HalalApplyPage() {
     mutationFn: halalApi.applications.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-businesses"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-business"] });
       toast.success("Application deleted");
       setDeleteId(null);
     },
@@ -82,7 +87,7 @@ export default function HalalApplyPage() {
   });
 
   const handleDelete = (app: { id: string; status: string }) => {
-    if (app.status !== "DRAFT") {
+    if (!isAdmin && app.status !== "DRAFT") {
       toast.error("Only draft applications can be deleted");
       return;
     }
@@ -209,12 +214,10 @@ export default function HalalApplyPage() {
                             <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/applications/${a.id}`)}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {a.status === "DRAFT" && (
-                              <>
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(a)}>
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </>
+                            {(a.status === "DRAFT" || isAdmin) && (
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} title={isAdmin ? "Delete (admin)" : "Delete"}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
                             )}
                           </div>
                         </TableCell>
@@ -245,12 +248,10 @@ export default function HalalApplyPage() {
                       <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/applications/${a.id}`)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {a.status === "DRAFT" && (
-                        <>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(a)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>
+                      {(a.status === "DRAFT" || isAdmin) && (
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} title={isAdmin ? "Delete (admin)" : "Delete"}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -266,7 +267,9 @@ export default function HalalApplyPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete application?</AlertDialogTitle>
             <AlertDialogDescription>
-              Only draft applications can be deleted. This action cannot be undone.
+              {isAdmin
+                ? "This will permanently delete the application. This action cannot be undone."
+                : "Only draft applications can be deleted. This action cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
