@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -58,6 +58,7 @@ import {
   User as UserIcon,
   Loader2,
   AlertCircle,
+  KeyRound,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -80,6 +81,8 @@ import {
   type UpdateUserPayload,
   type CreateRolePayload,
   type UpdateRolePayload,
+  getUserPermissionsForUser,
+  updateUserPermissionsForUser,
 } from "@/services/users";
 import { listEmployees } from "@/services/employees";
 import type { Employee } from "@/services/employees";
@@ -104,8 +107,13 @@ export default function UsersPage() {
   const [editUserDialog, setEditUserDialog] = useState(false);
   const [viewUserDialog, setViewUserDialog] = useState(false);
   const [deleteUserDialog, setDeleteUserDialog] = useState(false);
+  const [editPermissionsDialog, setEditPermissionsDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [selectedPermissionUser, setSelectedPermissionUser] = useState<User | null>(null);
+  const [effectivePermissionIds, setEffectivePermissionIds] = useState<string[]>([]);
+  const [rolePermissionIds, setRolePermissionIds] = useState<string[]>([]);
+  const [loadingUserPermissions, setLoadingUserPermissions] = useState(false);
   
   // Role management state
   const [addRoleDialog, setAddRoleDialog] = useState(false);
@@ -323,6 +331,54 @@ export default function UsersPage() {
       await loadData();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to delete user");
+    }
+  };
+
+  const openEditPermissionsDialog = async (user: User) => {
+    if (!user._isUserAccount) return;
+    try {
+      setLoadingUserPermissions(true);
+      const data = await getUserPermissionsForUser(user.id);
+      setSelectedPermissionUser(user);
+      setRolePermissionIds(data.rolePermissionIds);
+      setEffectivePermissionIds(data.effectivePermissionIds);
+      setEditPermissionsDialog(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to load user permissions");
+    } finally {
+      setLoadingUserPermissions(false);
+    }
+  };
+
+  const handleSaveUserPermissions = async () => {
+    if (!selectedPermissionUser) return;
+    try {
+      setSubmitting(true);
+      const selected = new Set(effectivePermissionIds);
+      const roleBased = new Set(rolePermissionIds);
+      const overrides: Array<{ permissionId: string; allowed: boolean }> = [];
+
+      for (const permission of permissions) {
+        const isSelected = selected.has(permission.id);
+        const isRoleBased = roleBased.has(permission.id);
+        if (isSelected && !isRoleBased) {
+          overrides.push({ permissionId: permission.id, allowed: true });
+        } else if (!isSelected && isRoleBased) {
+          overrides.push({ permissionId: permission.id, allowed: false });
+        }
+      }
+
+      await updateUserPermissionsForUser(selectedPermissionUser.id, overrides);
+      toast.success("User permissions updated successfully");
+      setEditPermissionsDialog(false);
+      setSelectedPermissionUser(null);
+      setEffectivePermissionIds([]);
+      setRolePermissionIds([]);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update user permissions");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -720,7 +776,7 @@ export default function UsersPage() {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground">ΓÇö</span>
+                              <span className="text-muted-foreground">-</span>
                             )}
                       </TableCell>
                       <TableCell>
@@ -770,6 +826,15 @@ export default function UsersPage() {
                                 </>
                               )}
                             </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={(e) => {
+                                        e.preventDefault();
+                                        openEditPermissionsDialog(user);
+                                      }}
+                                    >
+                                      <KeyRound className="mr-2 h-4 w-4" />
+                                      Edit Permissions
+                                    </DropdownMenuItem>
                                   </>
                                 )}
                                 {canManage && user._isUserAccount === false && (
@@ -1331,7 +1396,7 @@ export default function UsersPage() {
                     </div>
                     <div>
                       <Label>Designation</Label>
-                      <p className="font-medium">{selectedUser.employee.designation || "ΓÇö"}</p>
+                      <p className="font-medium">{selectedUser.employee.designation || "-"}</p>
                     </div>
                     {selectedUser.employee.department && (
                       <div>
@@ -1386,6 +1451,78 @@ export default function UsersPage() {
                 Edit User
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Permissions Dialog */}
+      <Dialog
+        open={editPermissionsDialog}
+        onOpenChange={(open) => {
+          setEditPermissionsDialog(open);
+          if (!open) {
+            setSelectedPermissionUser(null);
+            setEffectivePermissionIds([]);
+            setRolePermissionIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit User Permissions</DialogTitle>
+            <DialogDescription>
+              Configure permissions for {selectedPermissionUser?.firstName} {selectedPermissionUser?.lastName} without changing role permissions.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingUserPermissions ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-xs text-muted-foreground">
+                Role-based permissions are pre-selected. You can add/remove user-specific permissions here.
+              </div>
+              <div className="border rounded-lg p-4 max-h-96 overflow-y-auto space-y-4">
+                {Object.entries(permissionsByModule).map(([module, perms]) => (
+                  <div key={module}>
+                    <h4 className="font-medium mb-2 capitalize">{module.replace(/_/g, " ")}</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {perms.map((permission) => (
+                        <div key={permission.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`user-perm-${permission.id}`}
+                            checked={effectivePermissionIds.includes(permission.id)}
+                            onCheckedChange={(checked) => {
+                              setEffectivePermissionIds((prev) => {
+                                if (checked) {
+                                  return prev.includes(permission.id) ? prev : [...prev, permission.id];
+                                }
+                                return prev.filter((id) => id !== permission.id);
+                              });
+                            }}
+                          />
+                          <Label htmlFor={`user-perm-${permission.id}`} className="text-sm font-normal cursor-pointer">
+                            {permission.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPermissionsDialog(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveUserPermissions} disabled={submitting || loadingUserPermissions || !selectedPermissionUser}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Permissions
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

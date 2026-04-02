@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { ArrowLeft, CheckCircle, CheckSquare, XSquare, FileText, AlertCircle } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +31,8 @@ export default function HalalInspectionCompletePage() {
   const [notes, setNotes] = useState("");
   const [observations, setObservations] = useState("");
   const [recommendations, setRecommendations] = useState("");
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [isUploadingReport, setIsUploadingReport] = useState(false);
   const [passed, setPassed] = useState<boolean | null>(null);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -87,24 +90,39 @@ export default function HalalInspectionCompletePage() {
 
   const showError = (field: string) => touched[field] && errors[field];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched({ result: true, observations: true, recommendations: true });
     if (Object.keys(errors).length > 0) {
       toast.error("Please fix the validation errors before submitting");
       return;
     }
-    const fullNotes = [observations, recommendations].filter(Boolean).join("\n\n---\n\n");
-    completeMutation.mutate({
-      checklistData: {
-        overallPassed: passed,
-        ...Object.fromEntries(CHECKLIST_ITEMS.map((c) => [c.key, checklist[c.key] ?? false])),
-        inspectionDate: new Date().toISOString(),
-        observations: observations || undefined,
-        recommendations: recommendations || undefined,
-      },
-      notes: fullNotes || undefined,
-    });
+    let reportUrl: string | undefined;
+    try {
+      if (reportFile) {
+        setIsUploadingReport(true);
+        const uploaded = await halalApi.businesses.uploadDocument(reportFile);
+        reportUrl = uploaded.url;
+      }
+      const fullNotes = [observations, recommendations, notes].filter(Boolean).join("\n\n---\n\n");
+      completeMutation.mutate({
+        checklistData: {
+          overallPassed: passed,
+          ...Object.fromEntries(CHECKLIST_ITEMS.map((c) => [c.key, checklist[c.key] ?? false])),
+          inspectionDate: new Date().toISOString(),
+          observations: observations || undefined,
+          recommendations: recommendations || undefined,
+          inspectionReportUrl: reportUrl,
+          inspectionReportFileName: reportFile?.name,
+        },
+        notes: fullNotes || undefined,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      toast.error(typeof msg === "string" ? msg : "Failed to upload inspection report");
+    } finally {
+      setIsUploadingReport(false);
+    }
   };
 
   if (!id || isLoading) return <div className="p-6">Loading…</div>;
@@ -310,6 +328,19 @@ export default function HalalInspectionCompletePage() {
                 className="resize-none"
               />
             </div>
+            
+            {/* Additional notes */}
+            <div className="space-y-2">
+              <Label htmlFor="reportFile" className="text-sm font-medium">
+                Inspection report file (optional)
+              </Label>
+              <Input
+                id="reportFile"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setReportFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
 
             <div className="flex flex-col-reverse sm:flex-row gap-2 pt-4 border-t">
               <Button
@@ -322,10 +353,14 @@ export default function HalalInspectionCompletePage() {
               </Button>
               <Button
                 type="submit"
-                disabled={completeMutation.isPending || !isValid}
+                disabled={completeMutation.isPending || isUploadingReport || !isValid}
                 className="bg-violet-600 hover:bg-violet-700"
               >
-                {completeMutation.isPending ? "Submitting…" : "Submit inspection report"}
+                {isUploadingReport
+                  ? "Uploading report..."
+                  : completeMutation.isPending
+                    ? "Submitting..."
+                    : "Submit inspection report"}
               </Button>
             </div>
           </form>

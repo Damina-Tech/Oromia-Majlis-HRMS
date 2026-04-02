@@ -21,7 +21,7 @@ const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
 export default function HalalDashboardPage() {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const isStaff = hasPermission("halal.admin") || hasPermission("halal.review") || hasPermission("halal.inspector");
+  const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
   const isBusinessOwner = hasPermission("halal.business");
   const isBusinessOwnerOnly = isBusinessOwner && !isStaff;
 

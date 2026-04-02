@@ -8,6 +8,7 @@ import {
   UpdateHalalApplicationDto,
   AssignInspectionDto,
   CompleteInspectionDto,
+  UpdateInspectionAssignmentDto,
   ApproveApplicationDto,
   CreateRenewalDto,
   CreateViolationDto,
@@ -22,9 +23,43 @@ import fetch from "node-fetch";
 import { sendBusinessApprovedSms, sendCertificateReadySms } from "./halal-sms.js";
 
 const prisma = new PrismaClient();
+const REQUIRED_REGISTRATION_DOCUMENTS = [
+  "Health Certificate",
+  "ISO 22000 Certificate",
+  "TIN Certificate",
+  "Owner ID/Passport",
+] as const;
+
+function validateRequiredRegistrationDocuments(
+  docs: { name: string; url: string; type?: string }[] | undefined,
+  requireAll: boolean
+): string | null {
+  if (!docs || docs.length === 0) {
+    return requireAll
+      ? "Missing required documents: Health Certificate, ISO 22000 Certificate, TIN Certificate, Owner ID/Passport."
+      : null;
+  }
+  const names = new Set(docs.map((d) => d.name?.trim()));
+  const missing = REQUIRED_REGISTRATION_DOCUMENTS.filter((n) => !names.has(n));
+  if (missing.length > 0) {
+    return `Missing required documents: ${missing.join(", ")}.`;
+  }
+  return null;
+}
 
 function getUserId(req: Request): string {
   return (req as any).user?.id;
+}
+
+function normalizeBaseUrl(value: string | undefined, fallback: string): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return fallback;
+  const candidate = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return fallback;
+  }
 }
 
 async function createAuditLog(
@@ -61,11 +96,128 @@ async function generateCertificateId(): Promise<string> {
   return `HAL-${year}-${(count + 1).toString().padStart(4, "0")}`;
 }
 
+async function generateCertificateForApplication(
+  applicationId: string,
+  actorId: string,
+  ip?: string,
+  ua?: string
+) {
+  const existing = await prisma.halalCertificate.findUnique({
+    where: { applicationId },
+  });
+  if (existing) return existing;
+
+  const certId = await generateCertificateId();
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  const app = await prisma.halalApplication.findUnique({
+    where: { id: applicationId },
+    include: { business: true },
+  });
+  if (!app) throw new Error("Application not found for certificate generation");
+
+  let pdfUrl: string | null = null;
+  let qrCode: string | null = null;
+  try {
+    const { pdfUrl: url, qrDataUrl } = await generateHalalCertificatePDF({
+      certificateId: certId,
+      businessName: app.business?.name ?? "Business",
+      category: app.business?.category ?? "FOOD",
+      issuedAt: new Date(),
+      expiresAt,
+    });
+    pdfUrl = url;
+    qrCode = qrDataUrl;
+  } catch (err) {
+    console.error("Halal certificate PDF generation failed:", err);
+  }
+
+  const certificate = await prisma.halalCertificate.create({
+    data: {
+      applicationId,
+      certificateId: certId,
+      pdfUrl,
+      qrCode,
+      expiresAt,
+      status: HalalCertificateStatus.VALID,
+    },
+  });
+
+  await createAuditLog(
+    HalalAuditAction.CERTIFICATE_ISSUED,
+    actorId,
+    "HalalCertificate",
+    certId,
+    applicationId,
+    undefined,
+    { certificateId: certId },
+    ip,
+    ua
+  );
+
+  if (app.business?.contactPhone) {
+    sendCertificateReadySms(app.business.contactPhone, certId).catch(() => {});
+  }
+
+  return certificate;
+}
+
+type BusinessApprovalRole = "SUPERVISOR" | "ADMIN";
+
+async function getBusinessApprovalProgress(businessId: string) {
+  const logs = await prisma.halalAuditLog.findMany({
+    where: {
+      entityType: "HalalBusiness",
+      entityId: businessId,
+      action: HalalAuditAction.BUSINESS_APPROVED,
+    },
+    include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const supervisor = logs.find((l) => (l.newValue as any)?.approvalRole === "SUPERVISOR");
+  const admin = logs.find((l) => (l.newValue as any)?.approvalRole === "ADMIN");
+  return {
+    supervisorApproved: !!supervisor,
+    adminApproved: !!admin,
+    approvedBySupervisor: supervisor
+      ? {
+          userId: supervisor.actor.id,
+          name: `${supervisor.actor.firstName} ${supervisor.actor.lastName}`.trim(),
+          email: supervisor.actor.email,
+          at: supervisor.createdAt,
+        }
+      : null,
+    approvedByAdmin: admin
+      ? {
+          userId: admin.actor.id,
+          name: `${admin.actor.firstName} ${admin.actor.lastName}`.trim(),
+          email: admin.actor.email,
+          at: admin.createdAt,
+        }
+      : null,
+    logs: logs.map((l) => ({
+      id: l.id,
+      role: (l.newValue as any)?.approvalRole as BusinessApprovalRole | undefined,
+      checklist: (l.newValue as any)?.checklist ?? {},
+      note: (l.newValue as any)?.note ?? "",
+      at: l.createdAt,
+      actor: {
+        id: l.actor.id,
+        name: `${l.actor.firstName} ${l.actor.lastName}`.trim(),
+        email: l.actor.email,
+      },
+    })),
+  };
+}
+
 // ========== Business ==========
 export async function registerBusiness(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const data = CreateHalalBusinessDto.parse(req.body);
+    const docsError = validateRequiredRegistrationDocuments(data.documents, true);
+    if (docsError) return res.status(400).json({ message: docsError });
     const biz = await prisma.halalBusiness.create({
       data: {
         name: data.name,
@@ -110,10 +262,15 @@ export async function listBusinesses(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin");
+    const isPrivileged =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.committee");
     const q = ListHalalBusinessesQuery.parse(req.query);
     const where: any = {};
-    if (!isAdmin) where.userId = userId;
+    if (!isPrivileged) where.userId = userId;
     if (q.category) where.category = q.category;
     if (q.regionId) where.regionId = q.regionId;
     if (q.status) where.status = q.status;
@@ -140,13 +297,23 @@ export async function listBusinesses(req: Request, res: Response) {
 
 export async function getBusiness(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isPrivileged =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.committee");
     const { id } = req.params;
     const biz = await prisma.halalBusiness.findUnique({
       where: { id },
       include: { region: true, zone: true, woreda: true, applications: true },
     });
     if (!biz) return res.status(404).json({ message: "Business not found" });
-    res.json(biz);
+    if (!isPrivileged && biz.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    const approvalProgress = await getBusinessApprovalProgress(id);
+    res.json({ ...biz, approvalProgress });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get business" });
   }
@@ -154,10 +321,20 @@ export async function getBusiness(req: Request, res: Response) {
 
 export async function updateBusiness(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isPrivileged = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const { id } = req.params;
     const data = UpdateHalalBusinessDto.parse(req.body);
     const old = await prisma.halalBusiness.findUnique({ where: { id } });
     if (!old) return res.status(404).json({ message: "Business not found" });
+    if (!isPrivileged && old.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    const docsError = validateRequiredRegistrationDocuments(
+      (data.documents as { name: string; url: string; type?: string }[] | undefined) ??
+        (old.documents as { name: string; url: string; type?: string }[] | undefined),
+      true
+    );
+    if (docsError) return res.status(400).json({ message: docsError });
     const updateData: Record<string, unknown> = {};
     if (data.name != null) updateData.name = data.name;
     if (data.category != null) updateData.category = data.category;
@@ -211,15 +388,21 @@ export async function uploadHalalDocument(req: Request, res: Response) {
 
 export async function uploadBusinessLicense(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isPrivileged = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const { id } = req.params;
     const file = (req as any).file;
     if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const biz = await prisma.halalBusiness.findUnique({ where: { id } });
+    if (!biz) return res.status(404).json({ message: "Business not found" });
+    if (!isPrivileged && biz.userId !== userId) return res.status(403).json({ message: "Access denied" });
     const licenseUrl = `/uploads/halal/${file.filename}`;
-    const biz = await prisma.halalBusiness.update({
+    const updatedBiz = await prisma.halalBusiness.update({
       where: { id },
       data: { licenseUrl },
     });
-    res.json(biz);
+    res.json(updatedBiz);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to upload license" });
   }
@@ -235,7 +418,7 @@ export async function deleteBusiness(req: Request, res: Response) {
     });
     if (!biz) return res.status(404).json({ message: "Business not found" });
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review");
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const isOwner = biz.userId === userId;
     if (!isOwner && !isAdmin) return res.status(403).json({ message: "Access denied" });
     if (biz._count.applications > 0) {
@@ -254,19 +437,76 @@ export async function approveBusiness(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const { id } = req.params;
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canAdmin = perms?.includes("halal.admin") ?? false;
+    const canReview = perms?.includes("halal.supervisor") ?? false;
+    if (!canAdmin && !canReview) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const body = (req.body ?? {}) as {
+      role?: BusinessApprovalRole;
+      checklist?: Record<string, boolean>;
+      note?: string;
+      detailsConfirmed?: boolean;
+    };
+    const requestedRole = body.role;
+    const approvalRole: BusinessApprovalRole =
+      requestedRole === "ADMIN" || requestedRole === "SUPERVISOR"
+        ? requestedRole
+        : (canAdmin ? "ADMIN" : "SUPERVISOR");
+    if (approvalRole === "ADMIN" && !canAdmin) {
+      return res.status(403).json({ message: "Only halal.admin can perform admin approval." });
+    }
+    if (approvalRole === "SUPERVISOR" && !canReview && !canAdmin) {
+      return res.status(403).json({ message: "Only halal.supervisor or halal.admin can perform supervisor review." });
+    }
     const biz = await prisma.halalBusiness.findUnique({ where: { id }, include: { region: true, zone: true, woreda: true } });
     if (!biz) return res.status(404).json({ message: "Business not found" });
-    if (biz.status !== HalalBusinessStatus.PENDING_APPROVAL) {
-      return res.status(400).json({ message: `Business is already ${biz.status}. Only pending businesses can be approved.` });
+    if (biz.status === HalalBusinessStatus.REJECTED) {
+      return res.status(400).json({ message: "Rejected businesses cannot be approved." });
     }
+    const progress = await getBusinessApprovalProgress(id);
+    if (approvalRole === "SUPERVISOR" && progress.supervisorApproved) {
+      return res.status(400).json({ message: "Supervisor review is already completed for this business." });
+    }
+    if (approvalRole === "ADMIN" && progress.adminApproved) {
+      return res.status(400).json({ message: "Admin approval is already completed for this business." });
+    }
+
+    const supervisorApproved = progress.supervisorApproved || approvalRole === "SUPERVISOR";
+    const adminApproved = progress.adminApproved || approvalRole === "ADMIN";
+    const nextStatus =
+      supervisorApproved && adminApproved
+        ? HalalBusinessStatus.APPROVED
+        : HalalBusinessStatus.PENDING_APPROVAL;
+
     const updated = await prisma.halalBusiness.update({
       where: { id },
-      data: { status: HalalBusinessStatus.APPROVED },
+      data: { status: nextStatus },
       include: { region: true, zone: true, woreda: true },
     });
-    await createAuditLog(HalalAuditAction.BUSINESS_APPROVED, userId, "HalalBusiness", id, undefined, { status: biz.status }, { status: updated.status }, req.ip, req.get("user-agent"));
-    sendBusinessApprovedSms(updated.contactPhone, updated.name).catch(() => {});
-    res.json(updated);
+    await createAuditLog(
+      HalalAuditAction.BUSINESS_APPROVED,
+      userId,
+      "HalalBusiness",
+      id,
+      undefined,
+      { status: biz.status },
+      {
+        status: updated.status,
+        approvalRole,
+        checklist: body.checklist ?? {},
+        note: body.note ?? "",
+        detailsConfirmed: !!body.detailsConfirmed,
+      },
+      req.ip,
+      req.get("user-agent")
+    );
+    if (nextStatus === HalalBusinessStatus.APPROVED && biz.status !== HalalBusinessStatus.APPROVED) {
+      sendBusinessApprovedSms(updated.contactPhone, updated.name).catch(() => {});
+    }
+    const approvalProgress = await getBusinessApprovalProgress(id);
+    res.json({ ...updated, approvalProgress });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to approve business" });
   }
@@ -321,7 +561,7 @@ export async function listApplications(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review") || perms?.includes("halal.inspector");
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor") || perms?.includes("halal.inspector");
     const q = ListHalalApplicationsQuery.parse(req.query);
     const where: any = {};
     if (!isAdmin) where.business = { userId };
@@ -352,13 +592,13 @@ export async function listApplications(req: Request, res: Response) {
   }
 }
 
-const DEFAULT_CERTIFICATION_FEE = 500;
+const DEFAULT_CERTIFICATION_FEE = 20000;
 
 export async function getApplication(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review") || perms?.includes("halal.inspector");
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor") || perms?.includes("halal.inspector");
     const { id } = req.params;
     const app = await prisma.halalApplication.findUnique({
       where: { id },
@@ -402,7 +642,7 @@ export async function deleteApplication(req: Request, res: Response) {
     const userId = getUserId(req);
     const { id } = req.params;
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review");
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const app = await prisma.halalApplication.findUnique({
       where: { id },
       include: { business: true },
@@ -411,13 +651,17 @@ export async function deleteApplication(req: Request, res: Response) {
     const isOwner = app.business.userId === userId;
     if (!isAdmin && !isOwner) return res.status(403).json({ message: "Access denied" });
     if (!isAdmin) {
-      // Owner: only DRAFT or SUBMITTED (before payment)
+      // Owner: can withdraw before payment is confirmed.
       const canWithdraw =
         app.status === HalalApplicationStatus.DRAFT ||
-        (app.status === HalalApplicationStatus.SUBMITTED && !app.feePaidAt);
+        ([
+          HalalApplicationStatus.SUBMITTED,
+          HalalApplicationStatus.INSPECTION,
+          HalalApplicationStatus.REVIEW,
+        ].includes(app.status) && !app.feePaidAt);
       if (!canWithdraw) {
         return res.status(400).json({
-          message: "Only draft or unpaid submitted applications can be withdrawn. Once payment is confirmed, withdrawal is not allowed.",
+          message: "Only unpaid applications can be withdrawn. Once payment is confirmed, withdrawal is not allowed.",
         });
       }
     }
@@ -438,16 +682,17 @@ export async function confirmPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
-    if (app.status !== HalalApplicationStatus.SUBMITTED) {
-      return res.status(400).json({ message: "Payment can only be confirmed for submitted applications" });
+    if (app.status !== HalalApplicationStatus.REVIEW) {
+      return res.status(400).json({ message: "Payment can only be confirmed after committee approval" });
     }
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const updated = await prisma.halalApplication.update({
       where: { id },
-      data: { feePaidAt: new Date(), status: HalalApplicationStatus.REVIEW },
+      data: { feePaidAt: new Date(), status: HalalApplicationStatus.APPROVED },
       include: { business: true },
     });
-    await createAuditLog(HalalAuditAction.APPLICATION_SUBMITTED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
     res.json(updated);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to confirm payment" });
@@ -459,7 +704,7 @@ export async function initChapaPayment(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.review");
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const { id } = req.params;
     const app = await prisma.halalApplication.findUnique({
       where: { id },
@@ -467,19 +712,28 @@ export async function initChapaPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId && !isAdmin) return res.status(403).json({ message: "Access denied" });
-    if (app.status !== HalalApplicationStatus.SUBMITTED) {
-      return res.status(400).json({ message: "Payment can only be initiated for submitted applications" });
+    if (app.status !== HalalApplicationStatus.REVIEW) {
+      return res.status(400).json({ message: "Payment can only be initiated after committee approval" });
     }
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const secretKey = process.env.CHAPA_SECRET_KEY;
     if (!secretKey) return res.status(500).json({ message: "Chapa payment is not configured" });
-    const amount = Number(app.feeAmount ?? 500);
-    const apiBase = process.env.APP_BASE_URL || "http://localhost:4000";
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
+    // Use the fixed certification fee for Chapa checkout.
+    const amount = DEFAULT_CERTIFICATION_FEE;
+    const apiBase = normalizeBaseUrl(process.env.APP_BASE_URL, "http://localhost:4000");
+    const frontendUrl = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
     const txRef = `halal-${id}-${Date.now()}`;
     const names = (app.business.contactName || "Customer").trim().split(" ");
     const firstName = names[0] || "Customer";
     const lastName = names.slice(1).join(" ") || ".";
+    const callbackUrl = new URL(`/api/v1/halal/applications/${id}/payment/chapa-callback`, apiBase).toString();
+    const returnUrl = new URL(`/halal/applications/${id}?payment=chapa`, frontendUrl).toString();
+    const rawCustomizationDescription = `Halal certification payment ${amount} ETB`;
+    const customizationDescription = rawCustomizationDescription
+      .replace(/[^A-Za-z0-9._\-\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 50);
     const payload = {
       amount: String(amount),
       currency: "ETB",
@@ -488,11 +742,11 @@ export async function initChapaPayment(req: Request, res: Response) {
       last_name: lastName,
       phone_number: (app.business.contactPhone || "").replace(/\D/g, "").slice(-9) ? `0${(app.business.contactPhone || "").replace(/\D/g, "").slice(-9)}` : undefined,
       tx_ref: txRef,
-      callback_url: `${apiBase}/api/v1/halal/applications/${id}/payment/chapa-callback`,
-      return_url: `${frontendUrl}/halal/applications/${id}?payment=chapa`,
+      callback_url: callbackUrl,
+      return_url: returnUrl,
       customization: {
         title: "Halal Cert Fee", // Chapa limit: 16 chars
-        description: `Payment for ${app.business.name} - Halal certification`,
+        description: customizationDescription,
       },
     };
     const resp = await fetch("https://api.chapa.co/v1/transaction/initialize", {
@@ -553,13 +807,14 @@ export async function chapaCallback(req: Request, res: Response) {
       where: { id },
       data: {
         feePaidAt: new Date(),
-        status: HalalApplicationStatus.REVIEW,
+        status: HalalApplicationStatus.APPROVED,
         paymentMethod: "CHAPA",
         chapaTxRef: trx_ref,
         chapaRefId: ref_id || null,
       },
       include: { business: true },
     });
+    await generateCertificateForApplication(id, app.business.userId, req.ip, req.get("user-agent"));
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
@@ -580,8 +835,8 @@ export async function confirmManualPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
-    if (app.status !== HalalApplicationStatus.SUBMITTED) {
-      return res.status(400).json({ message: "Payment can only be confirmed for submitted applications" });
+    if (app.status !== HalalApplicationStatus.REVIEW) {
+      return res.status(400).json({ message: "Payment can only be confirmed after committee approval" });
     }
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const receiptUrl = `/uploads/halal/${file.filename}`;
@@ -589,14 +844,15 @@ export async function confirmManualPayment(req: Request, res: Response) {
       where: { id },
       data: {
         feePaidAt: new Date(),
-        status: HalalApplicationStatus.REVIEW,
+        status: HalalApplicationStatus.APPROVED,
         paymentMethod: "MANUAL",
         paymentBankName: body.bankName,
         paymentReceiptUrl: receiptUrl,
       },
       include: { business: true },
     });
-    await createAuditLog(HalalAuditAction.APPLICATION_SUBMITTED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
     res.json(updated);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to confirm manual payment" });
@@ -631,8 +887,8 @@ export async function approveApplication(req: Request, res: Response) {
     const body = ApproveApplicationDto.parse(req.body);
     const old = await prisma.halalApplication.findUnique({ where: { id }, include: { inspections: true } });
     if (!old) return res.status(404).json({ message: "Application not found" });
-    if (old.status !== HalalApplicationStatus.INSPECTION && old.status !== HalalApplicationStatus.REVIEW) {
-      return res.status(400).json({ message: "Application must be in Review or Inspection to approve/reject" });
+    if (old.status !== HalalApplicationStatus.INSPECTION) {
+      return res.status(400).json({ message: "Application must be in Committee Review to approve/reject" });
     }
     const completed = old.inspections.some((i) => i.completedAt != null);
     if (!completed && body.approved) {
@@ -641,7 +897,7 @@ export async function approveApplication(req: Request, res: Response) {
     const app = await prisma.halalApplication.update({
       where: { id },
       data: {
-        status: body.approved ? HalalApplicationStatus.APPROVED : HalalApplicationStatus.REJECTED,
+        status: body.approved ? HalalApplicationStatus.REVIEW : HalalApplicationStatus.REJECTED,
         approvedById: body.approved ? userId : null,
         approvedAt: body.approved ? new Date() : null,
         rejectionReason: body.approved ? null : (body.rejectionReason || "Rejected"),
@@ -655,45 +911,16 @@ export async function approveApplication(req: Request, res: Response) {
       id,
       id,
       old,
-      app,
+      body.approved
+        ? {
+            ...app,
+            committeeNotes: body.notes ?? null,
+            meetingMinutesUrl: body.meetingMinutesUrl ?? null,
+          }
+        : app,
       req.ip,
       req.get("user-agent")
     );
-    if (body.approved) {
-      const certId = await generateCertificateId();
-      const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-      const business = await prisma.halalBusiness.findUnique({ where: { id: old.businessId } });
-      let pdfUrl: string | null = null;
-      let qrCode: string | null = null;
-      try {
-        const { pdfUrl: url, qrDataUrl } = await generateHalalCertificatePDF({
-          certificateId: certId,
-          businessName: business?.name ?? "Business",
-          category: business?.category ?? "FOOD",
-          issuedAt: new Date(),
-          expiresAt,
-        });
-        pdfUrl = url;
-        qrCode = qrDataUrl;
-      } catch (err) {
-        console.error("Halal certificate PDF generation failed:", err);
-      }
-      await prisma.halalCertificate.create({
-        data: {
-          applicationId: id,
-          certificateId: certId,
-          pdfUrl,
-          qrCode,
-          expiresAt,
-          status: HalalCertificateStatus.VALID,
-        },
-      });
-      await createAuditLog(HalalAuditAction.CERTIFICATE_ISSUED, userId, "HalalCertificate", certId, id, undefined, { certificateId: certId }, req.ip, req.get("user-agent"));
-      if (business?.contactPhone) {
-        sendCertificateReadySms(business.contactPhone, certId).catch(() => {});
-      }
-    }
     const updated = await prisma.halalApplication.findUnique({
       where: { id },
       include: { business: true, certificate: true },
@@ -709,19 +936,33 @@ export async function listInspectors(req: Request, res: Response) {
   try {
     const users = await prisma.user.findMany({
       where: {
-        userRoles: {
-          some: {
-            role: {
-              permissions: {
-                some: {
-                  permission: {
-                    name: { in: ["halal.inspector", "halal.admin"] },
+        OR: [
+          {
+            userRoles: {
+              some: {
+                role: {
+                  permissions: {
+                    some: {
+                      permission: {
+                        name: "halal.inspector",
+                      },
+                    },
                   },
                 },
               },
             },
           },
-        },
+          {
+            userPermissions: {
+              some: {
+                allowed: true,
+                permission: {
+                  name: "halal.inspector",
+                },
+              },
+            },
+          },
+        ],
         status: "ACTIVE",
       },
       select: {
@@ -742,50 +983,106 @@ export async function listInspectors(req: Request, res: Response) {
 export async function assignInspection(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
-    const body = req.body as { applicationId?: string; inspectorId: string; scheduledAt?: string };
+    const body = req.body as {
+      applicationId?: string;
+      inspectorId?: string;
+      inspectorIds?: string[];
+      scheduledAt?: string;
+    };
     const applicationId = body.applicationId || (req.params as any).applicationId;
-    const { inspectorId, scheduledAt } = AssignInspectionDto.parse({ ...body, applicationId });
+    const { inspectorId, inspectorIds, scheduledAt } = AssignInspectionDto.parse({ ...body, applicationId });
+    const selectedInspectorIds = Array.from(
+      new Set([...(inspectorIds ?? []), ...(inspectorId ? [inspectorId] : [])])
+    );
     if (!applicationId) return res.status(400).json({ message: "applicationId is required" });
+    if (selectedInspectorIds.length === 0) {
+      return res.status(400).json({ message: "At least one inspector is required" });
+    }
     const app = await prisma.halalApplication.findUnique({
       where: { id: applicationId },
       include: { inspections: true },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
-    if (![HalalApplicationStatus.SUBMITTED, HalalApplicationStatus.REVIEW, HalalApplicationStatus.INSPECTION].includes(app.status)) {
-      return res.status(400).json({ message: "Application must be Submitted, in Review, or in Inspection" });
+    if (![HalalApplicationStatus.SUBMITTED, HalalApplicationStatus.INSPECTION].includes(app.status)) {
+      return res.status(400).json({ message: "Application must be in inspection workflow" });
     }
     const hasCompletedInspection = app.inspections.some((i) => i.completedAt != null);
     if (hasCompletedInspection) {
       return res.status(400).json({ message: "Inspection already completed for this application; cannot assign or reassign." });
     }
-    const pendingInspection = app.inspections.find((i) => i.completedAt == null);
-    let ins;
-    if (pendingInspection) {
-      ins = await prisma.halalInspection.update({
-        where: { id: pendingInspection.id },
-        data: {
-          inspectorId,
-          scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        },
-        include: { application: { include: { business: true } }, inspector: true },
+
+    // Eligibility: only users with halal.inspector effective permission can be assigned.
+    const eligibleInspectors = await prisma.user.findMany({
+      where: {
+        id: { in: selectedInspectorIds },
+        status: "ACTIVE",
+        OR: [
+          {
+            userRoles: {
+              some: {
+                role: {
+                  permissions: {
+                    some: {
+                      permission: { name: "halal.inspector" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          {
+            userPermissions: {
+              some: {
+                allowed: true,
+                permission: { name: "halal.inspector" },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    const eligibleInspectorIds = new Set(eligibleInspectors.map((u) => u.id));
+    const ineligibleInspectorIds = selectedInspectorIds.filter((id) => !eligibleInspectorIds.has(id));
+    if (ineligibleInspectorIds.length > 0) {
+      return res.status(400).json({
+        message: "Only users with halal.inspector permission can be assigned.",
+        ineligibleInspectorIds,
       });
-      await createAuditLog(HalalAuditAction.INSPECTION_ASSIGNED, userId, "HalalInspection", ins.id, applicationId, pendingInspection, ins, req.ip, req.get("user-agent"));
-    } else {
-      ins = await prisma.halalInspection.create({
+    }
+
+    const existingAssignments = await prisma.halalInspection.findMany({
+      where: {
+        applicationId,
+        inspectorId: { in: selectedInspectorIds },
+      },
+      select: { inspectorId: true },
+    });
+    const alreadyAssignedInspectorIds = new Set(existingAssignments.map((a) => a.inspectorId));
+    const newInspectorIds = selectedInspectorIds.filter((id) => !alreadyAssignedInspectorIds.has(id));
+    if (newInspectorIds.length === 0) {
+      return res.status(400).json({ message: "Selected inspectors are already assigned to this application." });
+    }
+
+    const createdInspections = [];
+    for (const selectedId of newInspectorIds) {
+      const ins = await prisma.halalInspection.create({
         data: {
           applicationId,
-          inspectorId,
+          inspectorId: selectedId,
           scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         },
         include: { application: { include: { business: true } }, inspector: true },
       });
-      await prisma.halalApplication.update({
-        where: { id: applicationId },
-        data: { status: HalalApplicationStatus.INSPECTION },
-      });
+      createdInspections.push(ins);
       await createAuditLog(HalalAuditAction.INSPECTION_ASSIGNED, userId, "HalalInspection", ins.id, applicationId, undefined, ins, req.ip, req.get("user-agent"));
     }
-    res.status(201).json(ins);
+
+    res.status(201).json({
+      items: createdInspections,
+      assignedCount: createdInspections.length,
+      skippedInspectorIds: Array.from(alreadyAssignedInspectorIds),
+    });
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to assign inspection" });
   }
@@ -793,8 +1090,12 @@ export async function assignInspection(req: Request, res: Response) {
 
 export async function listInspections(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canViewAll = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const q = ListHalalInspectionsQuery.parse(req.query);
     const where: any = {};
+    if (!canViewAll) where.inspectorId = userId;
     if (q.inspectorId) where.inspectorId = q.inspectorId;
     if (q.applicationId) where.applicationId = q.applicationId;
     if (q.completed === "true") where.completedAt = { not: null };
@@ -816,15 +1117,138 @@ export async function listInspections(req: Request, res: Response) {
 
 export async function getInspection(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canViewAll = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
     const { id } = req.params;
     const ins = await prisma.halalInspection.findUnique({
       where: { id },
       include: { application: { include: { business: { include: { region: true } } } }, inspector: true },
     });
     if (!ins) return res.status(404).json({ message: "Inspection not found" });
+    if (!canViewAll && ins.inspectorId !== userId) return res.status(403).json({ message: "Access denied" });
     res.json(ins);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get inspection" });
+  }
+}
+
+export async function updateInspection(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canManageAll =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.committee");
+    const { id } = req.params;
+    const body = typeof req.body === "object" && req.body !== null ? req.body : {};
+    const data = UpdateInspectionAssignmentDto.parse(body);
+
+    const old = await prisma.halalInspection.findUnique({ where: { id } });
+    if (!old) return res.status(404).json({ message: "Inspection not found" });
+    if (!canManageAll && old.inspectorId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (old.completedAt) {
+      return res.status(400).json({ message: "Completed inspections cannot be edited" });
+    }
+
+    if (data.inspectorId && data.inspectorId !== old.inspectorId) {
+      const eligibleInspector = await prisma.user.findFirst({
+        where: {
+          id: data.inspectorId,
+          status: "ACTIVE",
+          OR: [
+            {
+              userRoles: {
+                some: {
+                  role: {
+                    permissions: {
+                      some: { permission: { name: "halal.inspector" } },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              userPermissions: {
+                some: {
+                  allowed: true,
+                  permission: { name: "halal.inspector" },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!eligibleInspector) {
+        return res.status(400).json({ message: "Only users with halal.inspector permission can be assigned." });
+      }
+    }
+
+    const updated = await prisma.halalInspection.update({
+      where: { id },
+      data: {
+        inspectorId: data.inspectorId ?? old.inspectorId,
+        scheduledAt:
+          data.scheduledAt !== undefined
+            ? (data.scheduledAt ? new Date(data.scheduledAt) : null)
+            : old.scheduledAt,
+      },
+      include: { application: { include: { business: true } }, inspector: true },
+    });
+    await createAuditLog(
+      HalalAuditAction.INSPECTION_ASSIGNED,
+      userId,
+      "HalalInspection",
+      id,
+      old.applicationId,
+      old,
+      updated,
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to update inspection" });
+  }
+}
+
+export async function deleteInspection(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canManageAll =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.committee");
+    const { id } = req.params;
+    const old = await prisma.halalInspection.findUnique({ where: { id } });
+    if (!old) return res.status(404).json({ message: "Inspection not found" });
+    if (!canManageAll && old.inspectorId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (old.completedAt) {
+      return res.status(400).json({ message: "Completed inspections cannot be deleted" });
+    }
+
+    await prisma.halalInspection.delete({ where: { id } });
+    await createAuditLog(
+      HalalAuditAction.INSPECTION_ASSIGNED,
+      userId,
+      "HalalInspection",
+      id,
+      old.applicationId,
+      old,
+      { deleted: true },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.status(204).send();
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to delete inspection" });
   }
 }
 
@@ -850,6 +1274,10 @@ export async function completeInspection(req: Request, res: Response) {
       },
       include: { application: { include: { business: true } }, inspector: true },
     });
+    await prisma.halalApplication.update({
+      where: { id: old.applicationId },
+      data: { status: HalalApplicationStatus.INSPECTION },
+    });
     await createAuditLog(HalalAuditAction.INSPECTION_COMPLETED, userId, "HalalInspection", id, old.applicationId, old, ins, req.ip, req.get("user-agent"));
     res.json(ins);
   } catch (e: any) {
@@ -860,11 +1288,22 @@ export async function completeInspection(req: Request, res: Response) {
 // ========== Certificates ==========
 export async function listCertificates(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canViewAll =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.committee");
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const status = req.query.status as string | undefined;
     const where: any = {};
     if (status) where.status = status;
+    if (!canViewAll) {
+      where.application = { business: { userId } };
+    }
     const [items, total] = await Promise.all([
       prisma.halalCertificate.findMany({
         where,
@@ -882,12 +1321,23 @@ export async function listCertificates(req: Request, res: Response) {
 
 export async function getCertificate(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canViewAll =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.committee");
     const { id } = req.params;
     const cert = await prisma.halalCertificate.findFirst({
       where: { OR: [{ id }, { certificateId: id }] },
       include: { application: { include: { business: { include: { region: true } } } } },
     });
     if (!cert) return res.status(404).json({ message: "Certificate not found" });
+    if (!canViewAll && cert.application.business.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
     res.json(cert);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get certificate" });
@@ -896,11 +1346,23 @@ export async function getCertificate(req: Request, res: Response) {
 
 export async function downloadCertificate(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canViewAll =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.committee");
     const { id } = req.params;
     const cert = await prisma.halalCertificate.findFirst({
       where: { OR: [{ id }, { certificateId: id }] },
+      include: { application: { include: { business: true } } },
     });
     if (!cert) return res.status(404).json({ message: "Certificate not found" });
+    if (!canViewAll && cert.application.business.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
     if (!cert.pdfUrl) return res.status(404).json({ message: "PDF not generated yet" });
     const pathModule = (await import("path")).default;
     const fs = await import("fs");

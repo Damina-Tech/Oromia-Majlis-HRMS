@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import crypto from "crypto";
+import { buildEffectivePermissionNames } from "../users/permission-utils.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -47,6 +48,11 @@ router.post("/login", async (req, res) => {
           } 
         } 
       },
+      userPermissions: {
+        include: {
+          permission: true,
+        },
+      },
       employee: true
     } 
   });
@@ -63,14 +69,7 @@ router.post("/login", async (req, res) => {
   const roles = user.userRoles.map((ur: any) => ur.role.name);
   const employeeId = user.employee?.id;
   
-  // Get all permissions from all roles
-  const permissionsSet = new Set<string>();
-  user.userRoles.forEach((ur: any) => {
-    ur.role.permissions.forEach((rp: any) => {
-      permissionsSet.add(rp.permission.name);
-    });
-  });
-  const permissions = Array.from(permissionsSet);
+  const permissions = buildEffectivePermissionNames(user.userRoles as any, user.userPermissions as any);
   
   const accessToken = signAccess(user.id, roles, permissions, employeeId);
   const refreshToken = signRefresh(user.id, roles, permissions, employeeId);
@@ -129,18 +128,20 @@ router.post("/register", async (req, res) => {
             },
           },
         },
+        userPermissions: {
+          include: {
+            permission: true,
+          },
+        },
         employee: true,
       },
     });
 
     const roles = newUser.userRoles.map((ur: any) => ur.role.name);
-    const permissionsSet = new Set<string>();
-    newUser.userRoles.forEach((ur: any) => {
-      ur.role.permissions.forEach((rp: any) => {
-        permissionsSet.add(rp.permission.name);
-      });
-    });
-    const permissions = Array.from(permissionsSet);
+    const permissions = buildEffectivePermissionNames(
+      newUser.userRoles as any,
+      newUser.userPermissions as any
+    );
 
     const accessToken = signAccess(newUser.id, roles, permissions, undefined);
     const refreshToken = signRefresh(newUser.id, roles, permissions, undefined);
@@ -191,6 +192,11 @@ router.post("/refresh", async (req, res) => {
             } 
           } 
         },
+        userPermissions: {
+          include: {
+            permission: true,
+          },
+        },
         employee: true
       } 
     });
@@ -199,14 +205,7 @@ router.post("/refresh", async (req, res) => {
     const roles = user.userRoles.map((ur: any) => ur.role.name);
     const employeeId = user.employee?.id;
     
-    // Get all permissions from all roles
-    const permissionsSet = new Set<string>();
-    user.userRoles.forEach((ur: any) => {
-      ur.role.permissions.forEach((rp: any) => {
-        permissionsSet.add(rp.permission.name);
-      });
-    });
-    const permissions = Array.from(permissionsSet);
+    const permissions = buildEffectivePermissionNames(user.userRoles as any, user.userPermissions as any);
     
     const accessToken = signAccess(user.id, roles, permissions, employeeId);
     const avatarUrl = user.avatarUrl ?? user.employee?.avatarUrl ?? null;

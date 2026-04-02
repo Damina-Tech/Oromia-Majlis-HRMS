@@ -42,7 +42,7 @@ export default function HalalCertificatesPage() {
   const [renewalCert, setRenewalCert] = useState<HalalCertificate | null>(null);
   const [newExpiry, setNewExpiry] = useState("");
 
-  const isStaff = hasPermission("halal.admin") || hasPermission("halal.review") || hasPermission("halal.renew");
+  const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.renew");
 
   const { data, isLoading } = useQuery({
     queryKey: ["halal-certificates", statusFilter],

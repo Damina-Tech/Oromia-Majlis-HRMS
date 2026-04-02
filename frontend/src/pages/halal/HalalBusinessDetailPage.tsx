@@ -15,6 +15,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
   ArrowLeft,
   Building2,
   FileText,
@@ -47,8 +57,26 @@ export default function HalalBusinessDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
-  const isStaff = hasPermission("halal.admin") || hasPermission("halal.review");
+  const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor");
+  const isAdmin = hasPermission("halal.admin");
+  const isSupervisor = hasPermission("halal.supervisor");
   const [withdrawId, setWithdrawId] = useState<string | null>(null);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalRole, setApprovalRole] = useState<"SUPERVISOR" | "ADMIN" | null>(null);
+  const [approvalChecklist, setApprovalChecklist] = useState<Record<string, boolean>>({});
+  const [approvalNote, setApprovalNote] = useState("");
+  const [detailsConfirmed, setDetailsConfirmed] = useState(false);
+
+  const SUPERVISOR_QUESTIONS = [
+    { key: "siteVisited", label: "I conducted on-site review of the business premises." },
+    { key: "docsVerified", label: "I verified required documents and business identity." },
+    { key: "halalReadiness", label: "I confirm baseline Halal readiness for operations." },
+  ] as const;
+  const ADMIN_QUESTIONS = [
+    { key: "supervisorReviewed", label: "Supervisor review is completed and recorded." },
+    { key: "complianceChecked", label: "I checked compliance, policy, and submitted records." },
+    { key: "approvalDecision", label: "I approve this business for Halal application access." },
+  ] as const;
 
   const { data: business, isLoading } = useQuery({
     queryKey: ["halal-business", id],
@@ -68,17 +96,32 @@ export default function HalalBusinessDetailPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => halalApi.businesses.approve(id!),
+    mutationFn: (data: { role: "SUPERVISOR" | "ADMIN"; checklist: Record<string, boolean>; note?: string; detailsConfirmed: boolean }) =>
+      halalApi.businesses.approve(id!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-business", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-businesses"] });
-      toast.success("Business approved. Owner can now apply for Halal certification.");
+      toast.success("Business approval step recorded.");
+      setApprovalOpen(false);
+      setApprovalRole(null);
+      setApprovalChecklist({});
+      setApprovalNote("");
+      setDetailsConfirmed(false);
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve"),
   });
 
   const canWithdraw = (app: { status: string; feePaidAt?: string | null }) =>
     app.status === "DRAFT" || (app.status === "SUBMITTED" && !app.feePaidAt);
+
+  const openApprovalModal = (role: "SUPERVISOR" | "ADMIN") => {
+    setApprovalRole(role);
+    const qs = role === "SUPERVISOR" ? SUPERVISOR_QUESTIONS : ADMIN_QUESTIONS;
+    setApprovalChecklist(Object.fromEntries(qs.map((q) => [q.key, false])));
+    setApprovalNote("");
+    setDetailsConfirmed(false);
+    setApprovalOpen(true);
+  };
 
   if (!id || isLoading) {
     return (
@@ -105,6 +148,12 @@ export default function HalalBusinessDetailPage() {
   const declarationChecklist = biz.declarationChecklist as
     | { noAlcohol?: boolean; noProhibited?: boolean; majlisCompliance?: boolean; dataAccurate?: boolean }
     | undefined;
+  const approvalProgress = biz.approvalProgress ?? {
+    supervisorApproved: false,
+    adminApproved: false,
+    approvedBySupervisor: null,
+    approvedByAdmin: null,
+  };
 
   const formatDate = (d: string | undefined) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—");
 
@@ -163,17 +212,6 @@ export default function HalalBusinessDetailPage() {
           >
             {bizStatus === "APPROVED" ? "Approved" : bizStatus === "REJECTED" ? "Rejected" : "Pending"}
           </Badge>
-          {isStaff && bizStatus === "PENDING_APPROVAL" && (
-            <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={approveMutation.isPending}
-              onClick={() => approveMutation.mutate()}
-            >
-              {approveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
-              Approve
-            </Button>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-muted-foreground">
           <span>{biz.category.replace("_", " ")}</span>
@@ -462,6 +500,162 @@ export default function HalalBusinessDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Approval workflow */}
+      <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-50/40 via-teal-50/20 to-transparent dark:from-emerald-950/30 dark:via-teal-950/20">
+        <CardHeader className="py-4 px-4 border-b border-emerald-200/40 dark:border-emerald-800/40">
+          <CardTitle className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+            Business approval workflow
+          </CardTitle>
+          <CardDescription>
+            {bizStatus === "APPROVED"
+              ? "Approval completed by Supervisor and Department Head."
+              : "Pending approval. Requires both Supervisor and Department Head."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 pt-4 space-y-4">
+          {bizStatus !== "APPROVED" ? (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Badge
+                  className={
+                    approvalProgress.supervisorApproved
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                  }
+                >
+                  Supervisor: {approvalProgress.supervisorApproved ? "Approved" : "Pending"}
+                </Badge>
+                <Badge
+                  className={
+                    approvalProgress.adminApproved
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                  }
+                >
+                  Department Head: {approvalProgress.adminApproved ? "Approved" : "Pending"}
+                </Badge>
+              </div>
+              {isStaff && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950/30"
+                    disabled={!isSupervisor || approvalProgress.supervisorApproved || approveMutation.isPending}
+                    onClick={() => openApprovalModal("SUPERVISOR")}
+                  >
+                    Supervisor review
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={!isAdmin || approvalProgress.adminApproved || approveMutation.isPending}
+                    onClick={() => openApprovalModal("ADMIN")}
+                  >
+                    Department Head approval
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2 text-sm rounded-md border border-emerald-200/50 dark:border-emerald-800/40 bg-background/70 p-3">
+              {approvalProgress.approvedBySupervisor && (
+                <p>
+                  <span className="text-muted-foreground">Supervisor:</span>{" "}
+                  {approvalProgress.approvedBySupervisor.name} ({approvalProgress.approvedBySupervisor.email}) on{" "}
+                  {formatDate(approvalProgress.approvedBySupervisor.at)}
+                </p>
+              )}
+              {approvalProgress.approvedByAdmin && (
+                <p>
+                  <span className="text-muted-foreground">Department Head:</span>{" "}
+                  {approvalProgress.approvedByAdmin.name} ({approvalProgress.approvedByAdmin.email}) on{" "}
+                  {formatDate(approvalProgress.approvedByAdmin.at)}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={approvalOpen} onOpenChange={(o) => !approveMutation.isPending && setApprovalOpen(o)}>
+        <DialogContent>
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-emerald-900 dark:text-emerald-100">
+              {approvalRole === "SUPERVISOR" ? "Supervisor on-site review" : "Department Head approval"}
+            </DialogTitle>
+            <DialogDescription>
+              Answer the checklist, confirm business details, then approve this step.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-emerald-200/50 dark:border-emerald-800/40 bg-emerald-50/30 dark:bg-emerald-950/20 p-3 text-sm space-y-1">
+              <p><span className="text-muted-foreground">Business:</span> {biz.name}</p>
+              <p><span className="text-muted-foreground">Owner:</span> {biz.contactName}</p>
+              <p><span className="text-muted-foreground">Category:</span> {biz.category.replace("_", " ")}</p>
+              <p><span className="text-muted-foreground">TIN:</span> {biz.tinNumber || "—"}</p>
+            </div>
+            <div className="space-y-2 rounded-md border border-violet-200/50 dark:border-violet-800/40 bg-violet-50/20 dark:bg-violet-950/20 p-3">
+              <p className="text-sm font-medium text-violet-900 dark:text-violet-100">Checklist</p>
+              {(approvalRole === "SUPERVISOR" ? SUPERVISOR_QUESTIONS : ADMIN_QUESTIONS).map((q) => (
+                <div key={q.key} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`approval-${q.key}`}
+                    checked={!!approvalChecklist[q.key]}
+                    onCheckedChange={(v) => setApprovalChecklist((p) => ({ ...p, [q.key]: !!v }))}
+                  />
+                  <label htmlFor={`approval-${q.key}`} className="text-sm cursor-pointer">{q.label}</label>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Short note (optional)</label>
+              <Textarea
+                rows={3}
+                value={approvalNote}
+                onChange={(e) => setApprovalNote(e.target.value)}
+                placeholder="Add brief observation/approval note..."
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="approval-details-confirmed"
+                checked={detailsConfirmed}
+                onCheckedChange={(v) => setDetailsConfirmed(!!v)}
+              />
+              <label htmlFor="approval-details-confirmed" className="text-sm cursor-pointer">
+                I confirm the business details above are correct and ready for HC.
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalOpen(false)} disabled={approveMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                approveMutation.isPending ||
+                !approvalRole ||
+                !detailsConfirmed ||
+                Object.values(approvalChecklist).some((x) => !x)
+              }
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() =>
+                approvalRole &&
+                approveMutation.mutate({
+                  role: approvalRole,
+                  checklist: approvalChecklist,
+                  note: approvalNote || undefined,
+                  detailsConfirmed,
+                })
+              }
+            >
+              {approveMutation.isPending ? "Approving…" : "Approve"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!withdrawId} onOpenChange={() => !withdrawMutation.isPending && setWithdrawId(null)}>
         <AlertDialogContent>

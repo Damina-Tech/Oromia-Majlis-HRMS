@@ -13,6 +13,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -20,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -28,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, UserPlus, ClipboardCheck, Eye, Calendar } from "lucide-react";
+import { ArrowLeft, UserPlus, ClipboardCheck, Eye, Calendar, Pencil, Trash2 } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -40,8 +51,13 @@ export default function HalalInspectionAssignmentPage() {
   const preselectedAppId = (location.state as any)?.applicationId;
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [applicationId, setApplicationId] = useState(preselectedAppId || "");
-  const [inspectorId, setInspectorId] = useState("");
+  const [inspectorIds, setInspectorIds] = useState<string[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingInspectionId, setEditingInspectionId] = useState("");
+  const [editingInspectorId, setEditingInspectorId] = useState("");
+  const [editingScheduledAt, setEditingScheduledAt] = useState("");
+  const [deleteInspectionId, setDeleteInspectionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (preselectedAppId) {
@@ -67,7 +83,7 @@ export default function HalalInspectionAssignmentPage() {
   const { data: inspectors, isLoading: loadingInspectors } = useQuery({
     queryKey: ["halal-inspectors"],
     queryFn: () => halalApi.inspectors.list(),
-    enabled: assignModalOpen,
+    enabled: assignModalOpen || editModalOpen,
   });
 
   const { data: inspectionsData, isLoading: loadingInspections } = useQuery({
@@ -77,15 +93,19 @@ export default function HalalInspectionAssignmentPage() {
   const inspections = inspectionsData?.items ?? [];
 
   const assignMutation = useMutation({
-    mutationFn: (data: { applicationId: string; inspectorId: string; scheduledAt?: string }) =>
+    mutationFn: (data: { applicationId: string; inspectorIds: string[]; scheduledAt?: string }) =>
       halalApi.inspections.assign(data),
-    onSuccess: () => {
-      toast.success("Inspection assigned successfully");
+    onSuccess: (response) => {
+      toast.success(
+        response.assignedCount > 1
+          ? `${response.assignedCount} inspectors assigned successfully`
+          : "Inspection assigned successfully"
+      );
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
       queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
       setAssignModalOpen(false);
       setApplicationId("");
-      setInspectorId("");
+      setInspectorIds([]);
       setScheduledAt("");
     },
     onError: (e: any) => {
@@ -93,16 +113,71 @@ export default function HalalInspectionAssignmentPage() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: (data: { id: string; inspectorId?: string; scheduledAt?: string | null }) =>
+      halalApi.inspections.update(data.id, {
+        inspectorId: data.inspectorId,
+        scheduledAt: data.scheduledAt,
+      }),
+    onSuccess: () => {
+      toast.success("Inspection updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      setEditModalOpen(false);
+      setEditingInspectionId("");
+      setEditingInspectorId("");
+      setEditingScheduledAt("");
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to update inspection");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => halalApi.inspections.delete(id),
+    onSuccess: () => {
+      toast.success("Inspection deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      setDeleteInspectionId(null);
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to delete inspection");
+    },
+  });
+
   const handleAssignSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!applicationId || !inspectorId) {
-      toast.error("Please select application and inspector");
+    if (!applicationId || inspectorIds.length === 0) {
+      toast.error("Please select application and at least one inspector");
       return;
     }
     assignMutation.mutate({
       applicationId,
-      inspectorId,
+      inspectorIds,
       scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+    });
+  };
+
+  const openEditModal = (inspection: any) => {
+    setEditingInspectionId(inspection.id);
+    setEditingInspectorId(inspection.inspectorId ?? "");
+    setEditingScheduledAt(
+      inspection.scheduledAt
+        ? new Date(inspection.scheduledAt).toISOString().slice(0, 16)
+        : ""
+    );
+    setEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInspectionId || !editingInspectorId) {
+      toast.error("Please select inspector");
+      return;
+    }
+    editMutation.mutate({
+      id: editingInspectionId,
+      inspectorId: editingInspectorId,
+      scheduledAt: editingScheduledAt ? new Date(editingScheduledAt).toISOString() : null,
     });
   };
 
@@ -236,15 +311,33 @@ export default function HalalInspectionAssignmentPage() {
                               View
                             </Button>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                navigate(`/admin/halal/inspections/${ins.id}/complete`)
-                              }
-                            >
-                              Complete
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openEditModal(ins)}
+                              >
+                                <Pencil className="h-4 w-4 mr-1" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                                onClick={() => setDeleteInspectionId(ins.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                                onClick={() =>
+                                  navigate(`/admin/halal/inspections/${ins.id}/complete`)
+                                }
+                              >
+                                Complete
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -298,14 +391,33 @@ export default function HalalInspectionAssignmentPage() {
                           View
                         </Button>
                       ) : (
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            navigate(`/admin/halal/inspections/${ins.id}/complete`)
-                          }
-                        >
-                          Complete
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEditModal(ins)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                            onClick={() => setDeleteInspectionId(ins.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                            onClick={() =>
+                              navigate(`/admin/halal/inspections/${ins.id}/complete`)
+                            }
+                          >
+                            Complete
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -324,7 +436,7 @@ export default function HalalInspectionAssignmentPage() {
               <UserPlus className="h-5 w-5 text-violet-600" /> Assign inspection
             </DialogTitle>
             <DialogDescription>
-              Select an application and inspector. Optionally set a scheduled date.
+              Select an application and one or more eligible inspectors. Only users with halal.inspector permission can be assigned.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAssignSubmit} className="space-y-4">
@@ -356,28 +468,41 @@ export default function HalalInspectionAssignmentPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="inspector">Inspector</Label>
-              <Select
-                value={inspectorId}
-                onValueChange={setInspectorId}
-                disabled={loadingInspectors}
-              >
-                <SelectTrigger id="inspector" className="w-full">
-                  <SelectValue placeholder="Select inspector" />
-                </SelectTrigger>
-                <SelectContent>
-                  {inspectors?.map((i) => (
-                    <SelectItem key={i.id} value={i.id}>
-                      {i.firstName} {i.lastName} ({i.email})
-                    </SelectItem>
-                  ))}
-                  {(!inspectors || inspectors.length === 0) && !loadingInspectors && (
-                    <SelectItem value="_none" disabled>
-                      No inspectors available
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <Label>Inspectors</Label>
+              <div className="max-h-48 overflow-y-auto rounded-md border p-3 space-y-2">
+                {loadingInspectors && (
+                  <p className="text-sm text-muted-foreground">Loading inspectors...</p>
+                )}
+                {!loadingInspectors && inspectors?.map((inspector) => {
+                  const checked = inspectorIds.includes(inspector.id);
+                  return (
+                    <label
+                      key={inspector.id}
+                      className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) => {
+                          setInspectorIds((prev) =>
+                            next
+                              ? Array.from(new Set([...prev, inspector.id]))
+                              : prev.filter((id) => id !== inspector.id)
+                          );
+                        }}
+                      />
+                      <span className="text-sm">
+                        {inspector.firstName} {inspector.lastName} ({inspector.email})
+                      </span>
+                    </label>
+                  );
+                })}
+                {(!inspectors || inspectors.length === 0) && !loadingInspectors && (
+                  <p className="text-sm text-muted-foreground">No eligible inspectors available</p>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Selected: {inspectorIds.length}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -396,14 +521,90 @@ export default function HalalInspectionAssignmentPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={assignMutation.isPending || !applicationId || !inspectorId}
+                disabled={assignMutation.isPending || !applicationId || inspectorIds.length === 0}
               >
-                {assignMutation.isPending ? "Assigning…" : "Assign"}
+                {assignMutation.isPending ? "Assigning..." : "Assign inspectors"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Inspection modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-violet-600" /> Edit inspection assignment
+            </DialogTitle>
+            <DialogDescription>
+              Update inspector and/or scheduled date for this inspection.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-inspector">Inspector</Label>
+              <Select
+                value={editingInspectorId}
+                onValueChange={setEditingInspectorId}
+                disabled={loadingInspectors}
+              >
+                <SelectTrigger id="edit-inspector" className="w-full">
+                  <SelectValue placeholder="Select inspector" />
+                </SelectTrigger>
+                <SelectContent>
+                  {inspectors?.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.firstName} {i.lastName} ({i.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-scheduledAt">Scheduled date (optional)</Label>
+              <Input
+                id="edit-scheduledAt"
+                type="datetime-local"
+                value={editingScheduledAt}
+                onChange={(e) => setEditingScheduledAt(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setEditModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editMutation.isPending || !editingInspectorId}>
+                {editMutation.isPending ? "Saving..." : "Save changes"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteInspectionId} onOpenChange={(open) => !open && setDeleteInspectionId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete inspection assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the selected inspection assignment. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending || !deleteInspectionId}
+              onClick={() => {
+                if (deleteInspectionId) deleteMutation.mutate(deleteInspectionId);
+              }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

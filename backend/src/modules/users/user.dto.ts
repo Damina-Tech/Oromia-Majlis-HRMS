@@ -28,6 +28,17 @@ export const UpdateSelfDto = z.object({
   avatarUrl: z.string().min(1).optional(),
 });
 
+export const UpdateUserPermissionsDto = z.object({
+  overrides: z
+    .array(
+      z.object({
+        permissionId: z.string().min(1, "permissionId is required"),
+        allowed: z.boolean(),
+      })
+    )
+    .default([]),
+});
+
 export const ListUsersQuery = z.object({
   search: z.string().optional(),
   roleId: z.string().optional(),
@@ -40,4 +51,5 @@ export type CreateUserDto = z.infer<typeof CreateUserDto>;
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 export type ListUsersQuery = z.infer<typeof ListUsersQuery>;
 export type UpdateSelfDto = z.infer<typeof UpdateSelfDto>;
+export type UpdateUserPermissionsDto = z.infer<typeof UpdateUserPermissionsDto>;
 

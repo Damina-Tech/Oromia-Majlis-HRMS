@@ -62,6 +62,20 @@ export interface HalalBusiness {
   };
   productList?: { name: string; description?: string }[];
   documents?: { name: string; url: string; type?: string }[];
+  approvalProgress?: {
+    supervisorApproved: boolean;
+    adminApproved: boolean;
+    approvedBySupervisor?: { userId: string; name: string; email: string; at: string } | null;
+    approvedByAdmin?: { userId: string; name: string; email: string; at: string } | null;
+    logs?: Array<{
+      id: string;
+      role?: "SUPERVISOR" | "ADMIN";
+      checklist?: Record<string, boolean>;
+      note?: string;
+      at: string;
+      actor: { id: string; name: string; email: string };
+    }>;
+  };
   createdAt: string;
   updatedAt: string;
   applications?: HalalApplication[];
@@ -109,6 +123,12 @@ export interface HalalInspection {
   updatedAt: string;
 }
 
+export interface AssignInspectionsResponse {
+  items: HalalInspection[];
+  assignedCount: number;
+  skippedInspectorIds: string[];
+}
+
 export interface HalalCertificate {
   id: string;
   certificateId: string;
@@ -149,7 +169,15 @@ export const halalApi = {
     create: (data: Partial<HalalBusiness>) => api.post<HalalBusiness>("/halal/businesses", data).then((r) => r.data),
     update: (id: string, data: Partial<HalalBusiness>) => api.patch<HalalBusiness>(`/halal/businesses/${id}`, data).then((r) => r.data),
     delete: (id: string) => api.delete(`/halal/businesses/${id}`),
-    approve: (id: string) => api.post<HalalBusiness>(`/halal/businesses/${id}/approve`).then((r) => r.data),
+    approve: (
+      id: string,
+      data?: {
+        role?: "SUPERVISOR" | "ADMIN";
+        checklist?: Record<string, boolean>;
+        note?: string;
+        detailsConfirmed?: boolean;
+      }
+    ) => api.post<HalalBusiness>(`/halal/businesses/${id}/approve`, data ?? {}).then((r) => r.data),
     uploadLicense: (id: string, file: File) => {
       const form = new FormData();
       form.append("license", file);
@@ -181,15 +209,18 @@ export const halalApi = {
         headers: { "Content-Type": "multipart/form-data" },
       }).then((r) => r.data);
     },
-    approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string }) =>
+    approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
   },
   inspections: {
     list: (params?: { page?: number; limit?: number; inspectorId?: string; applicationId?: string; completed?: string }) =>
       api.get<PaginatedResponse<HalalInspection>>("/halal/inspections", { params }).then((r) => r.data),
     get: (id: string) => api.get<HalalInspection>(`/halal/inspections/${id}`).then((r) => r.data),
-    assign: (data: { applicationId: string; inspectorId: string; scheduledAt?: string }) =>
-      api.post<HalalInspection>("/halal/inspections", data).then((r) => r.data),
+    assign: (data: { applicationId: string; inspectorIds: string[]; scheduledAt?: string }) =>
+      api.post<AssignInspectionsResponse>("/halal/inspections", data).then((r) => r.data),
+    update: (id: string, data: { inspectorId?: string; scheduledAt?: string | null }) =>
+      api.patch<HalalInspection>(`/halal/inspections/${id}`, data).then((r) => r.data),
+    delete: (id: string) => api.delete(`/halal/inspections/${id}`),
     complete: (id: string, data: { checklistData?: Record<string, unknown>; evidence?: { url: string; type: string }[]; gpsLat?: number; gpsLng?: number; notes?: string }) =>
       api.patch<HalalInspection>(`/halal/inspections/${id}/complete`, data).then((r) => r.data),
   },

@@ -88,8 +88,8 @@ app.get("/health", (req, res) => {
 
 // Debug: Log all incoming requests to /api (before routing)
 app.use("/api", (req, res, next) => {
-  console.log(`≡ƒöì [SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
-  console.log(`≡ƒöì [SERVER] Original URL: ${req.originalUrl}`);
+  console.log(`[SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
+  console.log(`[SERVER] Original URL: ${req.originalUrl}`);
   next();
 });
 

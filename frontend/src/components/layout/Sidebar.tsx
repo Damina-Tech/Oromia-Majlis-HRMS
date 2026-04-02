@@ -71,7 +71,7 @@ const menuItems = [
   title: 'Halal Certification',
   icon: ShieldCheck,
   href: '/halal/dashboard',
-  permission: 'halal.business', // also show for halal.admin, halal.inspector, halal.review - checked in filteredMenuItems
+  permission: 'halal.business', // also show for halal.admin, halal.inspector, halal.supervisor - checked in filteredMenuItems
   submenu: true,
 },
 {
@@ -168,11 +168,40 @@ const adminItems = [
 
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, refreshUserData } = useAuth();
   const location = useLocation();
   const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set());
 
-  // Check if user is EMPLOYEE role
+  // Keep sidebar permissions in sync with backend (role + user-specific overrides).
+  // This ensures removed permissions are reflected without requiring manual logout/login.
+  React.useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      if (!mounted) return;
+      await refreshUserData();
+    };
+
+    refresh();
+
+    const onFocus = () => {
+      refresh();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      mounted = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  // Permission-first access model: keep role checks only for identity/display, not for access gating.
   const isEmployee = user?.roles?.some(role => role.toUpperCase() === 'EMPLOYEE') || false;
 
   const isHalalBusinessOnly = user?.roles?.some(r => r.toUpperCase() === 'HALAL_BUSINESS') &&
@@ -208,7 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         hasPermission('halal.business') ||
         hasPermission('halal.admin') ||
         hasPermission('halal.inspector') ||
-        hasPermission('halal.review') ||
+        hasPermission('halal.supervisor') ||
         hasPermission('halal.renew')
       );
     }
@@ -216,21 +245,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     return hasPermission(item.permission);
   });
 
-  // Check if user is ADMIN
-  const isAdmin = user?.roles?.some(role => role.toUpperCase() === 'ADMIN') || false;
-  
   const filteredAdminItems = adminItems.filter((item) => {
-    // Show admin items only for ADMIN users
-    if (item.permission === '*') {
-      return isAdmin;
-    }
+    // Admin section is permission-driven in role+user-permission model.
+    if (item.permission === '*') return hasPermission('users.read') || hasPermission('users.write');
     return hasPermission(item.permission);
   });
-
-  // Check if user is ADMIN or MANAGER
-  const isAdminOrManager = user?.roles?.some(role => 
-    role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'MANAGER'
-  ) || false;
 
   // Leave Management submenu items
   const leaveSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
@@ -239,8 +258,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('leave.view') || hasPermission('leave.read') || hasPermission('leave.manage')) {
     leaveSubmenuItems.push({ title: 'My Leave Mngt', href: '/leave', permission: 'leave.view' });
     
-    // Only ADMIN and MANAGER can see Leave Requests and Leave Balance
-    if (isAdminOrManager) {
+    // Show when user has explicit permissions (role-based or user-specific).
+    if (hasPermission('leave.read')) {
       leaveSubmenuItems.push({ title: 'Leave Requests', href: '/leave-requests', permission: 'leave.view' });
       leaveSubmenuItems.push({ title: 'Leave Balance', href: '/leave-balances', permission: 'leave.read' });
     }
@@ -253,8 +272,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('attendance.view') || hasPermission('attendance.read') || hasPermission('attendance.manage')) {
     attendanceSubmenuItems.push({ title: 'My Attendance', href: '/attendance', permission: 'attendance.view' });
     
-    // Only ADMIN and MANAGER can see Attendance Records
-    if (isAdminOrManager) {
+    if (hasPermission('attendance.read')) {
       attendanceSubmenuItems.push({ title: 'Attendance Records', href: '/attendance-records', permission: 'attendance.read' });
     }
   }
@@ -267,12 +285,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     // All users can see their own salary portal
     payrollSubmenuItems.push({ title: 'My Salary', href: '/my-salary', permission: 'payroll.view' });
     
-    // Only ADMIN and MANAGER can see payroll management pages
-    if (isAdminOrManager) {
+    if (hasPermission('payroll.view')) {
       payrollSubmenuItems.push({ title: 'Payroll Runs', href: '/payroll/runs', permission: 'payroll.view' });
-      payrollSubmenuItems.push({ title: 'Salary Grades', href: '/payroll/salary-grades', permission: 'payroll.process' });
       payrollSubmenuItems.push({ title: 'Loans', href: '/payroll/loans', permission: 'payroll.view' });
       payrollSubmenuItems.push({ title: 'Advances', href: '/payroll/advances', permission: 'payroll.view' });
+    }
+    if (hasPermission('payroll.process')) {
+      payrollSubmenuItems.push({ title: 'Salary Grades', href: '/payroll/salary-grades', permission: 'payroll.process' });
       payrollSubmenuItems.push({ title: 'Allowances', href: '/payroll/allowances', permission: 'payroll.process' });
       payrollSubmenuItems.push({ title: 'Tax & Pension', href: '/payroll/tax-pension', permission: 'payroll.process' });
     }
@@ -291,11 +310,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   // Documents submenu items
   const documentSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
   
-  // Only show Documents submenu items if user has documents.view permission
-  // Hide Templates and Generate for EMPLOYEE role
+  // Permission-based visibility, including user-specific overrides.
   if (hasPermission('documents.view') || hasPermission('documents.manage')) {
-    // Hide Templates and Generate for EMPLOYEE role
-    if (!isEmployee) {
+    if (hasPermission('documents.manage')) {
       documentSubmenuItems.push({ title: 'Templates', href: '/documents/templates', permission: 'documents.view' });
       documentSubmenuItems.push({ title: 'Generate', href: '/documents/generate', permission: 'documents.view' });
     }
@@ -322,8 +339,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('tasks.view')) {
     taskSubmenuItems.push({ title: 'List View', href: '/tasks', permission: 'tasks.view' });
     taskSubmenuItems.push({ title: 'Kanban Board', href: '/tasks/kanban', permission: 'tasks.view' });
-    // Hide Dashboard for EMPLOYEE role
-    if (!isEmployee) {
+    if (hasPermission('tasks.manage') || hasPermission('reports.view')) {
       taskSubmenuItems.push({ title: 'Dashboard', href: '/tasks/dashboard', permission: 'tasks.view' });
     }
   }
@@ -343,12 +359,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
 
   // Halal Certification submenu items
   const halalSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
-  if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.review') || hasPermission('halal.renew')) {
+  if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.supervisor') || hasPermission('halal.renew')) {
     halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'halal.business' });
     halalSubmenuItems.push({ title: 'Businesses', href: '/halal/register', permission: 'halal.business' });
     halalSubmenuItems.push({ title: 'Applications', href: '/halal/apply', permission: 'halal.business' });
     halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
-    if (hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.review')) {
+    if (hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.supervisor')) {
       halalSubmenuItems.push({ title: 'Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
     }
     if (hasPermission('halal.admin')) {

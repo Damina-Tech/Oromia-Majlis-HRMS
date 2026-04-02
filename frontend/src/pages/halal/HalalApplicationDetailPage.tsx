@@ -68,16 +68,16 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
     description: "Review your application details and click Submit when ready. You can edit until you submit.",
   },
   SUBMITTED: {
-    title: "Pay the certification fee",
-    description: "Pay the required fee to proceed. After payment, Oromia Majlis will review your application.",
+    title: "Inspection in progress",
+    description: "Your application was submitted. Assigned inspectors will inspect your business and submit the inspection result.",
   },
   REVIEW: {
-    title: "Under review",
-    description: "Your payment has been received. Oromia Majlis staff are reviewing your application. An inspector may be assigned soon.",
+    title: "Pay certification fee",
+    description: "Committee approved your application. Pay 20,000 ETB to generate your Halal certificate.",
   },
   INSPECTION: {
-    title: "Inspection",
-    description: "An inspector has been assigned. They will visit your premises, upload the inspection result, and Oromia Majlis admin will review and approve for certification.",
+    title: "Committee review",
+    description: "The committee is reviewing your full business profile and inspection results.",
   },
   APPROVED: {
     title: "Certificate issued",
@@ -90,10 +90,10 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
 };
 
 const WORKFLOW_STEPS = [
-  { key: "DRAFT", label: "Create draft", icon: FileText },
-  { key: "SUBMITTED", label: "Submit & pay", icon: Send },
-  { key: "REVIEW", label: "Under review", icon: AlertCircle },
-  { key: "INSPECTION", label: "Inspection", icon: Building2 },
+  { key: "DRAFT", label: "Submitted", icon: FileText },
+  { key: "SUBMITTED", label: "Inspection", icon: Building2 },
+  { key: "INSPECTION", label: "Committee review", icon: AlertCircle },
+  { key: "REVIEW", label: "Payment", icon: CreditCard },
   { key: "APPROVED", label: "Certificate", icon: Award },
 ];
 
@@ -110,6 +110,7 @@ const ETHIOPIAN_BANKS = [
 ];
 
 const ACCOUNT_NAME = "Oromia Islamic Affairs Supreme Council";
+const HALAL_CERTIFICATION_FEE = 20000;
 
 const BANK_ACCOUNT_DETAILS: Record<string, { accountName: string; accountNumber: string }> = {
   "Commercial Bank of Ethiopia": { accountName: ACCOUNT_NAME, accountNumber: "1000600162447" },
@@ -145,8 +146,13 @@ export default function HalalMyApplicationDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isAdminContext = location.pathname.startsWith("/admin/halal/applications");
-  const isStaff = hasPermission("halal.admin") || hasPermission("halal.review");
-  const canCompleteInspection = isStaff || hasPermission("halal.inspector");
+  const canCommitteeReview =
+    hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.committee");
+  const canCommitteeApprove = hasPermission("halal.committee");
+  const canCommitteeReject = hasPermission("halal.admin") || hasPermission("halal.committee");
+  const isStaff = canCommitteeReview;
+  const canCompleteInspection =
+    hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
 
   const [paymentMethod, setPaymentMethod] = useState<"chapa" | "manual">("chapa");
   const [manualBank, setManualBank] = useState("");
@@ -219,9 +225,11 @@ export default function HalalMyApplicationDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
+  const [meetingMinutesFile, setMeetingMinutesFile] = useState<File | null>(null);
+  const [isUploadingMeetingMinutes, setIsUploadingMeetingMinutes] = useState(false);
 
   const approveMutation = useMutation({
-    mutationFn: (payload: { approved: boolean; notes?: string; rejectionReason?: string }) =>
+    mutationFn: (payload: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
       halalApi.applications.approve(id!, payload),
     onSuccess: (_, vars) => {
       toast.success(vars.approved ? "Application approved" : "Application rejected");
@@ -231,6 +239,7 @@ export default function HalalMyApplicationDetailPage() {
       setRejectOpen(false);
       setNotes("");
       setRejectionReason("");
+      setMeetingMinutesFile(null);
     },
     onError: (e: any) => {
       toast.error(e.response?.data?.message ?? "Action failed");
@@ -246,20 +255,19 @@ export default function HalalMyApplicationDetailPage() {
   if (!app) return <div className="p-6 text-muted-foreground">Application not found</div>;
 
   const application = app as HalalApplication;
-  const feeAmount = application.feeAmount != null ? Number(application.feeAmount) : 500;
+  const feeAmount = HALAL_CERTIFICATION_FEE;
   const isPaid = !!application.feePaidAt;
   const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
-  // When paid, treat SUBMITTED as REVIEW for display
-  const effectiveStatus = (application.status === "SUBMITTED" && isPaid) ? "REVIEW" : application.status;
+  const effectiveStatus = application.status;
   const currentStepIndex = WORKFLOW_STEPS.findIndex((s) => s.key === effectiveStatus);
   const baseHint = NEXT_ACTION_HINTS[effectiveStatus];
   // When inspection is completed, show awaiting-admin message
   const hint =
     effectiveStatus === "INSPECTION" && hasCompletedInspection
       ? {
-          title: "Inspection completed",
+          title: "Ready for committee review",
           description:
-            "The inspector has completed the inspection and uploaded the result. Oromia Majlis admin will review and approve your certification shortly.",
+            "Inspection has been completed. The committee can now review and decide whether to approve this application for payment.",
         }
       : baseHint;
   const isRejected = application.status === "REJECTED";
@@ -268,11 +276,32 @@ export default function HalalMyApplicationDetailPage() {
 
   const biz = application.business;
   const canApprove =
-    isStaff &&
-    ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status) &&
+    canCommitteeApprove &&
+    application.status === "INSPECTION" &&
     hasCompletedInspection;
-  const canReject = isStaff && ["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status);
+  const canReject = canCommitteeReject && ["SUBMITTED", "INSPECTION"].includes(application.status);
   const isApproved = application.status === "APPROVED";
+
+  const handleApproveWithMeetingMinutes = async () => {
+    try {
+      let meetingMinutesUrl: string | undefined;
+      if (meetingMinutesFile) {
+        setIsUploadingMeetingMinutes(true);
+        const uploadResult = await halalApi.businesses.uploadDocument(meetingMinutesFile);
+        meetingMinutesUrl = uploadResult.url;
+      }
+      approveMutation.mutate({
+        approved: true,
+        notes: notes || undefined,
+        meetingMinutesUrl,
+      });
+    } catch (e: any) {
+      const msg = e?.response?.data?.message;
+      toast.error(typeof msg === "string" ? msg : "Failed to upload meeting minutes");
+    } finally {
+      setIsUploadingMeetingMinutes(false);
+    }
+  };
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -298,9 +327,11 @@ export default function HalalMyApplicationDetailPage() {
           </div>
           <Badge className={`text-sm font-medium px-3 py-1 ${STATUS_COLORS[effectiveStatus]}`}>
             {effectiveStatus === "REVIEW"
-              ? "Under review"
+              ? "Payment pending"
               : effectiveStatus === "INSPECTION"
-                ? "Inspection"
+                ? "Committee review"
+                : effectiveStatus === "SUBMITTED"
+                  ? "Inspection"
                 : effectiveStatus}
           </Badge>
         </div>
@@ -409,7 +440,7 @@ export default function HalalMyApplicationDetailPage() {
               </Button>
             </>
           )}
-          {(application.status === "SUBMITTED" || application.status === "REVIEW") && isPaid && (
+          {application.status === "APPROVED" && isPaid && (
             <div className="w-full space-y-3">
               <div className="flex items-center gap-2 rounded-lg bg-emerald-100/80 dark:bg-emerald-900/30 px-3 py-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -445,7 +476,7 @@ export default function HalalMyApplicationDetailPage() {
               )}
             </div>
           )}
-          {application.status === "SUBMITTED" && !isPaid && (
+          {application.status === "REVIEW" && !isPaid && (
             <>
               <div className="w-full space-y-4">
                 <p className="text-sm text-muted-foreground">
@@ -542,15 +573,6 @@ export default function HalalMyApplicationDetailPage() {
                   </TabsContent>
                 </Tabs>
               </div>
-              <Button
-                variant="outline"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setWithdrawOpen(true)}
-                disabled={withdrawMutation.isPending}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Withdraw application
-              </Button>
             </>
           )}
           {application.status === "APPROVED" && application.certificate && (
@@ -709,12 +731,16 @@ export default function HalalMyApplicationDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-3">
+            <ul className="space-y-2">
               {application.inspections.map((ins) => {
                 const data = ins.checklistData as Record<string, unknown> | undefined;
                 const overallPassed = data?.overallPassed as boolean | undefined;
                 const observations = (data?.observations as string) || ins.notes || "";
                 const recommendations = data?.recommendations as string | undefined;
+                const additionalNotes = (data?.additionalNotes as string) || "";
+                const reportUrlRaw = data?.inspectionReportUrl as string | undefined;
+                const reportFileName = (data?.inspectionReportFileName as string) || "Inspection report";
+                const reportUrl = reportUrlRaw ? resolveFileUrl(reportUrlRaw) : undefined;
                 const checklistKeys = ["premisesClean", "equipmentHalalCompliant", "storageProper", "ingredientTraceability", "noProhibitedSubstances", "personnelTrained"];
                 const checklistMet = checklistKeys.filter((k) => data?.[k] === true).length;
                 const hasResult = ins.completedAt && data;
@@ -722,42 +748,40 @@ export default function HalalMyApplicationDetailPage() {
                 return (
                   <li
                     key={ins.id}
-                    className={`rounded-lg border overflow-hidden ${canCompleteInspection ? "" : "bg-muted/30"}`}
+                    className={`rounded-md border overflow-hidden ${canCompleteInspection ? "" : "bg-muted/30"}`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-                      <span className="font-medium">
-                        {ins.inspector?.firstName} {ins.inspector?.lastName}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {ins.scheduledAt && canCompleteInspection && (
-                          <span className="text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-start justify-between gap-2 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">
+                          {ins.inspector?.firstName} {ins.inspector?.lastName}
+                        </p>
+                        {ins.scheduledAt && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             Scheduled: {new Date(ins.scheduledAt).toLocaleString()}
-                          </span>
+                          </p>
                         )}
-                        {ins.completedAt ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
-                            Completed
-                          </Badge>
-                        ) : (
-                          <>
-                            <Badge variant="secondary">
-                              {canCompleteInspection ? "Pending" : "Scheduled"}
-                            </Badge>
-                            {canCompleteInspection && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => navigate(`/admin/halal/inspections/${ins.id}/complete`)}
-                              >
-                                Complete
-                              </Button>
-                            )}
-                          </>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={ins.completedAt ? "default" : "secondary"}
+                          className={ins.completedAt ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : ""}
+                        >
+                          {ins.completedAt ? "Completed" : canCompleteInspection ? "Pending" : "Scheduled"}
+                        </Badge>
+                        {!ins.completedAt && canCompleteInspection && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                            onClick={() => navigate(`/admin/halal/inspections/${ins.id}/complete`)}
+                          >
+                            Complete
+                          </Button>
                         )}
                       </div>
                     </div>
                     {hasResult && (
-                      <div className="border-t bg-muted/20 px-3 py-3 space-y-3">
+                      <div className="border-t bg-muted/20 px-3 py-2.5 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Result</span>
                           <Badge
@@ -776,17 +800,35 @@ export default function HalalMyApplicationDetailPage() {
                               Checklist: {checklistMet}/{checklistKeys.length} items met
                             </span>
                           )}
+                          {reportUrl && (
+                            <a
+                              href={reportUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              Attachment: {reportFileName}
+                            </a>
+                          )}
                         </div>
                         {observations && (
                           <div>
                             <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Observations</p>
-                            <p className="text-sm text-foreground/90 line-clamp-3">{observations}</p>
+                            <p className="text-sm text-foreground/90 line-clamp-2">{observations}</p>
                           </div>
                         )}
                         {recommendations && (
                           <div>
                             <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Recommendations</p>
                             <p className="text-sm text-foreground/90 line-clamp-2">{recommendations}</p>
+                          </div>
+                        )}
+                        {(additionalNotes || ins.notes) && (
+                          <div>
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Additional note</p>
+                            <p className="text-sm text-foreground/90 line-clamp-2">
+                              {additionalNotes || ins.notes}
+                            </p>
                           </div>
                         )}
                       </div>
@@ -864,12 +906,12 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
-      {/* Staff-only: Admin actions (Approve, Reject, Assign inspection) */}
-      {isStaff && (
+      {/* Staff-only: Committee actions (Approve, Reject, Assign inspectors) */}
+          {canCommitteeReview && (
         <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30">
           <CardHeader>
-            <CardTitle className="text-blue-800 dark:text-blue-200">Staff actions</CardTitle>
-            <CardDescription>Review and manage this application</CardDescription>
+            <CardTitle className="text-blue-800 dark:text-blue-200">Committee actions</CardTitle>
+            <CardDescription>Review this application and inspection outcome</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {canReject && !canApprove && (
@@ -900,7 +942,7 @@ export default function HalalMyApplicationDetailPage() {
                 }
               >
                 <UserPlus className="h-4 w-4 mr-2" />
-                Assign inspection
+                Assign inspectors
               </Button>
             )}
           </CardContent>
@@ -924,16 +966,31 @@ export default function HalalMyApplicationDetailPage() {
                 rows={3}
               />
             </div>
+            <div className="space-y-2">
+              <Label>Meeting minutes (optional)</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setMeetingMinutesFile(e.target.files?.[0] ?? null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Committee head can attach the meeting minutes when approving this application.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setApproveOpen(false)}>
               Cancel
             </Button>
             <Button
-              onClick={() => approveMutation.mutate({ approved: true, notes: notes || undefined })}
-              disabled={approveMutation.isPending}
+              onClick={handleApproveWithMeetingMinutes}
+              disabled={approveMutation.isPending || isUploadingMeetingMinutes || !canCommitteeApprove}
             >
-              Approve
+              {isUploadingMeetingMinutes
+                ? "Uploading minutes..."
+                : approveMutation.isPending
+                  ? "Approving..."
+                  : "Approve"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -991,9 +1048,9 @@ export default function HalalMyApplicationDetailPage() {
             <AlertDialogDescription>
               This will cancel your application. You can submit a new application later if needed.
               This action cannot be undone.
-              {application.status === "SUBMITTED" && !isPaid && (
+              {!isPaid && ["SUBMITTED", "INSPECTION", "REVIEW"].includes(application.status) && (
                 <span className="block mt-2 text-amber-600">
-                  Since payment has not been confirmed yet, you can safely withdraw.
+                  Payment has not been confirmed yet, so you can still withdraw this application.
                 </span>
               )}
             </AlertDialogDescription>

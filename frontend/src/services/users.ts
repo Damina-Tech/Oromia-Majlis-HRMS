@@ -72,6 +72,19 @@ export interface User {
   _isUserAccount?: boolean; // Flag to indicate if this is a real user account or just an employee
 }
 
+export interface UserPermissionOverride {
+  permissionId: string;
+  permissionName: string;
+  allowed: boolean;
+}
+
+export interface UserPermissionsResponse {
+  rolePermissionIds: string[];
+  userOverrides: UserPermissionOverride[];
+  effectivePermissionIds: string[];
+  effectivePermissions: Permission[];
+}
+
 export interface CreateUserPayload {
   email: string;
   password: string;
@@ -158,6 +171,19 @@ export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
 
 export async function deleteUser(id: string): Promise<void> {
   await api.delete(`/users/${id}`);
+}
+
+export async function getUserPermissionsForUser(id: string): Promise<UserPermissionsResponse> {
+  const { data } = await api.get(`/users/${id}/permissions`);
+  return data;
+}
+
+export async function updateUserPermissionsForUser(
+  id: string,
+  overrides: Array<{ permissionId: string; allowed: boolean }>
+): Promise<UserPermissionsResponse> {
+  const { data } = await api.put(`/users/${id}/permissions`, { overrides });
+  return data;
 }
 
 export async function getRoles(): Promise<Role[]> {

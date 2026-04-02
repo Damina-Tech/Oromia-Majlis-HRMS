@@ -42,7 +42,7 @@ export default function HalalApplyPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
-  const isAdmin = hasPermission("halal.admin") || hasPermission("halal.review");
+  const isAdmin = hasPermission("halal.admin") || hasPermission("halal.supervisor");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 

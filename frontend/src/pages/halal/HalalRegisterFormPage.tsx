@@ -114,13 +114,13 @@ const STEP_COLORS: Record<string, { active: string; completed: string; line: str
 };
 
 const CATEGORIES: HalalBusinessCategory[] = [
+  "SLAUGHTERHOUSE",
   "FOOD",
   "DRINKS",
   "COSMETICS",
   "MEDICINE",
   "RESTAURANT",
   "FACTORY",
-  "SLAUGHTERHOUSE",
 ];
 
 const BUSINESS_TYPES = ["Private", "PLC", "Cooperative", "Branch"];
@@ -131,12 +131,7 @@ interface ProductItem {
   id: string;
   name: string;
   category: string;
-  ingredients: string;
-  sourceOfIngredients: string;
-  supplierName: string;
-  countryOfOrigin: string;
   productionMethod: string;
-  packagingType: string;
   storageMethod: string;
 }
 
@@ -149,15 +144,19 @@ const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
 const emptyProduct = (): ProductItem => ({
   id: randomUUID(),
   name: "",
-  category: "FOOD",
-  ingredients: "",
-  sourceOfIngredients: "",
-  supplierName: "",
-  countryOfOrigin: "",
+  category: "FOOD_MEAT",
   productionMethod: "",
-  packagingType: "",
   storageMethod: "",
 });
+
+const PRODUCT_CATEGORY_OPTIONS = [
+  { value: "FOOD_MEAT", label: "Food - Meat" },
+  { value: "FOOD_POULTRY", label: "Food - Poultry" },
+  { value: "FOOD_PROCESSED_MEAT", label: "Food - Processed Meat" },
+  { value: "FOOD_OFFAL_BYPRODUCTS", label: "Food - Offal / By-products" },
+  { value: "SERVICE_SLAUGHTERING", label: "Service - Slaughtering" },
+  { value: "SERVICE_COLD_STORAGE", label: "Service - Cold Storage / Transport" },
+];
 
 function parseProductFromApplication(p: { name: string; description?: string }): ProductItem {
   const desc = p.description || "";
@@ -166,17 +165,12 @@ function parseProductFromApplication(p: { name: string; description?: string }):
     const found = parts.find((x) => x.startsWith(prefix));
     return found ? found.slice(prefix.length).trim() : "";
   };
-  const cat = parts[0] && CATEGORIES.includes(parts[0] as HalalBusinessCategory) ? parts[0] : "FOOD";
+  const cat = parts[0] && PRODUCT_CATEGORY_OPTIONS.some((x) => x.value === parts[0]) ? parts[0] : "FOOD_MEAT";
   return {
     id: randomUUID(),
     name: p.name,
     category: cat,
-    ingredients: getVal("Ingredients: "),
-    sourceOfIngredients: getVal("Source: "),
-    supplierName: getVal("Supplier: "),
-    countryOfOrigin: getVal("Origin: "),
     productionMethod: getVal("Method: "),
-    packagingType: getVal("Packaging: "),
     storageMethod: getVal("Storage: "),
   };
 }
@@ -208,8 +202,10 @@ interface FormData {
   // Documents (file URLs after upload)
   businessLicenseFile: File | null;
   businessLicenseUrl: string;
-  registrationCertFile: File | null;
-  registrationCertUrl: string;
+  healthCertFile: File | null;
+  healthCertUrl: string;
+  iso22000CertFile: File | null;
+  iso22000CertUrl: string;
   tinCertFile: File | null;
   tinCertUrl: string;
   ownerIdFile: File | null;
@@ -248,8 +244,10 @@ const initialFormData: FormData = {
   tinNumber: "",
   businessLicenseFile: null,
   businessLicenseUrl: "",
-  registrationCertFile: null,
-  registrationCertUrl: "",
+  healthCertFile: null,
+  healthCertUrl: "",
+  iso22000CertFile: null,
+  iso22000CertUrl: "",
   tinCertFile: null,
   tinCertUrl: "",
   ownerIdFile: null,
@@ -268,7 +266,8 @@ function loadDraft(id: string | undefined): Partial<FormData> | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     delete parsed.businessLicenseFile;
-    delete parsed.registrationCertFile;
+    delete parsed.healthCertFile;
+    delete parsed.iso22000CertFile;
     delete parsed.tinCertFile;
     delete parsed.ownerIdFile;
     return parsed;
@@ -281,7 +280,8 @@ function saveDraft(data: FormData, id: string | undefined) {
   try {
     const toSave = { ...data };
     (toSave as any).businessLicenseFile = null;
-    (toSave as any).registrationCertFile = null;
+    (toSave as any).healthCertFile = null;
+    (toSave as any).iso22000CertFile = null;
     (toSave as any).tinCertFile = null;
     (toSave as any).ownerIdFile = null;
     localStorage.setItem(DRAFT_KEY + (id ? `-${id}` : ""), JSON.stringify(toSave));
@@ -347,7 +347,8 @@ export default function HalalRegisterFormPage() {
         latitude: business.latitude?.toString() || "",
         longitude: business.longitude?.toString() || "",
         businessLicenseUrl: b.licenseUrl || "",
-        registrationCertUrl: docUrl("Registration Certificate"),
+        healthCertUrl: docUrl("Health Certificate"),
+        iso22000CertUrl: docUrl("ISO 22000 Certificate"),
         tinCertUrl: docUrl("TIN Certificate"),
         ownerIdUrl: docUrl("Owner ID/Passport"),
         products,
@@ -462,12 +463,7 @@ export default function HalalRegisterFormPage() {
           name: p.name,
           description: [
             p.category,
-            p.ingredients && `Ingredients: ${p.ingredients}`,
-            p.sourceOfIngredients && `Source: ${p.sourceOfIngredients}`,
-            p.supplierName && `Supplier: ${p.supplierName}`,
-            p.countryOfOrigin && `Origin: ${p.countryOfOrigin}`,
             p.productionMethod && `Method: ${p.productionMethod}`,
-            p.packagingType && `Packaging: ${p.packagingType}`,
             p.storageMethod && `Storage: ${p.storageMethod}`,
           ]
             .filter(Boolean)
@@ -476,11 +472,17 @@ export default function HalalRegisterFormPage() {
 
     const buildDocuments = async (): Promise<{ name: string; url: string }[]> => {
       const docs: { name: string; url: string }[] = [];
-      if (formData.registrationCertFile) {
-        const r = await halalApi.businesses.uploadDocument(formData.registrationCertFile);
-        docs.push({ name: "Registration Certificate", url: r.url });
-      } else if (formData.registrationCertUrl) {
-        docs.push({ name: "Registration Certificate", url: formData.registrationCertUrl });
+      if (formData.healthCertFile) {
+        const r = await halalApi.businesses.uploadDocument(formData.healthCertFile);
+        docs.push({ name: "Health Certificate", url: r.url });
+      } else if (formData.healthCertUrl) {
+        docs.push({ name: "Health Certificate", url: formData.healthCertUrl });
+      }
+      if (formData.iso22000CertFile) {
+        const r = await halalApi.businesses.uploadDocument(formData.iso22000CertFile);
+        docs.push({ name: "ISO 22000 Certificate", url: r.url });
+      } else if (formData.iso22000CertUrl) {
+        docs.push({ name: "ISO 22000 Certificate", url: formData.iso22000CertUrl });
       }
       if (formData.tinCertFile) {
         const r = await halalApi.businesses.uploadDocument(formData.tinCertFile);
@@ -556,7 +558,20 @@ export default function HalalRegisterFormPage() {
     }
     if (currentStep === 2) {
       const hasLicense = !!formData.businessLicenseFile || !!formData.businessLicenseUrl;
-      return formData.businessName.trim() && formData.category && formData.tinNumber.trim() && hasLicense;
+      const hasHealthCert = !!formData.healthCertFile || !!formData.healthCertUrl;
+      const hasIso22000 = !!formData.iso22000CertFile || !!formData.iso22000CertUrl;
+      const hasTinCert = !!formData.tinCertFile || !!formData.tinCertUrl;
+      const hasOwnerId = !!formData.ownerIdFile || !!formData.ownerIdUrl;
+      return (
+        formData.businessName.trim() &&
+        formData.category &&
+        formData.tinNumber.trim() &&
+        hasLicense &&
+        hasHealthCert &&
+        hasIso22000 &&
+        hasTinCert &&
+        hasOwnerId
+      );
     }
     if (currentStep === 4) {
       return (
@@ -925,12 +940,20 @@ export default function HalalRegisterFormPage() {
                       required: !formData.businessLicenseUrl,
                     },
                     {
-                      key: "registrationCertFile",
-                      label: "Registration Certificate",
-                      file: formData.registrationCertFile,
-                      existingUrl: formData.registrationCertUrl,
-                      set: (f: File | null) => setFormData((p) => ({ ...p, registrationCertFile: f })),
-                      required: false,
+                      key: "healthCertFile",
+                      label: "Health Certificate",
+                      file: formData.healthCertFile,
+                      existingUrl: formData.healthCertUrl,
+                      set: (f: File | null) => setFormData((p) => ({ ...p, healthCertFile: f })),
+                      required: !formData.healthCertUrl,
+                    },
+                    {
+                      key: "iso22000CertFile",
+                      label: "ISO 22000 Certificate",
+                      file: formData.iso22000CertFile,
+                      existingUrl: formData.iso22000CertUrl,
+                      set: (f: File | null) => setFormData((p) => ({ ...p, iso22000CertFile: f })),
+                      required: !formData.iso22000CertUrl,
                     },
                     {
                       key: "tinCertFile",
@@ -938,7 +961,7 @@ export default function HalalRegisterFormPage() {
                       file: formData.tinCertFile,
                       existingUrl: formData.tinCertUrl,
                       set: (f: File | null) => setFormData((p) => ({ ...p, tinCertFile: f })),
-                      required: false,
+                      required: !formData.tinCertUrl,
                     },
                     {
                       key: "ownerIdFile",
@@ -946,7 +969,7 @@ export default function HalalRegisterFormPage() {
                       file: formData.ownerIdFile,
                       existingUrl: formData.ownerIdUrl,
                       set: (f: File | null) => setFormData((p) => ({ ...p, ownerIdFile: f })),
-                      required: false,
+                      required: !formData.ownerIdUrl,
                     },
                   ].map(({ key: docKey, label, file, existingUrl, set, required }) => (
                     <div key={docKey}>
@@ -1034,69 +1057,9 @@ export default function HalalRegisterFormPage() {
                         >
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
+                            {PRODUCT_CATEGORY_OPTIONS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Ingredients List</Label>
-                      <Textarea
-                        value={product.ingredients}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            products: p.products.map((x) =>
-                              x.id === product.id ? { ...x, ingredients: e.target.value } : x
-                            ),
-                          }))
-                        }
-                        rows={2}
-                        placeholder="List ingredients"
-                      />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label>Source of Ingredients</Label>
-                        <Input
-                          value={product.sourceOfIngredients}
-                          onChange={(e) =>
-                            setFormData((p) => ({
-                              ...p,
-                              products: p.products.map((x) =>
-                                x.id === product.id ? { ...x, sourceOfIngredients: e.target.value } : x
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Supplier Name</Label>
-                        <Input
-                          value={product.supplierName}
-                          onChange={(e) =>
-                            setFormData((p) => ({
-                              ...p,
-                              products: p.products.map((x) =>
-                                x.id === product.id ? { ...x, supplierName: e.target.value } : x
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Country of Origin</Label>
-                        <Input
-                          value={product.countryOfOrigin}
-                          onChange={(e) =>
-                            setFormData((p) => ({
-                              ...p,
-                              products: p.products.map((x) =>
-                                x.id === product.id ? { ...x, countryOfOrigin: e.target.value } : x
-                              ),
-                            }))
-                          }
-                        />
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -1113,20 +1076,6 @@ export default function HalalRegisterFormPage() {
                             }))
                           }
                           placeholder="Short description"
-                        />
-                      </div>
-                      <div>
-                        <Label>Packaging Type</Label>
-                        <Input
-                          value={product.packagingType}
-                          onChange={(e) =>
-                            setFormData((p) => ({
-                              ...p,
-                              products: p.products.map((x) =>
-                                x.id === product.id ? { ...x, packagingType: e.target.value } : x
-                              ),
-                            }))
-                          }
                         />
                       </div>
                       <div>
@@ -1283,15 +1232,33 @@ export default function HalalRegisterFormPage() {
                       </a>
                     </li>
                   )}
-                  {formData.registrationCertFile && (
+                  {formData.healthCertFile && (
                     <li className="flex items-center gap-2 flex-wrap">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                      <span>Registration Certificate: {formData.registrationCertFile.name}</span>
+                      <span>Health Certificate: {formData.healthCertFile.name}</span>
                       <a
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
-                          const url = URL.createObjectURL(formData.registrationCertFile!);
+                          const url = URL.createObjectURL(formData.healthCertFile!);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline ml-1"
+                      >
+                        View
+                      </a>
+                    </li>
+                  )}
+                  {formData.iso22000CertFile && (
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>ISO 22000 Certificate: {formData.iso22000CertFile.name}</span>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = URL.createObjectURL(formData.iso22000CertFile!);
                           window.open(url, "_blank", "noopener,noreferrer");
                           setTimeout(() => URL.revokeObjectURL(url), 10000);
                         }}
@@ -1337,7 +1304,7 @@ export default function HalalRegisterFormPage() {
                       </a>
                     </li>
                   )}
-                  {!formData.businessLicenseFile && !formData.registrationCertFile && !formData.tinCertFile && !formData.ownerIdFile && (
+                  {!formData.businessLicenseFile && !formData.healthCertFile && !formData.iso22000CertFile && !formData.tinCertFile && !formData.ownerIdFile && (
                     <li className="text-muted-foreground">No documents uploaded</li>
                   )}
                 </ul>
@@ -1355,12 +1322,7 @@ export default function HalalRegisterFormPage() {
                         <p className="font-medium mb-2">#{idx + 1} {product.name}</p>
                         <div className="grid gap-1 sm:grid-cols-2 text-muted-foreground">
                           {product.category && <span>Category: {product.category.replace("_", " ")}</span>}
-                          {product.ingredients && <span className="sm:col-span-2">Ingredients: {product.ingredients}</span>}
-                          {product.sourceOfIngredients && <span>Source: {product.sourceOfIngredients}</span>}
-                          {product.supplierName && <span>Supplier: {product.supplierName}</span>}
-                          {product.countryOfOrigin && <span>Origin: {product.countryOfOrigin}</span>}
                           {product.productionMethod && <span>Method: {product.productionMethod}</span>}
-                          {product.packagingType && <span>Packaging: {product.packagingType}</span>}
                           {product.storageMethod && <span>Storage: {product.storageMethod}</span>}
                         </div>
                       </div>

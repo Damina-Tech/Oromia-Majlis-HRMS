@@ -82,8 +82,14 @@ export const ManualPaymentDto = z.object({
 
 export const AssignInspectionDto = z.object({
   applicationId: z.string(),
-  inspectorId: z.string(),
+  inspectorId: z.string().optional(),
+  inspectorIds: z.array(z.string().min(1)).min(1).optional(),
   scheduledAt: z.string().datetime().optional(),
+}).refine((data) => {
+  return !!data.inspectorId || (Array.isArray(data.inspectorIds) && data.inspectorIds.length > 0);
+}, {
+  message: "At least one inspector is required",
+  path: ["inspectorIds"],
 });
 
 export const CompleteInspectionDto = z.object({
@@ -98,10 +104,16 @@ export const CompleteInspectionDto = z.object({
   notes: z.string().optional(),
 });
 
+export const UpdateInspectionAssignmentDto = z.object({
+  inspectorId: z.string().optional(),
+  scheduledAt: z.string().datetime().nullable().optional(),
+});
+
 export const ApproveApplicationDto = z.object({
   approved: z.boolean(),
   notes: z.string().optional(),
   rejectionReason: z.string().optional(),
+  meetingMinutesUrl: z.string().optional(),
 });
 
 export const CreateRenewalDto = z.object({

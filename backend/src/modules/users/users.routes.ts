@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import {
   listUsers,
   getUser,
@@ -14,6 +14,8 @@ import {
   getCurrentUser,
   updateCurrentUser,
   uploadUserAvatar,
+  getUserPermissions,
+  updateUserPermissions,
 } from "./user.controller.js";
 import { requireAuth, hasAnyPermission, hasPermission } from "../../middleware/auth.js";
 import { uploadAvatar } from "../../lib/upload.js";
@@ -39,6 +41,8 @@ router.get("/roles", getRoles);
 
 // User CRUD operations
 router.get("/", hasAnyPermission("users.read", "users.write"), listUsers);
+router.get("/:id/permissions", hasAnyPermission("users.read", "users.write"), getUserPermissions);
+router.put("/:id/permissions", hasPermission("users.write"), updateUserPermissions);
 router.get("/:id", hasAnyPermission("users.read", "users.write"), getUser);
 router.post("/", hasPermission("users.write"), createUser);
 router.put("/:id", hasPermission("users.write"), updateUser);
