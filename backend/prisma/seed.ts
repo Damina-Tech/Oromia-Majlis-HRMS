@@ -12,7 +12,7 @@ async function main() {
   console.log("Starting database seeding...");
 
   // Create roles
-  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS", "MAJLIS_REPRESENTATIVE", "MEMBER"];
+  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS", "HALAL_COMPETENCY", "MAJLIS_REPRESENTATIVE", "MEMBER"];
   for (const name of roles) {
     await prisma.role.upsert({ 
       where: { name }, 

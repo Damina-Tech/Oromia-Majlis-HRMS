@@ -94,6 +94,8 @@ export const ROLE_PERMISSIONS = {
   MANAGER: ["dashboard.view", "employees.read", "employees.id.generate", "departments.read", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "leave.read", "leave.approve", "payroll.view", "reports.view", "reports.generate", "reports.export", "profile.read", "profile.write", "timesheet.view", "assets.view", "documents.view", "announcements.view", "announcements.create", "announcements.edit", "announcements.publish", "onboarding.view", "notifications.view", "organization.view", "tasks.view", "tasks.create", "tasks.edit", "tasks.manage", "expense.create", "expense.submit", "expense.view", "expense.view_all", "expense.approve", "majlis.institutions.read", "majlis.assignments.read", "majlis.dashboard.view"],
   EMPLOYEE: ["dashboard.view", "attendance.mark", "attendance.view", "leave.apply", "leave.view", "payroll.view", "reports.view", "profile.read", "profile.write", "timesheet.create", "timesheet.view", "documents.view", "announcements.view", "notifications.view", "tasks.view", "expense.create", "expense.submit", "expense.view", "halal.competency"],
   HALAL_BUSINESS: ["dashboard.view", "profile.read", "profile.write", "halal.business", "halal.competency"],
+  /** Public registrants applying only for individual Halal competency (no business certification portal) */
+  HALAL_COMPETENCY: ["dashboard.view", "profile.read", "profile.write", "halal.competency"],
   MAJLIS_REPRESENTATIVE: ["dashboard.view", "profile.read", "profile.write", "majlis.membership.view", "majlis.membership.register", "majlis.dashboard.view", "majlis.institutions.read", "majlis.assignments.read"],
   MEMBER: ["dashboard.view", "profile.read", "profile.write", "majlis.member"],
 } as const;

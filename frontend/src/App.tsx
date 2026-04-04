@@ -85,6 +85,7 @@ import HalalCompetencyListPage from "./pages/halal/HalalCompetencyListPage";
 import HalalCompetencyNewPage from "./pages/halal/HalalCompetencyNewPage";
 import HalalCompetencyDetailPage from "./pages/halal/HalalCompetencyDetailPage";
 import VerifyHalalCompetencyPage from "./pages/halal/VerifyHalalCompetencyPage";
+import HalalReportsPage from "./pages/halal/HalalReportsPage";
 import MembershipRegisterPage from "./pages/membership/MembershipRegisterPage";
 import MembershipDashboardPage from "./pages/membership/MembershipDashboardPage";
 import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
@@ -136,12 +137,13 @@ function PermissionRoute({
   return <>{children}</>;
 }
 
-// Dashboard: redirect HALAL_BUSINESS to Halal dashboard
+// Dashboard: redirect portal-only Halal registrants to their default area (same rules as getLoginRedirect)
 function DashboardOrRedirect() {
   const { user } = useAuth();
-  const isHalalBusiness = user?.roles?.some((r) => r.toUpperCase() === "HALAL_BUSINESS");
-  if (isHalalBusiness) {
-    return <Navigate to="/halal/dashboard" replace />;
+  if (!user) return <Dashboard />;
+  const target = getLoginRedirect(user);
+  if (target !== "/dashboard") {
+    return <Navigate to={target} replace />;
   }
   return <Dashboard />;
 }
@@ -200,6 +202,15 @@ function AppRoutes() {
     "halal.review",
     "halal.finance",
     "halal.audit",
+  ];
+
+  const halalReportPermissions = [
+    "halal.admin",
+    "halal.supervisor",
+    "halal.finance",
+    "halal.audit",
+    "halal.committee",
+    "halal.review",
   ];
 
   return (
@@ -291,6 +302,7 @@ function AppRoutes() {
         <Route path="majlis/membership/members/:id" element={<MemberDetailPage />} />
         <Route path="my-membership" element={<MyMembershipPage />} />
         <Route path="halal/dashboard" element={<PermissionRoute permissions={halalModulePermissions}><HalalDashboardPage /></PermissionRoute>} />
+        <Route path="halal/reports" element={<PermissionRoute permissions={halalReportPermissions}><HalalReportsPage /></PermissionRoute>} />
         <Route path="halal/register" element={<PermissionRoute permissions={["halal.business", "halal.admin", "halal.supervisor"]}><HalalRegisterPage /></PermissionRoute>} />
         <Route path="halal/register/new" element={<PermissionRoute permissions={["halal.business"]}><HalalRegisterFormPage /></PermissionRoute>} />
         <Route path="halal/register/:id/edit" element={<PermissionRoute permissions={["halal.business", "halal.admin", "halal.supervisor"]}><HalalRegisterFormPage /></PermissionRoute>} />

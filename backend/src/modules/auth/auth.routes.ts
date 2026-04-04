@@ -9,12 +9,24 @@ import { buildEffectivePermissionNames } from "../users/permission-utils.js";
 const prisma = new PrismaClient();
 const router = Router();
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
+const RegisterHalalPurpose = z.enum(["halal_business_certificate", "halal_competency_certificate"]);
 const RegisterHalalDto = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
+  registrationPurpose: RegisterHalalPurpose,
 });
+
+const REGISTER_ROLE_BY_PURPOSE: Record<z.infer<typeof RegisterHalalPurpose>, string> = {
+  halal_business_certificate: "HALAL_BUSINESS",
+  halal_competency_certificate: "HALAL_COMPETENCY",
+};
+
+const REGISTER_REDIRECT_BY_PURPOSE: Record<z.infer<typeof RegisterHalalPurpose>, string> = {
+  halal_business_certificate: "/halal/dashboard",
+  halal_competency_certificate: "/halal/competency",
+};
 const ForgotPasswordDto = z.object({ email: z.string().email() });
 const ResetPasswordDto = z.object({ 
   token: z.string(), 
@@ -91,7 +103,7 @@ router.post("/login", async (req, res) => {
   });
 });
 
-// POST /api/v1/auth/register - Public self-registration for Halal Business Owners (Oromia Majlis website)
+// POST /api/v1/auth/register - Public self-registration (Halal business certification or Halal competency applicant)
 router.post("/register", async (req, res) => {
   try {
     const dto = RegisterHalalDto.parse(req.body);
@@ -101,9 +113,12 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Email already registered. Please log in instead." });
     }
 
-    const halalBusinessRole = await prisma.role.findUnique({ where: { name: "HALAL_BUSINESS" } });
-    if (!halalBusinessRole) {
-      return res.status(500).json({ message: "Halal registration is not configured. Please contact support." });
+    const roleName = REGISTER_ROLE_BY_PURPOSE[dto.registrationPurpose];
+    const halalRole = await prisma.role.findUnique({ where: { name: roleName } });
+    if (!halalRole) {
+      return res.status(500).json({
+        message: "Halal registration is not configured for this account type. Please contact support.",
+      });
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -115,7 +130,7 @@ router.post("/register", async (req, res) => {
         lastName: dto.lastName,
         status: "ACTIVE",
         userRoles: {
-          create: [{ roleId: halalBusinessRole.id }],
+          create: [{ roleId: halalRole.id }],
         },
       },
       include: {
@@ -159,11 +174,15 @@ router.post("/register", async (req, res) => {
         employeeId: null,
         avatarUrl: null,
       },
-      redirectTo: "/halal/dashboard",
+      redirectTo: REGISTER_REDIRECT_BY_PURPOSE[dto.registrationPurpose],
     });
   } catch (error: any) {
     if (error.name === "ZodError") {
-      return res.status(400).json({ message: error.errors?.[0]?.message ?? "Invalid input", errors: error.errors });
+      const first = error.issues?.[0] ?? error.errors?.[0];
+      return res.status(400).json({
+        message: first?.message ?? "Invalid input",
+        errors: error.issues ?? error.errors,
+      });
     }
     console.error("Register error:", error);
     res.status(500).json({ message: "Registration failed" });

@@ -4,6 +4,20 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HalalCompetencyReligiousAnswers } from "@/services/halal";
 
+/** Labels for read-only detail views and consistent copy */
+export const COMPETENCY_REGISTRATION_LABELS = {
+  religionConfirmedMuslim: "Confirmed Muslim (declaration)",
+  dailyPrayer: "Daily prayer practice",
+  observesRamadanFasting: "Observes Ramadan fasting",
+  understandsTasmiyah: "Understanding of Tasmiyah (Bismillah, Allahu Akbar before slaughter)",
+  familiarHalalVsHaramAnimals: "Familiar with Halal vs Haram animals",
+  understandsProperSlaughterMethod: "Understand proper Halal slaughter method",
+  knowledgeAnimalAliveHealthy: "Knowledge of ensuring animal is alive and healthy at slaughter",
+  knowledgeCorrectCuttingTechnique:
+    "Knowledge of correct cutting technique (trachea, esophagus, major blood vessels)",
+  knowledgeCompleteBloodDrainage: "Knowledge of complete blood drainage requirement",
+} as const satisfies Record<keyof HalalCompetencyReligiousAnswers, string>;
+
 export type CompetencyApplicantFormValues = {
   fullName: string;
   dateOfBirth: string;
@@ -21,6 +35,36 @@ export type CompetencyApplicantFormValues = {
   knowledgeCorrectCuttingTechnique: boolean | null;
   knowledgeCompleteBloodDrainage: boolean | null;
 };
+
+/** Subset of account / registration data used to pre-fill empty fields (all remain editable). */
+export type CompetencyRegistrationUser = {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+};
+
+/**
+ * Fills only still-empty identity fields from the logged-in account (e.g. public registration).
+ * Does not overwrite anything the applicant already entered or loaded from the API.
+ */
+export function applyRegistrationPrefill(
+  form: CompetencyApplicantFormValues,
+  user: CompetencyRegistrationUser | null | undefined,
+): CompetencyApplicantFormValues {
+  if (!user) return form;
+  const next = { ...form };
+  const fromNames = [user.firstName, user.lastName]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!next.fullName.trim() && fromNames) {
+    next.fullName = fromNames;
+  }
+  if (!next.email.trim() && (user.email ?? "").trim()) {
+    next.email = (user.email ?? "").trim();
+  }
+  return next;
+}
 
 export function emptyCompetencyApplicantForm(): CompetencyApplicantFormValues {
   return {
@@ -135,8 +179,8 @@ export function CompetencyApplicantFormFields({
           <CardTitle className="text-base">Basic information</CardTitle>
           <CardDescription>Personal details as they should appear on your certificate</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="comp-fullName">Full name</Label>
             <Input
               id="comp-fullName"
@@ -155,29 +199,27 @@ export function CompetencyApplicantFormFields({
               required
             />
           </div>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="comp-phone">Phone</Label>
-              <Input
-                id="comp-phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="comp-email">Email</Label>
-              <Input
-                id="comp-email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
-                required
-              />
-            </div>
-          </div>
           <div className="space-y-2">
+            <Label htmlFor="comp-phone">Phone</Label>
+            <Input
+              id="comp-phone"
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="comp-email">Email</Label>
+            <Input
+              id="comp-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="comp-employer">Current employer / organization</Label>
             <Input
               id="comp-employer"
@@ -186,7 +228,7 @@ export function CompetencyApplicantFormFields({
               required
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="comp-job">Job title (optional)</Label>
             <Input
               id="comp-job"
@@ -194,7 +236,7 @@ export function CompetencyApplicantFormFields({
               onChange={(e) => setForm((s) => ({ ...s, jobTitle: e.target.value }))}
             />
           </div>
-          {supportLetterSlot}
+          {supportLetterSlot ? <div className="sm:col-span-2">{supportLetterSlot}</div> : null}
         </CardContent>
       </Card>
 
@@ -217,24 +259,26 @@ export function CompetencyApplicantFormFields({
               <span>I confirm that I am Muslim.</span>
             </label>
           </div>
-          <YesNoRow
-            name="dailyPrayer"
-            label="Daily prayer practice"
-            value={form.dailyPrayer}
-            onChange={(v) => setForm((s) => ({ ...s, dailyPrayer: v }))}
-          />
-          <YesNoRow
-            name="ramadan"
-            label="Observes Ramadan fasting"
-            value={form.observesRamadanFasting}
-            onChange={(v) => setForm((s) => ({ ...s, observesRamadanFasting: v }))}
-          />
-          <YesNoRow
-            name="tasmiyah"
-            label="Understanding of Tasmiyah (Bismillah, Allahu Akbar before slaughter)"
-            value={form.understandsTasmiyah}
-            onChange={(v) => setForm((s) => ({ ...s, understandsTasmiyah: v }))}
-          />
+          <div className="grid gap-0 md:grid-cols-2 md:gap-x-6">
+            <YesNoRow
+              name="dailyPrayer"
+              label={COMPETENCY_REGISTRATION_LABELS.dailyPrayer}
+              value={form.dailyPrayer}
+              onChange={(v) => setForm((s) => ({ ...s, dailyPrayer: v }))}
+            />
+            <YesNoRow
+              name="ramadan"
+              label={COMPETENCY_REGISTRATION_LABELS.observesRamadanFasting}
+              value={form.observesRamadanFasting}
+              onChange={(v) => setForm((s) => ({ ...s, observesRamadanFasting: v }))}
+            />
+            <YesNoRow
+              name="tasmiyah"
+              label={COMPETENCY_REGISTRATION_LABELS.understandsTasmiyah}
+              value={form.understandsTasmiyah}
+              onChange={(v) => setForm((s) => ({ ...s, understandsTasmiyah: v }))}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -243,34 +287,34 @@ export function CompetencyApplicantFormFields({
           <CardTitle className="text-base">Halal slaughter knowledge</CardTitle>
           <CardDescription>Self-assessment — answer honestly</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-1">
+        <CardContent className="grid gap-0 md:grid-cols-2 md:gap-x-6">
           <YesNoRow
             name="halalHaram"
-            label="Familiar with Halal vs Haram animals"
+            label={COMPETENCY_REGISTRATION_LABELS.familiarHalalVsHaramAnimals}
             value={form.familiarHalalVsHaramAnimals}
             onChange={(v) => setForm((s) => ({ ...s, familiarHalalVsHaramAnimals: v }))}
           />
           <YesNoRow
             name="slaughterMethod"
-            label="Understand proper Halal slaughter method"
+            label={COMPETENCY_REGISTRATION_LABELS.understandsProperSlaughterMethod}
             value={form.understandsProperSlaughterMethod}
             onChange={(v) => setForm((s) => ({ ...s, understandsProperSlaughterMethod: v }))}
           />
           <YesNoRow
             name="aliveHealthy"
-            label="Knowledge of ensuring animal is alive and healthy at slaughter"
+            label={COMPETENCY_REGISTRATION_LABELS.knowledgeAnimalAliveHealthy}
             value={form.knowledgeAnimalAliveHealthy}
             onChange={(v) => setForm((s) => ({ ...s, knowledgeAnimalAliveHealthy: v }))}
           />
           <YesNoRow
             name="cutting"
-            label="Knowledge of correct cutting technique (trachea, esophagus, major blood vessels)"
+            label={COMPETENCY_REGISTRATION_LABELS.knowledgeCorrectCuttingTechnique}
             value={form.knowledgeCorrectCuttingTechnique}
             onChange={(v) => setForm((s) => ({ ...s, knowledgeCorrectCuttingTechnique: v }))}
           />
           <YesNoRow
             name="drainage"
-            label="Knowledge of complete blood drainage requirement"
+            label={COMPETENCY_REGISTRATION_LABELS.knowledgeCompleteBloodDrainage}
             value={form.knowledgeCompleteBloodDrainage}
             onChange={(v) => setForm((s) => ({ ...s, knowledgeCompleteBloodDrainage: v }))}
           />

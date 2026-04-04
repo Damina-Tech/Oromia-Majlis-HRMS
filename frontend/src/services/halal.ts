@@ -306,6 +306,92 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+export type HalalReportCertificateType =
+  | "ALL"
+  | "BUSINESS_CERTIFICATION"
+  | "PRODUCT_CERTIFICATE"
+  | "COMPETENCY";
+
+export interface HalalReportBusinessWithActiveCert {
+  id: string;
+  name: string;
+  halalCertificateNumber: string;
+  expiresAt: string;
+  issuedAt: string;
+}
+
+export interface HalalReportsBusinessDetail {
+  businessId: string;
+  businessName: string;
+  halalBusinessCertificate: {
+    id: string;
+    certificateId: string;
+    issuedAt: string;
+    expiresAt: string;
+    status: string;
+  } | null;
+  productCertificates: {
+    totalCount: number;
+    issuedCount: number;
+    paymentPendingCount: number;
+    cancelledCount: number;
+    paidInPeriodAmount: number;
+    paidInPeriodTransactionCount: number;
+  };
+  businessCertification: {
+    certificationFeesPaidInPeriodAmount: number;
+    certificationFeesPaidInPeriodCount: number;
+  };
+  combinedBusinessScopedPaidInPeriod: {
+    amount: number;
+    transactionCount: number;
+  };
+}
+
+export interface HalalReportsOverview {
+  generatedAt: string;
+  filters: {
+    dateFrom: string | null;
+    dateTo: string | null;
+    businessId: string | null;
+    certificateType: HalalReportCertificateType;
+    individualPaymentsIncluded: boolean;
+  };
+  businessDetail: HalalReportsBusinessDetail | null;
+  activity: {
+    businessesRegisteredInPeriod: number;
+    applicationsByStatusInPeriod: Record<string, number>;
+    inspectionsCompletedInPeriod: number;
+    businessCertificatesIssuedInPeriod: number;
+    productCertificatesIssuedInPeriod: number;
+    competencyCertificatesIssuedInPeriod: number;
+    violationsRecordedInPeriod: number;
+  };
+  snapshot: {
+    approvedBusinessesTotal: number;
+    productCertificatesAwaitingPayment: number;
+    competencyAwaitingPayment: number;
+  };
+  workflow: {
+    applicationsByStatus: Record<string, number>;
+    competencyByStatus: Record<string, number>;
+  };
+  payments: {
+    currency: string;
+    totalAmount: number;
+    transactionCount: number;
+    byCertificateType: Array<{ type: string; amount: number; count: number }>;
+    byPaymentMethod: Array<{ method: string; amount: number; count: number }>;
+    byBusiness: Array<{ businessId: string; businessName: string; amount: number; count: number }>;
+    monthlyTrend: Array<{
+      month: string;
+      BUSINESS_CERTIFICATION: number;
+      PRODUCT_CERTIFICATE: number;
+      COMPETENCY: number;
+    }>;
+  };
+}
+
 export const halalApi = {
   businesses: {
     list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string; status?: HalalBusinessStatus }) =>
@@ -414,6 +500,16 @@ export const halalApi = {
       api.get<PaginatedResponse<HalalViolation>>("/halal/violations", { params }).then((r) => r.data),
     create: (data: { certificateId: string; description: string; severity: string; action?: string }) =>
       api.post("/halal/violations", data).then((r) => r.data),
+  },
+  reports: {
+    businessesWithActiveCertificate: () =>
+      api.get<{ items: HalalReportBusinessWithActiveCert[] }>("/halal/reports/businesses-with-active-certificate").then((r) => r.data),
+    overview: (params?: {
+      dateFrom?: string;
+      dateTo?: string;
+      businessId?: string;
+      certificateType?: HalalReportCertificateType;
+    }) => api.get<HalalReportsOverview>("/halal/reports/overview", { params }).then((r) => r.data),
   },
   productCertificates: {
     list: (params?: { page?: number; limit?: number; businessId?: string }) =>

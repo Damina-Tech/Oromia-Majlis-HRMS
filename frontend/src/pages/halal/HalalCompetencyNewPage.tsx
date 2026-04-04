@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, GraduationCap, Upload } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import {
+  applyRegistrationPrefill,
   CompetencyApplicantFormFields,
   emptyCompetencyApplicantForm,
   toReligiousAnswersPayload,
@@ -18,8 +20,14 @@ import {
 
 export default function HalalCompetencyNewPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [form, setForm] = useState<CompetencyApplicantFormValues>(emptyCompetencyApplicantForm);
   const [letterFile, setLetterFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setForm((prev) => applyRegistrationPrefill(prev, user));
+  }, [user?.id, user?.email, user?.firstName, user?.lastName]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -29,7 +37,7 @@ export default function HalalCompetencyNewPage() {
 
       const { url: supportLetterUrl } = await halalApi.businesses.uploadDocument(letterFile);
 
-      return halalApi.competencyCertificates.create({
+      const created = await halalApi.competencyCertificates.create({
         fullName: form.fullName.trim(),
         dateOfBirth: form.dateOfBirth,
         phone: form.phone.trim(),
@@ -39,14 +47,15 @@ export default function HalalCompetencyNewPage() {
         religiousAnswers: toReligiousAnswersPayload(form),
         supportLetterUrl,
       });
+      return halalApi.competencyCertificates.submit(created.id);
     },
     onSuccess: (row) => {
-      toast.success("Application saved. Review the draft and submit when ready.");
+      toast.success("Application submitted. Staff will schedule your interviews when ready.");
       navigate(`/halal/competency/${row.id}`);
     },
     onError: (e: any) => {
-      const msg = e?.message ?? e.response?.data?.message ?? "Failed to create application";
-      toast.error(typeof msg === "string" ? msg : "Failed to create application");
+      const msg = e?.message ?? e.response?.data?.message ?? "Failed to submit application";
+      toast.error(typeof msg === "string" ? msg : "Failed to submit application");
     },
   });
 
@@ -89,7 +98,10 @@ export default function HalalCompetencyNewPage() {
         <GraduationCap className="h-8 w-8 text-emerald-600" />
         <div>
           <h1 className="text-xl font-bold">New Halal Competency application</h1>
-          <p className="text-sm text-muted-foreground">Complete all sections and attach your employer letter</p>
+          <p className="text-sm text-muted-foreground">
+            Your account name and email are filled in when empty (from registration); you can edit any field. Complete all
+            sections, attach your employer letter, then submit — your application goes straight to staff review.
+          </p>
         </div>
       </div>
 
@@ -104,10 +116,10 @@ export default function HalalCompetencyNewPage() {
           {createMutation.isPending ? (
             <>
               <Upload className="h-4 w-4 mr-2 inline" />
-              Uploading & saving…
+              Uploading & submitting…
             </>
           ) : (
-            "Save application & continue"
+            "Save application"
           )}
         </Button>
       </form>

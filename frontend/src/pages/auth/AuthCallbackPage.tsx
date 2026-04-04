@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, getLoginRedirect, type User } from "@/contexts/AuthContext";
 import { API_URL } from "@/config/api";
 
 /**
@@ -65,10 +65,17 @@ export default function AuthCallbackPage() {
 
         storeAuthFromResponse(token, userData);
 
-        const redirectTo =
-          searchParams.get("redirect") ||
-          (userData.roles?.includes("HALAL_BUSINESS") ? "/halal/dashboard" : "/dashboard");
-        navigate(redirectTo, { replace: true });
+        const u: User = {
+          id: userData.id,
+          email: userData.email,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          roles: userData.roles,
+          permissions: userData.permissions,
+          employeeId: userData.employeeId,
+          avatarUrl: userData.avatarUrl,
+        };
+        navigate(getLoginRedirect(u, searchParams.get("redirect") || undefined), { replace: true });
       } catch (e) {
         console.error("Auth callback error:", e);
         setError("Invalid or expired session. Redirecting to login...");

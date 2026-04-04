@@ -17,6 +17,9 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
   if (explicitRedirect && explicitRedirect.startsWith("/") && !explicitRedirect.startsWith("//")) {
     return explicitRedirect;
   }
+  if (user.roles?.includes("HALAL_COMPETENCY") && user.permissions?.includes("halal.competency")) {
+    return "/halal/competency";
+  }
   if (user.roles?.includes("HALAL_BUSINESS") && user.permissions?.includes("halal.business")) {
     return "/halal/dashboard";
   }
@@ -29,7 +32,13 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (payload: { email: string; password: string; firstName: string; lastName: string }) => Promise<{ success: boolean; redirectTo?: string }>;
+  register: (payload: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    registrationPurpose: "halal_business_certificate" | "halal_competency_certificate";
+  }) => Promise<{ success: boolean; redirectTo?: string }>;
   loginWithSSO: (provider: string) => Promise<boolean>;
   logout: () => void;
   refreshUserData: () => Promise<boolean>;
@@ -160,7 +169,13 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     setUser(user);
   };
 
-  const register = async (payload: { email: string; password: string; firstName: string; lastName: string }): Promise<{ success: boolean; redirectTo?: string }> => {
+  const register = async (payload: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    registrationPurpose: "halal_business_certificate" | "halal_competency_certificate";
+  }): Promise<{ success: boolean; redirectTo?: string }> => {
     setIsLoading(true);
     try {
       const response = await api.post('/auth/register', payload);

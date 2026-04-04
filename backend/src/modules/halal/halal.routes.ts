@@ -49,6 +49,7 @@ import {
   downloadProductCertificate,
   verifyProductCertificatePublic,
 } from "./halal-product-certificate.controller.js";
+import { getHalalReportsOverview, listBusinessesWithActiveHalalCertificate } from "./halal-reports.controller.js";
 import {
   createCompetencyCertificate,
   updateCompetencyCertificate,
@@ -95,10 +96,27 @@ const HALAL_COMPETENCY_ACCESS = [
   "halal.audit",
 ];
 
+const HALAL_REPORTS_ACCESS = [
+  "halal.admin",
+  "halal.supervisor",
+  "halal.finance",
+  "halal.audit",
+  "halal.committee",
+  "halal.review",
+];
+
 // Public: verify certificate (no auth)
 router.get("/verify/:certificateId", verifyCertificate);
 router.get("/verify-product/:certificateNumber", verifyProductCertificatePublic);
 router.get("/verify-competency/:certificateNumber", verifyCompetencyCertificatePublic);
+
+router.get(
+  "/reports/businesses-with-active-certificate",
+  requireAuth,
+  hasAnyPermission(...HALAL_REPORTS_ACCESS),
+  listBusinessesWithActiveHalalCertificate
+);
+router.get("/reports/overview", requireAuth, hasAnyPermission(...HALAL_REPORTS_ACCESS), getHalalReportsOverview);
 
 // Business portal (business user)
 router.post("/businesses", requireAuth, hasAnyPermission("halal.business"), registerBusiness);

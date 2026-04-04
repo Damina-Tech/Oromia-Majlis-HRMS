@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
+  applyRegistrationPrefill,
+  COMPETENCY_REGISTRATION_LABELS,
   competencyFormFromApi,
   CompetencyApplicantFormFields,
   emptyCompetencyApplicantForm,
@@ -29,8 +31,14 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
-import { halalApi, HALAL_COMPETENCY_FEE_ETB, type HalalCompetencyCertificate } from "@/services/halal";
+import {
+  halalApi,
+  HALAL_COMPETENCY_FEE_ETB,
+  type HalalCompetencyCertificate,
+  type HalalCompetencyReligiousAnswers,
+} from "@/services/halal";
 import { resolveFileUrl } from "@/config/api";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -52,6 +60,60 @@ const BANK_ACCOUNT_DETAILS: Record<string, { accountName: string; accountNumber:
   "Hijra Bank": { accountName: ACCOUNT_NAME, accountNumber: "1000044440001" },
   Other: { accountName: "Contact admin for account details", accountNumber: "-" },
 };
+
+function fmtDetailDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+  } catch {
+    return "—";
+  }
+}
+
+function fmtInterviewDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
+
+const COMPETENCY_RELIGIOUS_ANSWER_KEYS = [
+  "religionConfirmedMuslim",
+  "dailyPrayer",
+  "observesRamadanFasting",
+  "understandsTasmiyah",
+  "familiarHalalVsHaramAnimals",
+  "understandsProperSlaughterMethod",
+  "knowledgeAnimalAliveHealthy",
+  "knowledgeCorrectCuttingTechnique",
+  "knowledgeCompleteBloodDrainage",
+] as const satisfies readonly (keyof typeof COMPETENCY_REGISTRATION_LABELS)[];
+
+function fmtYesNo(v: unknown): string {
+  if (v === true) return "Yes";
+  if (v === false) return "No";
+  return "—";
+}
+
+function yesNoClass(v: unknown): string {
+  if (v === true) return "text-emerald-700 dark:text-emerald-400";
+  if (v === false) return "text-amber-800 dark:text-amber-200";
+  return "text-muted-foreground";
+}
+
+function DetailCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="py-2.5 border-b border-teal-100/90 dark:border-teal-900/35 last:border-b-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">{label}</p>
+      <div className="text-sm text-foreground leading-snug break-words mt-0.5">{children}</div>
+    </div>
+  );
+}
+
+const workflowCardClass =
+  "border-teal-200/45 dark:border-teal-900/50 shadow-sm bg-gradient-to-br from-white to-teal-50/25 dark:from-card dark:to-teal-950/20";
 
 export default function HalalCompetencyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -94,8 +156,10 @@ export default function HalalCompetencyDetailPage() {
 
   useEffect(() => {
     if (!row) return;
-    setDraftForm(competencyFormFromApi(row));
-  }, [row?.id, row?.updatedAt]);
+    const base = competencyFormFromApi(row);
+    const isOwner = user?.id === row.userId;
+    setDraftForm(isOwner ? applyRegistrationPrefill(base, user) : base);
+  }, [row?.id, row?.userId, row?.updatedAt, user?.id, user?.email, user?.firstName, user?.lastName]);
 
   useEffect(() => {
     if (searchParams.get("payment") === "chapa" && id) {
@@ -311,10 +375,14 @@ export default function HalalCompetencyDetailPage() {
   }
 
   const c = row as HalalCompetencyCertificate;
+  const religiousAnswers = (c.religiousAnswers ?? {}) as Partial<HalalCompetencyReligiousAnswers>;
   const isOwner = user?.id === c.userId;
   const isPaid = !!c.feePaidAt;
   const fee = HALAL_COMPETENCY_FEE_ETB;
   const letterUrl = c.supportLetterUrl ? resolveFileUrl(c.supportLetterUrl) : null;
+  const manualPaymentReceiptUrl = c.paymentReceiptUrl ? resolveFileUrl(c.paymentReceiptUrl) : null;
+  const manualPaymentReceiptIsImage =
+    !!manualPaymentReceiptUrl && /\.(jpe?g|png|gif|webp)(\?|$)/i.test(manualPaymentReceiptUrl);
 
   const awaitingManualApproval =
     c.status === "PAYMENT_PENDING" && !isPaid && c.paymentMethod === "MANUAL" && !!c.paymentReceiptUrl;
@@ -336,34 +404,142 @@ export default function HalalCompetencyDetailPage() {
   const showApproveRenewal =
     canApproveManual && renewalAwaitingApproval && pendingRenewal && !isOwner;
 
+  const ownerTheoreticalBlock =
+    !!c.theoreticalScheduledAt || typeof c.theoreticalPassed === "boolean";
+  const ownerTechnicalBlock =
+    !!c.technicalScheduledAt || typeof c.technicalPassed === "boolean";
+  const showOwnerInterviewSummary =
+    (isOwner || hasPermission("halal.admin")) && (ownerTheoreticalBlock || ownerTechnicalBlock);
+
   return (
-    <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6 pb-16">
-      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate("/halal/competency")}>
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5 pb-16">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 text-teal-800 dark:text-teal-200 hover:bg-teal-100/60 dark:hover:bg-teal-950/50"
+        onClick={() => navigate("/halal/competency")}
+      >
         <ArrowLeft className="h-4 w-4 mr-2" />
-        Back
+        Back to list
       </Button>
 
-      <div className="rounded-2xl border border-emerald-200/50 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-500/[0.06] to-transparent p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <GraduationCap className="h-9 w-9 text-emerald-600 shrink-0" />
-            <div>
-              <h1 className="text-lg font-semibold">{c.fullName}</h1>
-              <p className="text-sm text-muted-foreground">{c.employerName}</p>
-              {c.certificateNumber && <p className="text-xs font-mono mt-1">{c.certificateNumber}</p>}
+      <div className="rounded-xl overflow-hidden border border-emerald-300/40 dark:border-emerald-800/50 shadow-md ring-1 ring-black/5 dark:ring-white/5 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-900 text-white">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm border border-white/20">
+                <GraduationCap className="h-6 w-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-semibold tracking-tight truncate">{c.fullName}</h1>
+                <p className="text-sm text-emerald-50/95 mt-0.5 truncate">{c.employerName}</p>
+                {c.certificateNumber ? (
+                  <p className="text-xs font-mono text-emerald-100/90 mt-2 bg-black/10 inline-block px-2 py-0.5 rounded">
+                    {c.certificateNumber}
+                  </p>
+                ) : c.status === "ISSUED" ? (
+                  <p className="text-xs text-emerald-100/80 mt-2">Certificate number pending</p>
+                ) : null}
+              </div>
             </div>
+            <Badge className="shrink-0 bg-white/20 text-white border-white/30 hover:bg-white/25 backdrop-blur-sm font-medium">
+              {c.status.replace(/_/g, " ")}
+            </Badge>
           </div>
-          <Badge variant="outline" className="shrink-0">
-            {c.status.replace(/_/g, " ")}
-          </Badge>
         </div>
       </div>
+
+      <Card className={`${workflowCardClass} overflow-hidden`}>
+        <CardHeader className="pb-2 border-b border-teal-100/80 dark:border-teal-900/40 bg-teal-50/50 dark:bg-teal-950/30">
+          <CardTitle className="text-sm font-semibold text-teal-900 dark:text-teal-100">Record details</CardTitle>
+          <CardDescription className="text-teal-800/75 dark:text-teal-300/70 text-xs">
+            Applicant and certificate data on file
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-2 min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                Personal & contact
+              </p>
+              <div className="rounded-lg border border-teal-100/80 dark:border-teal-900/40 bg-white/50 dark:bg-card/50 p-3 sm:p-4 shadow-sm">
+                <DetailCell label="Full name">{c.fullName}</DetailCell>
+                <DetailCell label="Date of birth">{fmtDetailDate(c.dateOfBirth)}</DetailCell>
+                <DetailCell label="Phone">{c.phone?.trim() || "—"}</DetailCell>
+                <DetailCell label="Email">{c.email?.trim() || "—"}</DetailCell>
+              </div>
+            </div>
+            <div className="space-y-2 min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                Employer & documents
+              </p>
+              <div className="rounded-lg border border-teal-100/80 dark:border-teal-900/40 bg-white/50 dark:bg-card/50 p-3 sm:p-4 shadow-sm">
+                <DetailCell label="Employer">{c.employerName}</DetailCell>
+                <DetailCell label="Job title">{c.jobTitle?.trim() || "—"}</DetailCell>
+                {isStaff && c.user && (
+                  <DetailCell label="Applicant login">
+                    {c.user.firstName} {c.user.lastName}
+                    <span className="block text-xs text-muted-foreground mt-0.5">{c.user.email}</span>
+                  </DetailCell>
+                )}
+                {c.status === "ISSUED" && (
+                  <>
+                    <DetailCell label="Issued">{fmtDetailDate(c.issuedAt)}</DetailCell>
+                    <DetailCell label="Valid until">{fmtDetailDate(c.expiresAt)}</DetailCell>
+                  </>
+                )}
+                <DetailCell label="Support letter">
+                  {letterUrl ? (
+                    <a
+                      href={letterUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-teal-700 dark:text-teal-400 font-medium hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                      View uploaded file
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">Not uploaded</span>
+                  )}
+                </DetailCell>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+              Registration self-assessment
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {COMPETENCY_RELIGIOUS_ANSWER_KEYS.map((key) => (
+                <div
+                  key={key}
+                  className="rounded-lg border border-teal-100/75 dark:border-teal-900/40 bg-gradient-to-br from-teal-50/70 via-white to-emerald-50/40 dark:from-teal-950/30 dark:via-card dark:to-emerald-950/20 p-3 sm:p-3.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 min-h-[4.5rem] shadow-sm"
+                >
+                  <p className="text-xs text-foreground/95 leading-snug min-w-0 flex-1">
+                    {COMPETENCY_REGISTRATION_LABELS[key]}
+                  </p>
+                  <span
+                    className={cn(
+                      "text-sm font-semibold shrink-0 tabular-nums px-2 py-0.5 rounded-md bg-white/80 dark:bg-background/80 border border-teal-100/80 dark:border-teal-900/50",
+                      yesNoClass(religiousAnswers[key]),
+                    )}
+                  >
+                    {fmtYesNo(religiousAnswers[key])}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Draft */}
       {c.status === "DRAFT" && isOwner && (
         <>
           <CompetencyApplicantFormFields form={draftForm} setForm={setDraftForm} />
-          <Card>
+          <Card className={workflowCardClass}>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Save & supporting documents</CardTitle>
               <CardDescription>Upload employer support letter, then submit</CardDescription>
@@ -414,10 +590,10 @@ export default function HalalCompetencyDetailPage() {
 
       {/* Staff: theoretical */}
       {isStaff && c.status === "SUBMITTED" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CalendarClock className="h-4 w-4" />
+        <Card className={workflowCardClass}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base flex items-center gap-2 text-teal-900 dark:text-teal-100">
+              <CalendarClock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               Schedule theoretical interview
             </CardTitle>
           </CardHeader>
@@ -431,9 +607,9 @@ export default function HalalCompetencyDetailPage() {
       )}
 
       {isStaff && c.status === "THEORETICAL_SCHEDULED" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Record theoretical result</CardTitle>
+        <Card className={workflowCardClass}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base text-teal-900 dark:text-teal-100">Record theoretical result</CardTitle>
             <CardDescription>
               Scheduled: {c.theoreticalScheduledAt ? new Date(c.theoreticalScheduledAt).toLocaleString() : "—"}
             </CardDescription>
@@ -459,10 +635,10 @@ export default function HalalCompetencyDetailPage() {
 
       {/* Staff: technical */}
       {isStaff && c.status === "THEORETICAL_PASSED" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CalendarClock className="h-4 w-4" />
+        <Card className={workflowCardClass}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base flex items-center gap-2 text-teal-900 dark:text-teal-100">
+              <CalendarClock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               Schedule technical interview
             </CardTitle>
           </CardHeader>
@@ -476,9 +652,9 @@ export default function HalalCompetencyDetailPage() {
       )}
 
       {isStaff && c.status === "TECHNICAL_SCHEDULED" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Record technical result</CardTitle>
+        <Card className={workflowCardClass}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base text-teal-900 dark:text-teal-100">Record technical result</CardTitle>
             <CardDescription>
               Scheduled: {c.technicalScheduledAt ? new Date(c.technicalScheduledAt).toLocaleString() : "—"}
             </CardDescription>
@@ -504,10 +680,10 @@ export default function HalalCompetencyDetailPage() {
 
       {/* Payment initial */}
       {c.status === "PAYMENT_PENDING" && isOwner && !isPaid && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Wallet className="h-4 w-4" />
+        <Card className={`${workflowCardClass} border-amber-200/50 dark:border-amber-900/40`}>
+          <CardHeader className="pb-2 border-b border-amber-100/80 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20">
+            <CardTitle className="text-base flex items-center gap-2 text-amber-950 dark:text-amber-100">
+              <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               Pay {fee.toLocaleString()} ETB
             </CardTitle>
             <CardDescription>Chapa (automatic) or bank transfer with manual verification</CardDescription>
@@ -578,11 +754,49 @@ export default function HalalCompetencyDetailPage() {
       )}
 
       {showApproveInitial && (
-        <Card className="border-amber-200/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Approve manual payment</CardTitle>
+        <Card className={`${workflowCardClass} border-amber-300/55 dark:border-amber-800/50`}>
+          <CardHeader className="pb-2 border-b border-amber-100/80 dark:border-amber-900/40">
+            <CardTitle className="text-base text-amber-950 dark:text-amber-100">Approve manual payment</CardTitle>
+            <CardDescription>
+              Review the applicant’s transfer receipt before issuing the certificate ({fee.toLocaleString()} ETB).
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {manualPaymentReceiptUrl && (
+              <div className="rounded-lg border border-amber-200/70 dark:border-amber-900/45 bg-amber-50/30 dark:bg-amber-950/20 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                  Submitted receipt
+                </p>
+                {c.paymentBankName?.trim() ? (
+                  <p className="text-sm text-foreground">
+                    <span className="text-muted-foreground">Bank reported:</span> {c.paymentBankName}
+                  </p>
+                ) : null}
+                {manualPaymentReceiptIsImage ? (
+                  <a
+                    href={manualPaymentReceiptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block rounded-md overflow-hidden border border-amber-200/80 dark:border-amber-900/50 bg-background/80"
+                  >
+                    <img
+                      src={manualPaymentReceiptUrl}
+                      alt="Payment receipt"
+                      className="max-h-64 w-full object-contain object-top"
+                    />
+                  </a>
+                ) : null}
+                <a
+                  href={manualPaymentReceiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4 shrink-0" />
+                  {manualPaymentReceiptIsImage ? "Open receipt in new tab" : "View receipt (PDF or image)"}
+                </a>
+              </div>
+            )}
             <Button onClick={() => approveManualMutation.mutate()} disabled={approveManualMutation.isPending}>
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Approve & issue certificate
@@ -593,9 +807,9 @@ export default function HalalCompetencyDetailPage() {
 
       {/* Issued */}
       {c.status === "ISSUED" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Certificate</CardTitle>
+        <Card className={`${workflowCardClass} border-emerald-200/55 dark:border-emerald-900/45`}>
+          <CardHeader className="pb-2 border-b border-emerald-100/80 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/25">
+            <CardTitle className="text-base text-emerald-900 dark:text-emerald-100">Download certificate</CardTitle>
             <CardDescription>
               {c.expiresAt && <>Valid until {new Date(c.expiresAt).toLocaleDateString()}</>}
             </CardDescription>
@@ -615,9 +829,9 @@ export default function HalalCompetencyDetailPage() {
 
       {/* Renewal */}
       {c.status === "ISSUED" && isOwner && c.renewalEligible && !renewalIdForPayment && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Annual renewal</CardTitle>
+        <Card className={workflowCardClass}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base text-teal-900 dark:text-teal-100">Annual renewal</CardTitle>
             <CardDescription>Extend validity by one year ({fee.toLocaleString()} ETB)</CardDescription>
           </CardHeader>
           <CardContent>
@@ -629,9 +843,9 @@ export default function HalalCompetencyDetailPage() {
       )}
 
       {c.status === "ISSUED" && renewalIdForPayment && pendingRenewal && !pendingRenewal.feePaidAt && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Complete renewal payment</CardTitle>
+        <Card className={`${workflowCardClass} border-teal-200/50 dark:border-teal-900/50`}>
+          <CardHeader className="pb-2 border-b border-teal-100/70 dark:border-teal-900/40">
+            <CardTitle className="text-base text-teal-900 dark:text-teal-100">Complete renewal payment</CardTitle>
             <CardDescription>{fee.toLocaleString()} ETB</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -700,8 +914,96 @@ export default function HalalCompetencyDetailPage() {
         </Card>
       )}
 
+      {showOwnerInterviewSummary && (
+        <Card
+          className={`${workflowCardClass} border-teal-300/50 dark:border-teal-800/45 ring-1 ring-teal-200/40 dark:ring-teal-900/40`}
+        >
+          <CardHeader className="pb-2 border-b border-teal-100/80 dark:border-teal-900/40 bg-teal-50/50 dark:bg-teal-950/30">
+            <CardTitle className="text-base flex items-center gap-2 text-teal-900 dark:text-teal-100">
+              <CalendarClock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              {isOwner ? "Your interviews" : "Interview schedule & results"}
+            </CardTitle>
+            <CardDescription>Schedule and outcomes recorded by staff</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-6">
+            {ownerTheoreticalBlock && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                  Theoretical interview
+                </p>
+                {c.theoreticalScheduledAt && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Scheduled for</p>
+                    <p className="text-base font-semibold text-foreground tracking-tight mt-0.5">
+                      {fmtInterviewDateTime(c.theoreticalScheduledAt)}
+                    </p>
+                  </div>
+                )}
+                {typeof c.theoreticalPassed === "boolean" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Result</span>
+                    <Badge
+                      className={
+                        c.theoreticalPassed
+                          ? "bg-emerald-600 hover:bg-emerald-600 text-white border-0"
+                          : "bg-amber-700 hover:bg-amber-700 text-white border-0"
+                      }
+                    >
+                      {c.theoreticalPassed ? "Passed" : "Failed"}
+                    </Badge>
+                  </div>
+                ) : (
+                  c.status === "THEORETICAL_SCHEDULED" && (
+                    <p className="text-sm text-muted-foreground">Result will appear here after the interview is completed.</p>
+                  )
+                )}
+              </div>
+            )}
+
+            {ownerTechnicalBlock && (
+              <>
+                {ownerTheoreticalBlock && <Separator className="bg-teal-100/80 dark:bg-teal-900/40" />}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                    Technical interview
+                  </p>
+                  {c.technicalScheduledAt && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Scheduled for</p>
+                      <p className="text-base font-semibold text-foreground tracking-tight mt-0.5">
+                        {fmtInterviewDateTime(c.technicalScheduledAt)}
+                      </p>
+                    </div>
+                  )}
+                  {typeof c.technicalPassed === "boolean" ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Result</span>
+                      <Badge
+                        className={
+                          c.technicalPassed
+                            ? "bg-emerald-600 hover:bg-emerald-600 text-white border-0"
+                            : "bg-amber-700 hover:bg-amber-700 text-white border-0"
+                        }
+                      >
+                        {c.technicalPassed ? "Passed" : "Failed"}
+                      </Badge>
+                    </div>
+                  ) : (
+                    c.status === "TECHNICAL_SCHEDULED" && (
+                      <p className="text-sm text-muted-foreground">Result will appear here after the interview is completed.</p>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {(c.status === "THEORETICAL_FAILED" || c.status === "TECHNICAL_FAILED") && (
-        <p className="text-sm text-destructive">This application was not successful. You may start a new application if allowed by policy.</p>
+        <div className="rounded-lg border border-red-200/80 bg-red-50/80 dark:bg-red-950/30 dark:border-red-900/50 px-4 py-3 text-sm text-red-900 dark:text-red-200">
+          This application was not successful. You may start a new application if allowed by policy.
+        </div>
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Building2, Plus, FileText, Award, RefreshCw, ArrowRight, ShieldCheck, GraduationCap } from "lucide-react";
-import { halalApi, type HalalApplicationStatus } from "@/services/halal";
+import { halalApi, type HalalApplicationStatus, type HalalCompetencyStatus } from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 
@@ -18,32 +18,68 @@ const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
+const COMPETENCY_STATUS_COLORS: Record<HalalCompetencyStatus, string> = {
+  DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  SUBMITTED: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  THEORETICAL_SCHEDULED: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+  THEORETICAL_PASSED: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
+  THEORETICAL_FAILED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  TECHNICAL_SCHEDULED: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
+  TECHNICAL_PASSED: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
+  TECHNICAL_FAILED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  PAYMENT_PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  ISSUED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  CANCELLED: "bg-muted text-muted-foreground",
+};
+
 export default function HalalDashboardPage() {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
   const isCompetencyStaff =
     hasPermission("halal.admin") ||
     hasPermission("halal.supervisor") ||
     hasPermission("halal.committee") ||
     hasPermission("halal.review");
-  const showCompetencyDash = hasPermission("halal.competency") || isCompetencyStaff;
+  const isHalalStaffAny =
+    hasPermission("halal.admin") ||
+    hasPermission("halal.supervisor") ||
+    hasPermission("halal.inspector") ||
+    hasPermission("halal.committee") ||
+    hasPermission("halal.review") ||
+    hasPermission("halal.finance") ||
+    hasPermission("halal.audit");
+  /** HALAL_BUSINESS portal registrants keep business certification only; staff still see competency. */
+  const hideCompetencyForHalalBusinessPortal =
+    user?.roles?.some((r) => r.toUpperCase() === "HALAL_BUSINESS") && !isHalalStaffAny;
+  const showCompetencyDash =
+    (hasPermission("halal.competency") || isCompetencyStaff) && !hideCompetencyForHalalBusinessPortal;
   const isBusinessOwner = hasPermission("halal.business");
   const isBusinessOwnerOnly = isBusinessOwner && !isStaff;
+  /** Public registrants with HALAL_COMPETENCY only — no business certification portal */
+  const isCompetencyPortalOnly =
+    user?.roles?.some((r) => r.toUpperCase() === "HALAL_COMPETENCY") &&
+    !isHalalStaffAny &&
+    !hasPermission("halal.business");
 
-  const { data: businesses, isLoading } = useQuery({
+  const loadBusinessDashboardData = !isCompetencyPortalOnly;
+
+  const { data: businesses, isLoading: businessesLoading } = useQuery({
     queryKey: ["halal-businesses"],
     queryFn: () => halalApi.businesses.list({ limit: 50 }),
+    enabled: loadBusinessDashboardData,
   });
   const { data: applications } = useQuery({
     queryKey: ["halal-applications"],
     queryFn: () => halalApi.applications.list({ limit: 50 }),
+    enabled: loadBusinessDashboardData,
   });
   const { data: certificates } = useQuery({
     queryKey: ["halal-certificates"],
     queryFn: () => halalApi.certificates.list({ limit: 20 }),
+    enabled: loadBusinessDashboardData,
   });
-  const { data: competencyApps } = useQuery({
+  const { data: competencyApps, isLoading: competencyAppsLoading } = useQuery({
     queryKey: ["halal-competency-certificates", "dashboard"],
     queryFn: () => halalApi.competencyCertificates.list({ limit: 50 }),
     enabled: showCompetencyDash,
@@ -64,10 +100,149 @@ export default function HalalDashboardPage() {
     competencyApplications: competencyApps?.total ?? 0,
   };
 
-  if (isLoading) {
+  const compList = competencyApps?.items ?? [];
+  const compInProgress = compList.filter(
+    (c) =>
+      !["ISSUED", "THEORETICAL_FAILED", "TECHNICAL_FAILED", "CANCELLED"].includes(c.status),
+  ).length;
+  const compPaymentPending = compList.filter((c) => c.status === "PAYMENT_PENDING").length;
+  const compIssued = compList.filter((c) => c.status === "ISSUED").length;
+
+  const pageLoading = isCompetencyPortalOnly ? competencyAppsLoading : businessesLoading;
+
+  if (pageLoading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[300px]">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Dashboard for HALAL_COMPETENCY portal users (individual applicants, no business certification)
+  if (isCompetencyPortalOnly) {
+    return (
+      <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
+        <header className="text-center sm:text-left pb-2">
+          <h1 className="text-2xl font-bold text-teal-900 dark:text-teal-100">Halal competency certificate</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Apply, track interviews, pay fees, and download your certificate
+          </p>
+        </header>
+
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card
+            className="border-l-4 border-l-teal-500 bg-teal-50/50 dark:bg-teal-950/20 dark:border-l-teal-600 cursor-pointer hover:bg-teal-100/50 dark:hover:bg-teal-950/30 transition-colors"
+            onClick={() => navigate("/halal/competency")}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-teal-800 dark:text-teal-200">{stats.competencyApplications}</p>
+              <p className="text-xs text-muted-foreground">My applications</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="border-l-4 border-l-sky-500 bg-sky-50/50 dark:bg-sky-950/20 dark:border-l-sky-600 cursor-pointer hover:bg-sky-100/50 dark:hover:bg-sky-950/30 transition-colors"
+            onClick={() => navigate("/halal/competency")}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-sky-800 dark:text-sky-200">{compInProgress}</p>
+              <p className="text-xs text-muted-foreground">In progress</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20 dark:border-l-amber-600 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-950/30 transition-colors"
+            onClick={() => {
+              const row = compList.find((c) => c.status === "PAYMENT_PENDING");
+              if (row) navigate(`/halal/competency/${row.id}`);
+              else navigate("/halal/competency");
+            }}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-amber-800 dark:text-amber-200">{compPaymentPending}</p>
+              <p className="text-xs text-muted-foreground">Payment due</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600 cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 transition-colors"
+            onClick={() => {
+              const row = compList.find((c) => c.status === "ISSUED");
+              if (row) navigate(`/halal/competency/${row.id}`);
+              else navigate("/halal/competency");
+            }}
+          >
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{compIssued}</p>
+              <p className="text-xs text-muted-foreground">Issued</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="shadow-sm border-teal-200/50 dark:border-teal-900/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-teal-600" />
+                  My competency applications
+                </CardTitle>
+                <CardDescription>Continue a draft or open any record for details and next steps</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {compList.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground rounded-lg bg-muted/30">
+                    <GraduationCap className="h-10 w-10 mx-auto mb-2 opacity-50 text-teal-600" />
+                    <p className="text-sm">You have not started an application yet.</p>
+                    <Button size="sm" className="mt-3 bg-teal-600 hover:bg-teal-700" onClick={() => navigate("/halal/competency/new")}>
+                      Start application
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {compList.slice(0, 8).map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-teal-100 dark:border-teal-900/40 hover:bg-teal-50/50 dark:hover:bg-teal-950/30 cursor-pointer transition-colors"
+                        onClick={() => navigate(`/halal/competency/${c.id}`)}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{c.fullName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{c.employerName}</p>
+                          <Badge className={`${COMPETENCY_STATUS_COLORS[c.status]} text-xs mt-1`}>
+                            {c.status.replace(/_/g, " ")}
+                          </Badge>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {compList.length > 8 && (
+                  <Button variant="ghost" size="sm" className="w-full mt-2 text-teal-700 dark:text-teal-300" onClick={() => navigate("/halal/competency")}>
+                    View all
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <Card className="shadow-sm border-teal-200/50 dark:border-teal-900/30 bg-gradient-to-br from-teal-500/5 to-transparent dark:from-teal-600/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Quick actions</CardTitle>
+                <CardDescription>Competency workflow</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button size="sm" className="w-full justify-start bg-teal-600 hover:bg-teal-700" onClick={() => navigate("/halal/competency/new")}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New application
+                </Button>
+                <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => navigate("/halal/competency")}>
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  All applications
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }

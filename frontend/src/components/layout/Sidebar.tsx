@@ -207,6 +207,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const isHalalBusinessOnly = user?.roles?.some(r => r.toUpperCase() === 'HALAL_BUSINESS') &&
     !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(r.toUpperCase()));
 
+  const isHalalCompetencyOnly =
+    user?.roles?.some((r) => r.toUpperCase() === "HALAL_COMPETENCY") &&
+    !user?.roles?.some((r) =>
+      ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "MAJLIS_REPRESENTATIVE", "MEMBER", "HALAL_BUSINESS"].includes(r.toUpperCase()),
+    );
+
+  const isHalalStaffAny =
+    hasPermission("halal.admin") ||
+    hasPermission("halal.supervisor") ||
+    hasPermission("halal.inspector") ||
+    hasPermission("halal.committee") ||
+    hasPermission("halal.review") ||
+    hasPermission("halal.finance") ||
+    hasPermission("halal.audit");
+  const hideHalalCompetencyForBusinessPortal =
+    user?.roles?.some((r) => r.toUpperCase() === "HALAL_BUSINESS") && !isHalalStaffAny;
+
   // Member-only: has MEMBER (or majlis.member) and no staff roles — their default is My Membership
   const isMemberOnly = hasPermission('majlis.member') &&
     !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'MAJLIS_REPRESENTATIVE'].includes(r.toUpperCase()));
@@ -215,6 +232,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     // Hide main Dashboard only for Halal-only or Member-only users (permission-based: show when user has dashboard.view)
     if (item.title === 'Dashboard') {
       if (isHalalBusinessOnly) return false;
+      if (isHalalCompetencyOnly) return false;
       if (isMemberOnly) return false;
       return hasPermission('dashboard.view');
     }
@@ -362,8 +380,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     expenseSubmenuItems.push({ title: 'All Expenses', href: '/expenses/all', permission: 'expense.view_all' });
   }
 
+  const canSeeHalalSub = (sub: { permission?: string; anyOfPermissions?: string[] }) => {
+    if (sub.anyOfPermissions?.length) return sub.anyOfPermissions.some((p) => hasPermission(p));
+    return sub.permission ? hasPermission(sub.permission) : false;
+  };
+
   // Halal Certification submenu items
-  const halalSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
+  const halalSubmenuItems: Array<{ title: string; href: string; permission?: string; anyOfPermissions?: string[] }> =
+    [];
   if (
     hasPermission('halal.business') ||
     hasPermission('halal.competency') ||
@@ -376,20 +400,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     hasPermission('halal.finance') ||
     hasPermission('halal.audit')
   ) {
-    halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'halal.business' });
+    halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'dashboard.view' });
     if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.supervisor')) {
       halalSubmenuItems.push({ title: 'Businesses', href: '/halal/register', permission: 'halal.business' });
       halalSubmenuItems.push({ title: 'Applications', href: '/halal/apply', permission: 'halal.business' });
       halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
     }
     if (
-      hasPermission('halal.competency') ||
-      hasPermission('halal.admin') ||
-      hasPermission('halal.supervisor') ||
-      hasPermission('halal.committee') ||
-      hasPermission('halal.review') ||
-      hasPermission('halal.finance') ||
-      hasPermission('halal.audit')
+      !hideHalalCompetencyForBusinessPortal &&
+      (hasPermission('halal.competency') ||
+        hasPermission('halal.admin') ||
+        hasPermission('halal.supervisor') ||
+        hasPermission('halal.committee') ||
+        hasPermission('halal.review') ||
+        hasPermission('halal.finance') ||
+        hasPermission('halal.audit'))
     ) {
       halalSubmenuItems.push({ title: 'Competency', href: '/halal/competency', permission: 'halal.competency' });
     }
@@ -399,6 +424,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     if (hasPermission('halal.admin')) {
       halalSubmenuItems.push({ title: 'Violations', href: '/admin/halal/violations', permission: 'halal.admin' });
     }
+    halalSubmenuItems.push({
+      title: 'Report',
+      href: '/halal/reports',
+      anyOfPermissions: ['halal.admin', 'halal.supervisor', 'halal.finance', 'halal.audit', 'halal.committee', 'halal.review'],
+    });
   }
 
   // Majlis Institutions submenu items
@@ -962,9 +992,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1">
-                      {halalSubmenuItems.map((subItem) => (
+                      {halalSubmenuItems.filter((subItem) => canSeeHalalSub(subItem)).map((subItem) => (
                         <NavLink
-                          key={subItem.href}
+                          key={subItem.href + subItem.title}
                           to={subItem.href}
                           className={({ isActive }) =>
                             `flex items-center px-3 py-2 text-sm rounded-md transition-colors ${

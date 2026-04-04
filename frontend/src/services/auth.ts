@@ -1,10 +1,13 @@
 import api from "./api";
 
+export type HalalRegistrationPurpose = "halal_business_certificate" | "halal_competency_certificate";
+
 export interface RegisterPayload {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
+  registrationPurpose: HalalRegistrationPurpose;
 }
 
 export interface AuthResponse {
