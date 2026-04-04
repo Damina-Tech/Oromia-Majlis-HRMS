@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient, HalalApplicationStatus, HalalBusinessStatus, HalalCertificateStatus, HalalAuditAction } from "@prisma/client";
+import { Prisma, PrismaClient, HalalApplicationStatus, HalalBusinessStatus, HalalCertificateStatus, HalalAuditAction, HalalPaymentMethod, HalalPaymentStatus } from "@prisma/client";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
   CreateHalalBusinessDto,
@@ -62,6 +62,43 @@ function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   }
 }
 
+/** One Halal certificate per business: 3-year cycle with up to 2 annual renewals, then full recertification. */
+const HALAL_CERT_CYCLE_YEARS = 3;
+const MAX_ANNUAL_RENEWALS_PER_CYCLE = 2;
+
+function cycleEndDate(certificationCycleStartedAt: Date): Date {
+  const d = new Date(certificationCycleStartedAt);
+  d.setFullYear(d.getFullYear() + HALAL_CERT_CYCLE_YEARS);
+  return d;
+}
+
+function buildCertificateLifecycle(cert: {
+  certificationCycleStartedAt: Date;
+  annualRenewalCount: number;
+  expiresAt: Date;
+  status: HalalCertificateStatus;
+}) {
+  const now = new Date();
+  const cycleEndsAt = cycleEndDate(cert.certificationCycleStartedAt);
+  const annualRenewalsRemaining = Math.max(0, MAX_ANNUAL_RENEWALS_PER_CYCLE - cert.annualRenewalCount);
+  const withinCycle = now < cycleEndsAt;
+  const fullRecertificationRequired =
+    cert.status === HalalCertificateStatus.VALID &&
+    (now >= cycleEndsAt || (cert.annualRenewalCount >= MAX_ANNUAL_RENEWALS_PER_CYCLE && now >= new Date(cert.expiresAt)));
+  return {
+    certificationCycleStartedAt: cert.certificationCycleStartedAt.toISOString(),
+    cycleEndsAt: cycleEndsAt.toISOString(),
+    annualRenewalsUsed: cert.annualRenewalCount,
+    annualRenewalsRemaining,
+    maxAnnualRenewalsPerCycle: MAX_ANNUAL_RENEWALS_PER_CYCLE,
+    cycleYears: HALAL_CERT_CYCLE_YEARS,
+    withinCycle,
+    fullRecertificationRequired,
+    canRecordAnnualRenewal:
+      cert.status === HalalCertificateStatus.VALID && withinCycle && annualRenewalsRemaining > 0 && now < cycleEndsAt,
+  };
+}
+
 async function createAuditLog(
   action: HalalAuditAction,
   actorId: string,
@@ -107,15 +144,37 @@ async function generateCertificateForApplication(
   });
   if (existing) return existing;
 
-  const certId = await generateCertificateId();
-  const expiresAt = new Date();
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
   const app = await prisma.halalApplication.findUnique({
     where: { id: applicationId },
     include: { business: true },
   });
   if (!app) throw new Error("Application not found for certificate generation");
+
+  const businessId = app.businessId;
+  const now = new Date();
+
+  const othersValid = await prisma.halalCertificate.findMany({
+    where: {
+      businessId,
+      applicationId: { not: applicationId },
+      status: HalalCertificateStatus.VALID,
+    },
+  });
+  for (const o of othersValid) {
+    await prisma.halalCertificate.update({
+      where: { id: o.id },
+      data: {
+        status: HalalCertificateStatus.REVOKED,
+        revokedAt: now,
+        revokedReason: "Superseded by full recertification (new Halal certificate issued)",
+      },
+    });
+  }
+
+  const certId = await generateCertificateId();
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  const cycleStart = new Date();
 
   let pdfUrl: string | null = null;
   let qrCode: string | null = null;
@@ -136,11 +195,14 @@ async function generateCertificateForApplication(
   const certificate = await prisma.halalCertificate.create({
     data: {
       applicationId,
+      businessId,
       certificateId: certId,
       pdfUrl,
       qrCode,
       expiresAt,
       status: HalalCertificateStatus.VALID,
+      certificationCycleStartedAt: cycleStart,
+      annualRenewalCount: 0,
     },
   });
 
@@ -313,7 +375,44 @@ export async function getBusiness(req: Request, res: Response) {
     if (!biz) return res.status(404).json({ message: "Business not found" });
     if (!isPrivileged && biz.userId !== userId) return res.status(403).json({ message: "Access denied" });
     const approvalProgress = await getBusinessApprovalProgress(id);
-    res.json({ ...biz, approvalProgress });
+    const payload: Record<string, unknown> = { ...biz, approvalProgress };
+
+    const now = new Date();
+    const inProgressApp = await prisma.halalApplication.findFirst({
+      where: {
+        businessId: id,
+        status: {
+          in: [
+            HalalApplicationStatus.DRAFT,
+            HalalApplicationStatus.SUBMITTED,
+            HalalApplicationStatus.INSPECTION,
+            HalalApplicationStatus.REVIEW,
+          ],
+        },
+      },
+    });
+    const blockingCert = await prisma.halalCertificate.findFirst({
+      where: { businessId: id, status: HalalCertificateStatus.VALID },
+    });
+    const certBlocksNewApplication =
+      blockingCert != null && now < cycleEndDate(blockingCert.certificationCycleStartedAt);
+    payload.canStartNewCertificationApplication =
+      biz.status === HalalBusinessStatus.APPROVED && !inProgressApp && !certBlocksNewApplication;
+
+    if (perms?.includes("halal.admin")) {
+      const validCert = await prisma.halalCertificate.findFirst({
+        where: { businessId: id, status: HalalCertificateStatus.VALID },
+        orderBy: { issuedAt: "desc" },
+        include: { renewals: { orderBy: { renewedAt: "desc" } } },
+      });
+      if (validCert) {
+        payload.halalCertificateLifecycle = {
+          certificate: validCert,
+          lifecycle: buildCertificateLifecycle(validCert),
+        };
+      }
+    }
+    res.json(payload);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get business" });
   }
@@ -525,17 +624,41 @@ export async function createApplication(req: Request, res: Response) {
         message: "This business is pending admin approval. You can apply for Halal certification only after your business has been approved.",
       });
     }
-    // One active application per business (exclude REJECTED - they can reapply)
-    const existing = await prisma.halalApplication.findFirst({
+    const now = new Date();
+    const inProgress = await prisma.halalApplication.findFirst({
       where: {
         businessId: data.businessId,
-        status: { not: HalalApplicationStatus.REJECTED },
+        status: {
+          in: [
+            HalalApplicationStatus.DRAFT,
+            HalalApplicationStatus.SUBMITTED,
+            HalalApplicationStatus.INSPECTION,
+            HalalApplicationStatus.REVIEW,
+          ],
+        },
       },
     });
-    if (existing) {
+    if (inProgress) {
       return res.status(400).json({
-        message: "This business already has an active Halal certification application. Complete or withdraw the existing application before submitting a new one.",
+        message:
+          "This business already has an application in progress. Complete or withdraw it before starting a new one.",
       });
+    }
+
+    const activeCert = await prisma.halalCertificate.findFirst({
+      where: {
+        businessId: data.businessId,
+        status: HalalCertificateStatus.VALID,
+      },
+    });
+    if (activeCert) {
+      const cycleEnd = cycleEndDate(activeCert.certificationCycleStartedAt);
+      if (now < cycleEnd) {
+        return res.status(400).json({
+          message:
+            "This business already has an active Halal certificate. A new certification application is only allowed after the current 3-year cycle ends (full recertification) or once the certificate is no longer valid.",
+        });
+      }
     }
     const createData: Prisma.HalalApplicationCreateInput = {
       business: { connect: { id: data.businessId } },
@@ -599,13 +722,16 @@ export async function getApplication(req: Request, res: Response) {
     const userId = getUserId(req);
     const perms = (req as any).user?.permissions as string[] | undefined;
     const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor") || perms?.includes("halal.inspector");
+    const isHalalAdmin = perms?.includes("halal.admin");
     const { id } = req.params;
     const app = await prisma.halalApplication.findUnique({
       where: { id },
       include: {
         business: { include: { region: true, zone: true, woreda: true } },
         inspections: { include: { inspector: true } },
-        certificate: true,
+        certificate: isHalalAdmin
+          ? { include: { renewals: { orderBy: { renewedAt: "desc" } } } }
+          : true,
       },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
@@ -615,6 +741,12 @@ export async function getApplication(req: Request, res: Response) {
     // Staff cannot access DRAFT applications (only visible to the owner)
     if (isAdmin && app.status === HalalApplicationStatus.DRAFT) {
       return res.status(404).json({ message: "Application not found" });
+    }
+    if (isHalalAdmin && app.certificate) {
+      return res.json({
+        ...app,
+        certificateLifecycle: buildCertificateLifecycle(app.certificate),
+      });
     }
     res.json(app);
   } catch (e: any) {
@@ -652,13 +784,14 @@ export async function deleteApplication(req: Request, res: Response) {
     if (!isAdmin && !isOwner) return res.status(403).json({ message: "Access denied" });
     if (!isAdmin) {
       // Owner: can withdraw before payment is confirmed.
+      const withdrawableWhileUnpaid: HalalApplicationStatus[] = [
+        HalalApplicationStatus.SUBMITTED,
+        HalalApplicationStatus.INSPECTION,
+        HalalApplicationStatus.REVIEW,
+      ];
       const canWithdraw =
         app.status === HalalApplicationStatus.DRAFT ||
-        ([
-          HalalApplicationStatus.SUBMITTED,
-          HalalApplicationStatus.INSPECTION,
-          HalalApplicationStatus.REVIEW,
-        ].includes(app.status) && !app.feePaidAt);
+        (withdrawableWhileUnpaid.includes(app.status) && !app.feePaidAt);
       if (!canWithdraw) {
         return res.status(400).json({
           message: "Only unpaid applications can be withdrawn. Once payment is confirmed, withdrawal is not allowed.",
@@ -766,6 +899,16 @@ export async function initChapaPayment(req: Request, res: Response) {
           : "Failed to initialize Chapa payment";
       return res.status(400).json({ message: errMsg });
     }
+    await prisma.halalPayment.create({
+      data: {
+        applicationId: id,
+        amount: new Prisma.Decimal(DEFAULT_CERTIFICATION_FEE),
+        currency: "ETB",
+        method: HalalPaymentMethod.CHAPA,
+        status: HalalPaymentStatus.PENDING,
+        chapaTxRef: txRef,
+      },
+    });
     await prisma.halalApplication.update({
       where: { id },
       data: { chapaTxRef: txRef },
@@ -803,7 +946,7 @@ export async function chapaCallback(req: Request, res: Response) {
     if (verifyData.status !== "success" || verifyData.data?.status !== "success") {
       return res.status(400).send("Verification failed");
     }
-    await prisma.halalApplication.update({
+    const updatedApp = await prisma.halalApplication.update({
       where: { id },
       data: {
         feePaidAt: new Date(),
@@ -814,7 +957,20 @@ export async function chapaCallback(req: Request, res: Response) {
       },
       include: { business: true },
     });
-    await generateCertificateForApplication(id, app.business.userId, req.ip, req.get("user-agent"));
+    await prisma.halalPayment.updateMany({
+      where: {
+        applicationId: id,
+        method: HalalPaymentMethod.CHAPA,
+        chapaTxRef: trx_ref,
+        status: HalalPaymentStatus.PENDING,
+      },
+      data: {
+        status: HalalPaymentStatus.COMPLETED,
+        paidAt: new Date(),
+        chapaRefId: ref_id || null,
+      },
+    });
+    await generateCertificateForApplication(id, updatedApp.business.userId, req.ip, req.get("user-agent"));
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
@@ -836,26 +992,92 @@ export async function confirmManualPayment(req: Request, res: Response) {
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
     if (app.status !== HalalApplicationStatus.REVIEW) {
-      return res.status(400).json({ message: "Payment can only be confirmed after committee approval" });
+      return res.status(400).json({ message: "Payment can only be submitted after committee approval" });
     }
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const receiptUrl = `/uploads/halal/${file.filename}`;
+    await prisma.halalPayment.create({
+      data: {
+        applicationId: id,
+        amount: new Prisma.Decimal(DEFAULT_CERTIFICATION_FEE),
+        currency: "ETB",
+        method: HalalPaymentMethod.MANUAL,
+        status: HalalPaymentStatus.PENDING,
+        bankName: body.bankName,
+        receiptUrl,
+      },
+    });
     const updated = await prisma.halalApplication.update({
       where: { id },
       data: {
-        feePaidAt: new Date(),
-        status: HalalApplicationStatus.APPROVED,
         paymentMethod: "MANUAL",
         paymentBankName: body.bankName,
         paymentReceiptUrl: receiptUrl,
       },
       include: { business: true },
     });
-    await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
-    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_REVIEWED,
+      userId,
+      "HalalApplication",
+      id,
+      id,
+      app,
+      { ...updated, manualPaymentPending: true },
+      req.ip,
+      req.get("user-agent")
+    );
     res.json(updated);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to confirm manual payment" });
+  }
+}
+
+export async function approveManualPayment(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.status !== HalalApplicationStatus.REVIEW) {
+      return res.status(400).json({ message: "Manual payment can only be approved in the payment stage" });
+    }
+    if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
+    if (app.paymentMethod !== "MANUAL" || !app.paymentReceiptUrl) {
+      return res.status(400).json({ message: "No manual payment receipt submitted for this application" });
+    }
+
+    const pending = await prisma.halalPayment.findFirst({
+      where: {
+        applicationId: id,
+        method: HalalPaymentMethod.MANUAL,
+        status: HalalPaymentStatus.PENDING,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!pending) {
+      return res.status(400).json({ message: "No pending manual payment found for this application" });
+    }
+
+    await prisma.halalPayment.update({
+      where: { id: pending.id },
+      data: {
+        status: HalalPaymentStatus.COMPLETED,
+        paidAt: new Date(),
+        processedById: actorId,
+      },
+    });
+
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: { feePaidAt: new Date(), status: HalalApplicationStatus.APPROVED },
+      include: { business: true },
+    });
+    await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, actorId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
+    await generateCertificateForApplication(id, actorId, req.ip, req.get("user-agent"));
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to approve manual payment" });
   }
 }
 
@@ -1003,7 +1225,10 @@ export async function assignInspection(req: Request, res: Response) {
       include: { inspections: true },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
-    if (![HalalApplicationStatus.SUBMITTED, HalalApplicationStatus.INSPECTION].includes(app.status)) {
+    if (
+      app.status !== HalalApplicationStatus.SUBMITTED &&
+      app.status !== HalalApplicationStatus.INSPECTION
+    ) {
       return res.status(400).json({ message: "Application must be in inspection workflow" });
     }
     const hasCompletedInspection = app.inspections.some((i) => i.completedAt != null);
@@ -1304,15 +1529,25 @@ export async function listCertificates(req: Request, res: Response) {
     if (!canViewAll) {
       where.application = { business: { userId } };
     }
-    const [items, total] = await Promise.all([
+    const isHalalAdmin = perms?.includes("halal.admin");
+    const [rawItems, total] = await Promise.all([
       prisma.halalCertificate.findMany({
         where,
-        include: { application: { include: { business: true } } },
+        include: {
+          application: { include: { business: true } },
+          ...(isHalalAdmin ? { renewals: { orderBy: { renewedAt: "desc" } } } : {}),
+        },
         ...paginate(page, limit),
         orderBy: { issuedAt: "desc" },
       }),
       prisma.halalCertificate.count({ where }),
     ]);
+    const items = isHalalAdmin
+      ? rawItems.map((c) => ({
+          ...c,
+          lifecycle: buildCertificateLifecycle(c),
+        }))
+      : rawItems;
     res.json({ items, total, page, limit });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to list certificates" });
@@ -1329,18 +1564,54 @@ export async function getCertificate(req: Request, res: Response) {
       perms?.includes("halal.inspector") ||
       perms?.includes("halal.audit") ||
       perms?.includes("halal.committee");
+    const isHalalAdmin = perms?.includes("halal.admin");
     const { id } = req.params;
     const cert = await prisma.halalCertificate.findFirst({
       where: { OR: [{ id }, { certificateId: id }] },
-      include: { application: { include: { business: { include: { region: true } } } } },
+      include: {
+        application: { include: { business: { include: { region: true } } } },
+        ...(isHalalAdmin ? { renewals: { orderBy: { renewedAt: "desc" } } } : {}),
+      },
     });
     if (!cert) return res.status(404).json({ message: "Certificate not found" });
     if (!canViewAll && cert.application.business.userId !== userId) {
       return res.status(403).json({ message: "Access denied" });
     }
-    res.json(cert);
+    res.json(
+      isHalalAdmin
+        ? {
+            ...cert,
+            lifecycle: buildCertificateLifecycle(cert),
+          }
+        : cert
+    );
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get certificate" });
+  }
+}
+
+export async function getCertificateLifecycle(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const cert = await prisma.halalCertificate.findFirst({
+      where: { OR: [{ id }, { certificateId: id }] },
+      include: {
+        application: { include: { business: true } },
+        renewals: { orderBy: { renewedAt: "desc" } },
+      },
+    });
+    if (!cert) return res.status(404).json({ message: "Certificate not found" });
+    res.json({
+      certificate: cert,
+      lifecycle: buildCertificateLifecycle(cert),
+      rules: {
+        oneCertificatePerBusiness: true,
+        cycleYears: HALAL_CERT_CYCLE_YEARS,
+        maxAnnualRenewalsPerCycle: MAX_ANNUAL_RENEWALS_PER_CYCLE,
+      },
+    });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to load certificate lifecycle" });
   }
 }
 
@@ -1399,7 +1670,7 @@ export async function verifyCertificate(req: Request, res: Response) {
   }
 }
 
-// ========== Renewals ==========
+// ========== Renewals (annual extensions within 3-year cycle; halal.admin only) ==========
 export async function createRenewal(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
@@ -1408,19 +1679,53 @@ export async function createRenewal(req: Request, res: Response) {
       where: { OR: [{ id: certificateId }, { certificateId }] },
     });
     if (!cert) return res.status(404).json({ message: "Certificate not found" });
+    if (cert.status !== HalalCertificateStatus.VALID) {
+      return res.status(400).json({ message: "Only valid certificates can receive an annual renewal" });
+    }
+    if (cert.annualRenewalCount >= MAX_ANNUAL_RENEWALS_PER_CYCLE) {
+      return res.status(400).json({
+        message: `Annual renewals for this cycle are exhausted (${MAX_ANNUAL_RENEWALS_PER_CYCLE} per ${HALAL_CERT_CYCLE_YEARS}-year cycle). Full recertification is required.`,
+      });
+    }
+    const newExpiryDate = new Date(newExpiry);
+    const cycleEnd = cycleEndDate(cert.certificationCycleStartedAt);
+    if (newExpiryDate > cycleEnd) {
+      return res.status(400).json({
+        message:
+          "New expiry cannot exceed the end of the current 3-year certification cycle. The business must complete full recertification instead.",
+      });
+    }
+    if (newExpiryDate <= cert.expiresAt) {
+      return res.status(400).json({ message: "New expiry must be after the current certificate expiry date" });
+    }
+
     const renewal = await prisma.halalRenewal.create({
       data: {
         certificateId: cert.id,
         previousExpiry: cert.expiresAt,
-        newExpiry: new Date(newExpiry),
-        status: "PENDING",
+        newExpiry: newExpiryDate,
+        status: "APPROVED",
+        renewalKind: "ANNUAL",
       },
     });
     await prisma.halalCertificate.update({
       where: { id: cert.id },
-      data: { expiresAt: new Date(newExpiry) },
+      data: {
+        expiresAt: newExpiryDate,
+        annualRenewalCount: cert.annualRenewalCount + 1,
+      },
     });
-    await createAuditLog(HalalAuditAction.CERTIFICATE_RENEWED, userId, "HalalRenewal", renewal.id, cert.applicationId, undefined, renewal, req.ip, req.get("user-agent"));
+    await createAuditLog(
+      HalalAuditAction.CERTIFICATE_RENEWED,
+      userId,
+      "HalalRenewal",
+      renewal.id,
+      cert.applicationId,
+      undefined,
+      renewal,
+      req.ip,
+      req.get("user-agent")
+    );
     res.status(201).json(renewal);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to create renewal" });

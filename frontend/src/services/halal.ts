@@ -79,6 +79,13 @@ export interface HalalBusiness {
   createdAt: string;
   updatedAt: string;
   applications?: HalalApplication[];
+  /** Server-computed: business approved, no in-progress application, and no active cert still inside its 3-year cycle */
+  canStartNewCertificationApplication?: boolean;
+  /** halal.admin only: current valid cert + renewal history + cycle */
+  halalCertificateLifecycle?: {
+    certificate: HalalCertificate;
+    lifecycle: HalalCertificateLifecycle;
+  };
 }
 
 export interface HalalApplication {
@@ -104,6 +111,8 @@ export interface HalalApplication {
   updatedAt: string;
   inspections?: HalalInspection[];
   certificate?: HalalCertificate;
+  /** Present for halal.admin when a certificate exists */
+  certificateLifecycle?: HalalCertificateLifecycle;
 }
 
 export interface HalalInspection {
@@ -129,18 +138,45 @@ export interface AssignInspectionsResponse {
   skippedInspectorIds: string[];
 }
 
+export interface HalalCertificateLifecycle {
+  certificationCycleStartedAt: string;
+  cycleEndsAt: string;
+  annualRenewalsUsed: number;
+  annualRenewalsRemaining: number;
+  maxAnnualRenewalsPerCycle: number;
+  cycleYears: number;
+  withinCycle: boolean;
+  fullRecertificationRequired: boolean;
+  canRecordAnnualRenewal: boolean;
+}
+
+export interface HalalRenewalRecord {
+  id: string;
+  certificateId: string;
+  renewedAt: string;
+  previousExpiry: string;
+  newExpiry: string;
+  status: string;
+  renewalKind?: string;
+}
+
 export interface HalalCertificate {
   id: string;
   certificateId: string;
   applicationId: string;
+  businessId?: string;
   application?: HalalApplication;
   pdfUrl?: string;
   qrCode?: string;
   issuedAt: string;
   expiresAt: string;
+  certificationCycleStartedAt?: string;
+  annualRenewalCount?: number;
   status: HalalCertificateStatus;
   revokedAt?: string;
   revokedReason?: string;
+  renewals?: HalalRenewalRecord[];
+  lifecycle?: HalalCertificateLifecycle;
 }
 
 export interface HalalViolation {
@@ -152,6 +188,115 @@ export interface HalalViolation {
   recordedAt: string;
   resolvedAt?: string | null;
   action?: string | null;
+}
+
+export type HalalProductCertificateStatus = "PAYMENT_PENDING" | "ISSUED" | "CANCELLED";
+
+export const HALAL_PRODUCT_CERTIFICATE_FEE_ETB = 3500;
+export const HALAL_COMPETENCY_FEE_ETB = 1000;
+
+export type HalalCompetencyStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "THEORETICAL_SCHEDULED"
+  | "THEORETICAL_PASSED"
+  | "THEORETICAL_FAILED"
+  | "TECHNICAL_SCHEDULED"
+  | "TECHNICAL_PASSED"
+  | "TECHNICAL_FAILED"
+  | "PAYMENT_PENDING"
+  | "ISSUED"
+  | "CANCELLED";
+
+export interface HalalCompetencyReligiousAnswers {
+  religionConfirmedMuslim: true;
+  dailyPrayer: boolean;
+  observesRamadanFasting: boolean;
+  understandsTasmiyah: boolean;
+  familiarHalalVsHaramAnimals: boolean;
+  understandsProperSlaughterMethod: boolean;
+  knowledgeAnimalAliveHealthy: boolean;
+  knowledgeCorrectCuttingTechnique: boolean;
+  knowledgeCompleteBloodDrainage: boolean;
+}
+
+export interface HalalCompetencyRenewal {
+  id: string;
+  competencyId: string;
+  status: "PAYMENT_PENDING" | "COMPLETED" | "CANCELLED";
+  feeAmount: number | string;
+  feePaidAt?: string | null;
+  paymentMethod?: string | null;
+  paymentBankName?: string | null;
+  paymentReceiptUrl?: string | null;
+  chapaTxRef?: string | null;
+  previousExpiry: string;
+  newExpiry?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HalalCompetencyCertificate {
+  id: string;
+  userId: string;
+  user?: { id: string; email: string; firstName: string; lastName: string };
+  fullName: string;
+  dateOfBirth?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  employerName: string;
+  jobTitle?: string | null;
+  religiousAnswers: HalalCompetencyReligiousAnswers;
+  supportLetterUrl?: string | null;
+  status: HalalCompetencyStatus;
+  theoreticalScheduledAt?: string | null;
+  theoreticalNotes?: string | null;
+  theoreticalPassed?: boolean | null;
+  theoreticalRecordedAt?: string | null;
+  technicalScheduledAt?: string | null;
+  technicalNotes?: string | null;
+  technicalPassed?: boolean | null;
+  technicalRecordedAt?: string | null;
+  feeAmount: number | string;
+  feePaidAt?: string | null;
+  paymentMethod?: string | null;
+  paymentBankName?: string | null;
+  paymentReceiptUrl?: string | null;
+  chapaTxRef?: string | null;
+  certificateNumber?: string | null;
+  pdfUrl?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  renewals?: HalalCompetencyRenewal[];
+  createdAt: string;
+  updatedAt: string;
+  /** Present on GET /competency-certificates/:id */
+  renewalEligible?: boolean;
+  pendingRenewalId?: string | null;
+}
+
+export interface HalalProductCertificate {
+  id: string;
+  certificateNumber: string | null;
+  halalCertificateId: string;
+  halalCertificate?: { id: string; certificateId: string; status?: HalalCertificateStatus; expiresAt?: string };
+  businessId: string;
+  business?: { id: string; name: string; contactName?: string; contactEmail?: string; userId?: string };
+  productName: string;
+  productAmount: string;
+  destination: string;
+  notes?: string | null;
+  status: HalalProductCertificateStatus;
+  feeAmount: number | string;
+  feePaidAt?: string | null;
+  paymentMethod?: string | null;
+  paymentBankName?: string | null;
+  paymentReceiptUrl?: string | null;
+  chapaTxRef?: string | null;
+  pdfUrl?: string | null;
+  issuedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -209,6 +354,8 @@ export const halalApi = {
         headers: { "Content-Type": "multipart/form-data" },
       }).then((r) => r.data);
     },
+    approveManualPayment: (id: string) =>
+      api.post<HalalApplication>(`/halal/applications/${id}/payment/manual/approve`).then((r) => r.data),
     approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
   },
@@ -228,6 +375,14 @@ export const halalApi = {
     list: (params?: { page?: number; limit?: number; status?: string }) =>
       api.get<PaginatedResponse<HalalCertificate>>("/halal/certificates", { params }).then((r) => r.data),
     get: (id: string) => api.get<HalalCertificate>(`/halal/certificates/${id}`).then((r) => r.data),
+    getLifecycle: (id: string) =>
+      api
+        .get<{
+          certificate: HalalCertificate;
+          lifecycle: HalalCertificateLifecycle;
+          rules: { oneCertificatePerBusiness: boolean; cycleYears: number; maxAnnualRenewalsPerCycle: number };
+        }>(`/halal/certificates/${id}/lifecycle`)
+        .then((r) => r.data),
     downloadUrl: (id: string) => `${API_URL}/halal/certificates/${id}/download`,
     download: async (id: string, certificateId: string) => {
       const { data } = await api.get(`/halal/certificates/${id}/download`, { responseType: "blob" });
@@ -260,6 +415,129 @@ export const halalApi = {
     create: (data: { certificateId: string; description: string; severity: string; action?: string }) =>
       api.post("/halal/violations", data).then((r) => r.data),
   },
+  productCertificates: {
+    list: (params?: { page?: number; limit?: number; businessId?: string }) =>
+      api.get<PaginatedResponse<HalalProductCertificate>>("/halal/product-certificates", { params }).then((r) => r.data),
+    get: (id: string) => api.get<HalalProductCertificate>(`/halal/product-certificates/${id}`).then((r) => r.data),
+    create: (data: {
+      halalCertificateId: string;
+      productName: string;
+      productAmount: string;
+      destination: string;
+      notes?: string;
+    }) => api.post<HalalProductCertificate>("/halal/product-certificates", data).then((r) => r.data),
+    initChapaPayment: (id: string) =>
+      api.post<{ checkoutUrl: string; txRef: string }>(`/halal/product-certificates/${id}/payment/chapa-init`).then((r) => r.data),
+    confirmManualPayment: (id: string, data: { bankName: string; receipt: File }) => {
+      const form = new FormData();
+      form.append("bankName", data.bankName);
+      form.append("receipt", data.receipt);
+      return api.post<HalalProductCertificate>(`/halal/product-certificates/${id}/payment/manual`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
+    approveManualPayment: (id: string) =>
+      api.post<HalalProductCertificate>(`/halal/product-certificates/${id}/payment/manual/approve`).then((r) => r.data),
+    download: async (id: string, certificateNumber: string) => {
+      const { data } = await api.get(`/halal/product-certificates/${id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `halal-product-${certificateNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    /** Open product certificate PDF in a new tab when issued; otherwise no-op (use detail page). */
+    openPdfInNewTab: async (id: string) => {
+      const { data } = await api.get(`/halal/product-certificates/${id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    },
+  },
+  competencyCertificates: {
+    list: (params?: { page?: number; limit?: number; status?: HalalCompetencyStatus }) =>
+      api.get<PaginatedResponse<HalalCompetencyCertificate>>("/halal/competency-certificates", { params }).then((r) => r.data),
+    get: (id: string) => api.get<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}`).then((r) => r.data),
+    create: (data: {
+      fullName: string;
+      dateOfBirth: string;
+      phone: string;
+      email: string;
+      employerName: string;
+      jobTitle?: string;
+      religiousAnswers: HalalCompetencyReligiousAnswers;
+      supportLetterUrl?: string;
+    }) => api.post<HalalCompetencyCertificate>("/halal/competency-certificates", data).then((r) => r.data),
+    update: (
+      id: string,
+      data: Partial<{
+        fullName: string;
+        dateOfBirth: string;
+        phone: string;
+        email: string;
+        employerName: string;
+        jobTitle: string;
+        religiousAnswers: HalalCompetencyReligiousAnswers;
+        supportLetterUrl: string;
+      }>
+    ) => api.patch<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}`, data).then((r) => r.data),
+    submit: (id: string) => api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/submit`).then((r) => r.data),
+    scheduleTheoretical: (id: string, scheduledAt: string) =>
+      api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/theoretical/schedule`, { scheduledAt }).then((r) => r.data),
+    recordTheoretical: (id: string, body: { passed: boolean; notes?: string }) =>
+      api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/theoretical/record`, body).then((r) => r.data),
+    scheduleTechnical: (id: string, scheduledAt: string) =>
+      api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/technical/schedule`, { scheduledAt }).then((r) => r.data),
+    recordTechnical: (id: string, body: { passed: boolean; notes?: string }) =>
+      api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/technical/record`, body).then((r) => r.data),
+    initChapaPayment: (id: string) =>
+      api.post<{ checkoutUrl: string; txRef: string }>(`/halal/competency-certificates/${id}/payment/chapa-init`).then((r) => r.data),
+    confirmManualPayment: (id: string, data: { bankName: string; receipt: File }) => {
+      const form = new FormData();
+      form.append("bankName", data.bankName);
+      form.append("receipt", data.receipt);
+      return api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/payment/manual`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
+    approveManualPayment: (id: string) =>
+      api.post<HalalCompetencyCertificate>(`/halal/competency-certificates/${id}/payment/manual/approve`).then((r) => r.data),
+    download: async (id: string, certificateNumber: string) => {
+      const { data } = await api.get(`/halal/competency-certificates/${id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `halal-competency-${certificateNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    openPdfInNewTab: async (id: string) => {
+      const { data } = await api.get(`/halal/competency-certificates/${id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    },
+    createRenewal: (id: string) => api.post<HalalCompetencyRenewal>(`/halal/competency-certificates/${id}/renewals`).then((r) => r.data),
+    initRenewalChapaPayment: (renewalId: string) =>
+      api
+        .post<{ checkoutUrl: string; txRef: string }>(`/halal/competency-renewals/${renewalId}/payment/chapa-init`)
+        .then((r) => r.data),
+    confirmRenewalManualPayment: (renewalId: string, data: { bankName: string; receipt: File }) => {
+      const form = new FormData();
+      form.append("bankName", data.bankName);
+      form.append("receipt", data.receipt);
+      return api.post<HalalCompetencyRenewal>(`/halal/competency-renewals/${renewalId}/payment/manual`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
+    approveRenewalManualPayment: (renewalId: string) =>
+      api.post<HalalCompetencyRenewal>(`/halal/competency-renewals/${renewalId}/payment/manual/approve`).then((r) => r.data),
+  },
 };
 
 // Public verification (no auth required)
@@ -271,5 +549,36 @@ export async function verifyHalalCertificate(certificateId: string): Promise<{
   certificateId: string;
 }> {
   const { data } = await api.get(`/halal/verify/${certificateId}`);
+  return data;
+}
+
+export async function verifyHalalProductCertificate(certificateNumber: string): Promise<{
+  valid: boolean;
+  message?: string;
+  certificateNumber?: string;
+  businessName?: string;
+  productName?: string;
+  productAmount?: string;
+  destination?: string;
+  issuedAt?: string;
+  parentCertificateId?: string;
+  parentCertificateValid?: boolean;
+}> {
+  const { data } = await api.get(`/halal/verify-product/${encodeURIComponent(certificateNumber)}`);
+  return data;
+}
+
+export async function verifyHalalCompetencyCertificate(certificateNumber: string): Promise<{
+  valid: boolean;
+  message?: string;
+  certificateNumber?: string;
+  holderName?: string;
+  employerName?: string;
+  jobTitle?: string | null;
+  issuedAt?: string;
+  expiresAt?: string;
+  currentlyValid?: boolean;
+}> {
+  const { data } = await api.get(`/halal/verify-competency/${encodeURIComponent(certificateNumber)}`);
   return data;
 }

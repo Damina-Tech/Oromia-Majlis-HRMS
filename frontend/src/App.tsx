@@ -78,6 +78,13 @@ import HalalInspectionCompletePage from "./pages/halal/HalalInspectionCompletePa
 import HalalMyInspectionsPage from "./pages/halal/HalalMyInspectionsPage";
 import HalalViolationPage from "./pages/halal/HalalViolationPage";
 import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
+import VerifyHalalProductPage from "./pages/halal/VerifyHalalProductPage";
+import HalalProductCertificateNewPage from "./pages/halal/HalalProductCertificateNewPage";
+import HalalProductCertificateDetailPage from "./pages/halal/HalalProductCertificateDetailPage";
+import HalalCompetencyListPage from "./pages/halal/HalalCompetencyListPage";
+import HalalCompetencyNewPage from "./pages/halal/HalalCompetencyNewPage";
+import HalalCompetencyDetailPage from "./pages/halal/HalalCompetencyDetailPage";
+import VerifyHalalCompetencyPage from "./pages/halal/VerifyHalalCompetencyPage";
 import MembershipRegisterPage from "./pages/membership/MembershipRegisterPage";
 import MembershipDashboardPage from "./pages/membership/MembershipDashboardPage";
 import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
@@ -174,12 +181,25 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   const halalModulePermissions = [
     "halal.business",
+    "halal.competency",
+    "halal.review",
     "halal.admin",
     "halal.supervisor",
     "halal.inspector",
     "halal.renew",
     "halal.audit",
     "halal.committee",
+    "halal.finance",
+  ];
+
+  const halalCompetencyPermissions = [
+    "halal.competency",
+    "halal.admin",
+    "halal.supervisor",
+    "halal.committee",
+    "halal.review",
+    "halal.finance",
+    "halal.audit",
   ];
 
   return (
@@ -222,6 +242,8 @@ function AppRoutes() {
       {/* Public: Halal certificate verification (no auth required) */}
       <Route path="/verify/halal" element={<VerifyHalalPage />} />
       <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
+      <Route path="/verify/halal-product/:certificateNumber" element={<VerifyHalalProductPage />} />
+      <Route path="/verify/halal-competency/:certificateNumber" element={<VerifyHalalCompetencyPage />} />
 
       {/* Public: Majlis membership registration (redirects to dashboard if already logged in) */}
       <Route
@@ -276,9 +298,14 @@ function AppRoutes() {
         <Route path="halal/apply" element={<PermissionRoute permissions={["halal.business", "halal.admin", "halal.supervisor", "halal.inspector"]}><HalalApplyPage /></PermissionRoute>} />
         <Route path="halal/apply/new" element={<PermissionRoute permissions={["halal.business"]}><HalalApplyFormPage /></PermissionRoute>} />
         <Route path="halal/certificates" element={<PermissionRoute permissions={halalModulePermissions}><HalalCertificatesPage /></PermissionRoute>} />
+        <Route path="halal/product-certificates/new" element={<PermissionRoute permissions={["halal.business"]}><HalalProductCertificateNewPage /></PermissionRoute>} />
+        <Route path="halal/product-certificates/:id" element={<PermissionRoute permissions={halalModulePermissions}><HalalProductCertificateDetailPage /></PermissionRoute>} />
+        <Route path="halal/competency" element={<PermissionRoute permissions={halalCompetencyPermissions}><HalalCompetencyListPage /></PermissionRoute>} />
+        <Route path="halal/competency/new" element={<PermissionRoute permissions={["halal.competency"]}><HalalCompetencyNewPage /></PermissionRoute>} />
+        <Route path="halal/competency/:id" element={<PermissionRoute permissions={halalCompetencyPermissions}><HalalCompetencyDetailPage /></PermissionRoute>} />
         <Route path="halal/applications/:id" element={<PermissionRoute permissions={halalModulePermissions}><HalalMyApplicationDetailPage /></PermissionRoute>} />
-        <Route path="admin/halal/applications" element={<PermissionRoute permissions={["halal.admin", "halal.supervisor", "halal.inspector"]}><Navigate to="/halal/apply" replace /></PermissionRoute>} />
-        <Route path="admin/halal/applications/:id" element={<PermissionRoute permissions={["halal.admin", "halal.supervisor", "halal.inspector"]}><HalalMyApplicationDetailPage /></PermissionRoute>} />
+        <Route path="admin/halal/applications" element={<PermissionRoute permissions={["halal.admin", "halal.supervisor", "halal.inspector", "halal.committee", "halal.finance"]}><Navigate to="/halal/apply" replace /></PermissionRoute>} />
+        <Route path="admin/halal/applications/:id" element={<PermissionRoute permissions={["halal.admin", "halal.supervisor", "halal.inspector", "halal.committee", "halal.finance"]}><HalalMyApplicationDetailPage /></PermissionRoute>} />
         <Route path="admin/halal/inspections" element={<PermissionRoute permissions={["halal.admin", "halal.supervisor", "halal.inspector"]}><HalalInspectionAssignmentPage /></PermissionRoute>} />
         <Route path="admin/halal/inspections/:id/complete" element={<PermissionRoute permissions={["halal.admin", "halal.inspector"]}><HalalInspectionCompletePage /></PermissionRoute>} />
         <Route path="admin/halal/my-inspections" element={<PermissionRoute permissions={["halal.admin", "halal.inspector"]}><HalalMyInspectionsPage /></PermissionRoute>} />

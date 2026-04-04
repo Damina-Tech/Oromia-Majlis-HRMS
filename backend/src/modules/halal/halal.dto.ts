@@ -158,3 +158,82 @@ export const ListHalalViolationsQuery = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
   certificateId: z.string().optional(),
 });
+
+export const CreateHalalProductCertificateDto = z.object({
+  halalCertificateId: z.string().min(1),
+  productName: z.string().min(1),
+  productAmount: z.string().min(1),
+  destination: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const ListHalalProductCertificatesQuery = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  businessId: z.string().optional(),
+});
+
+const competencyStatuses = [
+  "DRAFT",
+  "SUBMITTED",
+  "THEORETICAL_SCHEDULED",
+  "THEORETICAL_PASSED",
+  "THEORETICAL_FAILED",
+  "TECHNICAL_SCHEDULED",
+  "TECHNICAL_PASSED",
+  "TECHNICAL_FAILED",
+  "PAYMENT_PENDING",
+  "ISSUED",
+  "CANCELLED",
+] as const;
+
+export const HalalCompetencyReligiousAnswersDto = z.object({
+  religionConfirmedMuslim: z.boolean().refine((v) => v === true, {
+    message: "You must confirm that you are Muslim to apply",
+  }),
+  dailyPrayer: z.boolean(),
+  observesRamadanFasting: z.boolean(),
+  understandsTasmiyah: z.boolean(),
+  familiarHalalVsHaramAnimals: z.boolean(),
+  understandsProperSlaughterMethod: z.boolean(),
+  knowledgeAnimalAliveHealthy: z.boolean(),
+  knowledgeCorrectCuttingTechnique: z.boolean(),
+  knowledgeCompleteBloodDrainage: z.boolean(),
+});
+
+export const CreateHalalCompetencyDto = z.object({
+  fullName: z.string().min(1).max(200),
+  dateOfBirth: z.string().min(1),
+  phone: z.string().min(5).max(50),
+  email: z.string().email(),
+  employerName: z.string().min(1).max(300),
+  jobTitle: z.string().max(200).optional(),
+  religiousAnswers: HalalCompetencyReligiousAnswersDto,
+  supportLetterUrl: z.string().min(1).optional(),
+});
+
+export const UpdateHalalCompetencyDto = z.object({
+  fullName: z.string().min(1).max(200).optional(),
+  dateOfBirth: z.string().min(1).optional(),
+  phone: z.string().min(5).max(50).optional(),
+  email: z.string().email().optional(),
+  employerName: z.string().min(1).max(300).optional(),
+  jobTitle: z.string().max(200).optional(),
+  religiousAnswers: HalalCompetencyReligiousAnswersDto.optional(),
+  supportLetterUrl: z.string().min(1).optional(),
+});
+
+export const ScheduleHalalCompetencyInterviewDto = z.object({
+  scheduledAt: z.string().min(1),
+});
+
+export const RecordHalalCompetencyInterviewDto = z.object({
+  passed: z.boolean(),
+  notes: z.string().max(4000).optional(),
+});
+
+export const ListHalalCompetencyQuery = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  status: z.enum(competencyStatuses).optional(),
+});

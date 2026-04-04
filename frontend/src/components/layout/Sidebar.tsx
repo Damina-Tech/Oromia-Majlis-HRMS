@@ -235,10 +235,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     if (item.title === 'Halal Certification') {
       return (
         hasPermission('halal.business') ||
+        hasPermission('halal.competency') ||
         hasPermission('halal.admin') ||
         hasPermission('halal.inspector') ||
         hasPermission('halal.supervisor') ||
-        hasPermission('halal.renew')
+        hasPermission('halal.renew') ||
+        hasPermission('halal.committee') ||
+        hasPermission('halal.review') ||
+        hasPermission('halal.finance') ||
+        hasPermission('halal.audit')
       );
     }
     // Check specific permission
@@ -359,11 +364,35 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
 
   // Halal Certification submenu items
   const halalSubmenuItems: Array<{ title: string; href: string; permission: string }> = [];
-  if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.supervisor') || hasPermission('halal.renew')) {
+  if (
+    hasPermission('halal.business') ||
+    hasPermission('halal.competency') ||
+    hasPermission('halal.admin') ||
+    hasPermission('halal.inspector') ||
+    hasPermission('halal.supervisor') ||
+    hasPermission('halal.renew') ||
+    hasPermission('halal.committee') ||
+    hasPermission('halal.review') ||
+    hasPermission('halal.finance') ||
+    hasPermission('halal.audit')
+  ) {
     halalSubmenuItems.push({ title: 'Dashboard', href: '/halal/dashboard', permission: 'halal.business' });
-    halalSubmenuItems.push({ title: 'Businesses', href: '/halal/register', permission: 'halal.business' });
-    halalSubmenuItems.push({ title: 'Applications', href: '/halal/apply', permission: 'halal.business' });
-    halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
+    if (hasPermission('halal.business') || hasPermission('halal.admin') || hasPermission('halal.supervisor')) {
+      halalSubmenuItems.push({ title: 'Businesses', href: '/halal/register', permission: 'halal.business' });
+      halalSubmenuItems.push({ title: 'Applications', href: '/halal/apply', permission: 'halal.business' });
+      halalSubmenuItems.push({ title: 'Certificates', href: '/halal/certificates', permission: 'halal.business' });
+    }
+    if (
+      hasPermission('halal.competency') ||
+      hasPermission('halal.admin') ||
+      hasPermission('halal.supervisor') ||
+      hasPermission('halal.committee') ||
+      hasPermission('halal.review') ||
+      hasPermission('halal.finance') ||
+      hasPermission('halal.audit')
+    ) {
+      halalSubmenuItems.push({ title: 'Competency', href: '/halal/competency', permission: 'halal.competency' });
+    }
     if (hasPermission('halal.admin') || hasPermission('halal.inspector') || hasPermission('halal.supervisor')) {
       halalSubmenuItems.push({ title: 'Inspection', href: '/admin/halal/inspections', permission: 'halal.inspector' });
     }

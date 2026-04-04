@@ -59,6 +59,7 @@ export default function HalalBusinessDetailPage() {
   const { hasPermission } = useAuth();
   const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor");
   const isAdmin = hasPermission("halal.admin");
+  const isHalalAdmin = hasPermission("halal.admin");
   const isSupervisor = hasPermission("halal.supervisor");
   const [withdrawId, setWithdrawId] = useState<string | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -134,10 +135,15 @@ export default function HalalBusinessDetailPage() {
 
   const biz = business as HalalBusiness & { applications?: any[] };
   const applications = biz.applications ?? [];
-  const activeApplication = applications.find((a) => a.status !== "REJECTED");
+  const activeApplication = applications.find((a) =>
+    ["DRAFT", "SUBMITTED", "INSPECTION", "REVIEW"].includes(a.status)
+  );
   const hasApprovedApplication = applications.some((a) => a.status === "APPROVED");
   const bizStatus = biz.status ?? "PENDING_APPROVAL";
-  const canApply = !activeApplication && bizStatus === "APPROVED";
+  const canStartCert =
+    typeof biz.canStartNewCertificationApplication === "boolean"
+      ? biz.canStartNewCertificationApplication
+      : !activeApplication && bizStatus === "APPROVED" && !hasApprovedApplication;
   const locationParts = [biz.region?.name, biz.zone?.name, biz.woreda?.name, biz.kebeleName].filter(Boolean);
   const locationStr = locationParts.length > 0 ? locationParts.join(", ") : null;
   const lat = typeof biz.latitude === "number" ? biz.latitude : Number(biz.latitude);
@@ -480,22 +486,60 @@ export default function HalalBusinessDetailPage() {
       )}
 
       {/* Primary action */}
-      {!hasApprovedApplication && (
+      {bizStatus === "APPROVED" && (
         <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-500/5 to-transparent">
           <CardContent className="py-4 px-4">
             <Button
               onClick={() => navigate("/halal/apply/new", { state: { businessId: biz.id } })}
-              disabled={!canApply}
-              className={canApply ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+              disabled={!canStartCert}
+              className={canStartCert ? "bg-emerald-600 hover:bg-emerald-700" : ""}
             >
               <FileText className="h-4 w-4 mr-2" />
               Apply for Halal certification
             </Button>
-            {bizStatus !== "APPROVED" && (
-              <p className="text-sm text-muted-foreground mt-2">Apply for Halal only after this business is approved.</p>
-            )}
-            {!canApply && bizStatus === "APPROVED" && (
+            {!canStartCert && activeApplication && (
               <p className="text-sm text-muted-foreground mt-2">Complete or withdraw the current application first.</p>
+            )}
+            {!canStartCert && !activeApplication && (
+              <p className="text-sm text-muted-foreground mt-2">
+                This business already has an active Halal certificate within its 3-year cycle. A new certification
+                application opens when the cycle ends or for full recertification.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isHalalAdmin && biz.halalCertificateLifecycle && (
+        <Card className="shadow-sm border-violet-200/50 dark:border-violet-900/30 bg-violet-50/20 dark:bg-violet-950/20">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-semibold text-violet-900 dark:text-violet-100">
+              Halal certificate cycle (admin)
+            </CardTitle>
+            <CardDescription>
+              One certificate per business: up to two annual renewals per 3-year cycle, then full recertification.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-2 text-sm">
+            <p className="font-mono text-violet-800 dark:text-violet-200">
+              {biz.halalCertificateLifecycle.certificate.certificateId}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <span>
+                Cycle:{" "}
+                {new Date(biz.halalCertificateLifecycle.lifecycle.certificationCycleStartedAt).toLocaleDateString()} →{" "}
+                {new Date(biz.halalCertificateLifecycle.lifecycle.cycleEndsAt).toLocaleDateString()}
+              </span>
+              <span>
+                Annual renewals used: {biz.halalCertificateLifecycle.lifecycle.annualRenewalsUsed} /{" "}
+                {biz.halalCertificateLifecycle.lifecycle.maxAnnualRenewalsPerCycle} (remaining:{" "}
+                {biz.halalCertificateLifecycle.lifecycle.annualRenewalsRemaining})
+              </span>
+            </div>
+            {biz.halalCertificateLifecycle.lifecycle.fullRecertificationRequired && (
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Full recertification is required (new application and issuance).
+              </p>
             )}
           </CardContent>
         </Card>

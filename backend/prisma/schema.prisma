@@ -71,6 +71,13 @@ model User {
   halalApplicationsReviewed        HalalApplication[]      @relation("HalalReviewer")
   halalApplicationsApproved        HalalApplication[]      @relation("HalalApprover")
   halalAuditLogs                   HalalAuditLog[]
+  halalPaymentsProcessed           HalalPayment[]          @relation("HalalPaymentProcessedBy")
+  halalProductManualPaymentsApproved HalalProductCertificate[] @relation("HalalProductPaymentApprovedBy")
+  halalCompetencyApplications        HalalCompetencyCertificate[] @relation("HalalCompetencyApplicant")
+  halalCompetencyTheoryRecorded      HalalCompetencyCertificate[] @relation("HalalCompetencyTheoryBy")
+  halalCompetencyTechRecorded        HalalCompetencyCertificate[] @relation("HalalCompetencyTechBy")
+  halalCompetencyManualApproved      HalalCompetencyCertificate[] @relation("HalalCompetencyManualBy")
+  halalCompetencyRenewalManualApproved HalalCompetencyRenewal[] @relation("HalalCompetencyRenewalManualBy")
   membersRegistered                Member[]                @relation("MemberRegisteredBy")
   memberProfile                    Member?                 @relation("MemberProfile")
 }
@@ -2285,6 +2292,18 @@ enum HalalCertificateStatus {
   SUSPENDED
 }
 
+enum HalalPaymentMethod {
+  CHAPA
+  MANUAL
+}
+
+enum HalalPaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REJECTED
+}
+
 enum HalalAuditAction {
   BUSINESS_REGISTERED
   BUSINESS_APPROVED
@@ -2341,6 +2360,8 @@ model HalalBusiness {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   applications  HalalApplication[]
+  halalCertificates HalalCertificate[]
+  productCertificates HalalProductCertificate[]
 
   @@index([userId])
   @@index([category])
@@ -2359,6 +2380,7 @@ model HalalApplication {
   paymentReceiptUrl String?              // For manual: receipt file URL
   chapaTxRef      String?                // Chapa transaction reference
   chapaRefId      String?                // Chapa internal reference ID
+  payments        HalalPayment[]
   productList     Json?                   // [{ name, description }]
   ingredients     Json?                   // [{ name, source, halalStatus }]
   supplierInfo    Json?                   // [{ name, certification }]
@@ -2379,6 +2401,29 @@ model HalalApplication {
 
   @@index([businessId])
   @@index([status])
+}
+
+model HalalPayment {
+  id             String            @id @default(cuid())
+  applicationId  String
+  application    HalalApplication  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  amount         Decimal           @db.Decimal(12, 2)
+  currency       String            @default("ETB")
+  method         HalalPaymentMethod
+  status         HalalPaymentStatus @default(PENDING)
+  bankName       String?
+  chapaTxRef     String?
+  chapaRefId     String?
+  receiptUrl     String?
+  paidAt         DateTime?
+  processedById  String?
+  processedBy    User?             @relation("HalalPaymentProcessedBy", fields: [processedById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([applicationId])
+  @@index([status])
+  @@index([chapaTxRef])
 }
 
 model HalalInspection {
@@ -2407,6 +2452,8 @@ model HalalCertificate {
   certificateId String              @unique // Auto: HAL-YYYY-NNNN
   applicationId String              @unique
   application   HalalApplication   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  businessId    String
+  business      HalalBusiness        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   pdfUrl        String?
   qrCode        String?             // QR data or stored image path
   issuedAt      DateTime           @default(now())
@@ -2414,6 +2461,10 @@ model HalalCertificate {
   status        HalalCertificateStatus @default(VALID)
   revokedAt     DateTime?
   revokedReason String?
+  /// Start of the current 3-year Halal certification cycle (initial issue or last full recertification).
+  certificationCycleStartedAt DateTime @default(now())
+  /// Annual renewals already applied in this cycle (max 2; year 3 requires full recertification).
+  annualRenewalCount Int @default(0)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   renewals      HalalRenewal[]
@@ -2422,6 +2473,150 @@ model HalalCertificate {
   @@index([certificateId])
   @@index([status])
   @@index([expiresAt])
+  @@index([businessId])
+  @@index([businessId, status])
+  productCertificates HalalProductCertificate[]
+}
+
+enum HalalProductCertificateStatus {
+  PAYMENT_PENDING
+  ISSUED
+  CANCELLED
+}
+
+model HalalProductCertificate {
+  id                  String                        @id @default(cuid())
+  /// Public id on PDF, e.g. HAL-P-2026-00001 (assigned when payment completes)
+  certificateNumber   String?                       @unique
+  halalCertificateId  String
+  halalCertificate    HalalCertificate              @relation(fields: [halalCertificateId], references: [id], onDelete: Cascade)
+  businessId          String
+  business            HalalBusiness                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productName         String
+  productAmount       String
+  destination         String
+  notes               String?
+  status              HalalProductCertificateStatus @default(PAYMENT_PENDING)
+  feeAmount           Decimal                       @default(3500) @db.Decimal(12, 2)
+  feePaidAt           DateTime?
+  paymentMethod       String?
+  paymentBankName     String?
+  paymentReceiptUrl   String?
+  chapaTxRef          String?
+  chapaRefId          String?
+  pdfUrl              String?
+  issuedAt            DateTime?
+  manualPaymentApprovedById String?
+  manualPaymentApprovedBy     User?                 @relation("HalalProductPaymentApprovedBy", fields: [manualPaymentApprovedById], references: [id])
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  @@index([businessId])
+  @@index([halalCertificateId])
+  @@index([status])
+}
+
+enum HalalCompetencyStatus {
+  DRAFT
+  SUBMITTED
+  THEORETICAL_SCHEDULED
+  THEORETICAL_PASSED
+  THEORETICAL_FAILED
+  TECHNICAL_SCHEDULED
+  TECHNICAL_PASSED
+  TECHNICAL_FAILED
+  PAYMENT_PENDING
+  ISSUED
+  CANCELLED
+}
+
+enum HalalCompetencyRenewalStatus {
+  PAYMENT_PENDING
+  COMPLETED
+  CANCELLED
+}
+
+/// Individual Halal Competency Certificate — application, interviews, payment, and issuance on one record.
+model HalalCompetencyCertificate {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("HalalCompetencyApplicant", fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName     String
+  dateOfBirth  DateTime? @db.Date
+  phone        String?
+  email        String?
+  employerName String
+  jobTitle     String?
+  /// Structured self-declarations (prayer, fasting, slaughter knowledge, etc.) as JSON
+  religiousAnswers   Json
+  supportLetterUrl   String?
+
+  status HalalCompetencyStatus @default(DRAFT)
+
+  theoreticalScheduledAt    DateTime?
+  theoreticalNotes          String?
+  theoreticalPassed         Boolean?
+  theoreticalRecordedAt     DateTime?
+  theoreticalRecordedById   String?
+  theoreticalRecordedBy     User?   @relation("HalalCompetencyTheoryBy", fields: [theoreticalRecordedById], references: [id])
+
+  technicalScheduledAt    DateTime?
+  technicalNotes          String?
+  technicalPassed         Boolean?
+  technicalRecordedAt     DateTime?
+  technicalRecordedById   String?
+  technicalRecordedBy     User?   @relation("HalalCompetencyTechBy", fields: [technicalRecordedById], references: [id])
+
+  feeAmount Decimal @default(1000) @db.Decimal(12, 2)
+  feePaidAt DateTime?
+  paymentMethod String?
+  paymentBankName String?
+  paymentReceiptUrl String?
+  chapaTxRef String?
+  chapaRefId String?
+  manualPaymentApprovedById String?
+  manualPaymentApprovedBy   User? @relation("HalalCompetencyManualBy", fields: [manualPaymentApprovedById], references: [id])
+
+  certificateNumber String? @unique
+  pdfUrl            String?
+  issuedAt          DateTime?
+  expiresAt         DateTime?
+
+  renewals HalalCompetencyRenewal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([certificateNumber])
+}
+
+model HalalCompetencyRenewal {
+  id             String                   @id @default(cuid())
+  competencyId   String
+  competency     HalalCompetencyCertificate @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  status    HalalCompetencyRenewalStatus @default(PAYMENT_PENDING)
+  feeAmount Decimal                      @default(1000) @db.Decimal(12, 2)
+  feePaidAt DateTime?
+  paymentMethod       String?
+  paymentBankName     String?
+  paymentReceiptUrl   String?
+  chapaTxRef          String?
+  chapaRefId          String?
+  manualPaymentApprovedById String?
+  manualPaymentApprovedBy   User? @relation("HalalCompetencyRenewalManualBy", fields: [manualPaymentApprovedById], references: [id])
+
+  previousExpiry DateTime
+  newExpiry      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([competencyId])
+  @@index([status])
 }
 
 model HalalRenewal {
@@ -2432,6 +2627,8 @@ model HalalRenewal {
   previousExpiry DateTime
   newExpiry     DateTime
   status        String         // PENDING, APPROVED, REJECTED
+  /// ANNUAL = one-year extension within the 3-year cycle; FULL_RECERTIFICATION = recorded when a new cycle starts (optional audit).
+  renewalKind   String         @default("ANNUAL")
   createdAt     DateTime       @default(now())
 
   @@index([certificateId])

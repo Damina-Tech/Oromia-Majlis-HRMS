@@ -43,6 +43,7 @@ import {
   Mail,
   Phone,
   User,
+  Shield,
 } from "lucide-react";
 import { halalApi, type HalalApplication, type HalalApplicationStatus } from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -153,6 +154,8 @@ export default function HalalMyApplicationDetailPage() {
   const isStaff = canCommitteeReview;
   const canCompleteInspection =
     hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
+  const canApproveManualPayment = hasPermission("halal.admin") || hasPermission("halal.finance");
+  const isHalalAdmin = hasPermission("halal.admin");
 
   const [paymentMethod, setPaymentMethod] = useState<"chapa" | "manual">("chapa");
   const [manualBank, setManualBank] = useState("");
@@ -191,7 +194,7 @@ export default function HalalMyApplicationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
-      toast.success("Receipt submitted. Payment confirmed.");
+      toast.success("Receipt submitted. Payment pending approval.");
       setManualBank("");
       setManualReceipt(null);
     },
@@ -199,6 +202,16 @@ export default function HalalMyApplicationDetailPage() {
       const msg = e.response?.data?.message;
       toast.error(typeof msg === "string" ? msg : "Failed to submit receipt");
     },
+  });
+
+  const approveManualPaymentMutation = useMutation({
+    mutationFn: () => halalApi.applications.approveManualPayment(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Manual payment approved. Certificate is ready.");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve manual payment"),
   });
 
   useEffect(() => {
@@ -570,6 +583,19 @@ export default function HalalMyApplicationDetailPage() {
                         </>
                       )}
                     </Button>
+                    {canApproveManualPayment &&
+                      application.paymentMethod === "MANUAL" &&
+                      (application as any).paymentReceiptUrl &&
+                      !isPaid && (
+                        <Button
+                          variant="outline"
+                          className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                          onClick={() => approveManualPaymentMutation.mutate()}
+                          disabled={approveManualPaymentMutation.isPending}
+                        >
+                          {approveManualPaymentMutation.isPending ? "Approving..." : "Approve manual payment"}
+                        </Button>
+                      )}
                   </TabsContent>
                 </Tabs>
               </div>
@@ -902,6 +928,41 @@ export default function HalalMyApplicationDetailPage() {
             >
               Download PDF
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isHalalAdmin && application.certificate && application.certificateLifecycle && (
+        <Card className="shadow-sm border-violet-200/50 dark:border-violet-900/30 bg-violet-50/20 dark:bg-violet-950/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-violet-900 dark:text-violet-100">
+              <Shield className="h-5 w-5" />
+              Certification cycle (admin)
+            </CardTitle>
+            <CardDescription>
+              One active certificate per business: annual renewals (max two per 3-year cycle), then full
+              recertification.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid sm:grid-cols-2 gap-2 text-xs">
+              <p>
+                <span className="text-muted-foreground">Cycle window: </span>
+                {new Date(application.certificateLifecycle.certificationCycleStartedAt).toLocaleDateString()} →{" "}
+                {new Date(application.certificateLifecycle.cycleEndsAt).toLocaleDateString()}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Annual renewals: </span>
+                {application.certificateLifecycle.annualRenewalsUsed} /{" "}
+                {application.certificateLifecycle.maxAnnualRenewalsPerCycle} used (
+                {application.certificateLifecycle.annualRenewalsRemaining} remaining)
+              </p>
+            </div>
+            {application.certificateLifecycle.fullRecertificationRequired && (
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Full recertification is due for this business when the current cycle ends.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

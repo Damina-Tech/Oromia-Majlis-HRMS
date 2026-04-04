@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Plus, FileText, Award, RefreshCw, ArrowRight, ShieldCheck } from "lucide-react";
+import { Building2, Plus, FileText, Award, RefreshCw, ArrowRight, ShieldCheck, GraduationCap } from "lucide-react";
 import { halalApi, type HalalApplicationStatus } from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -22,6 +22,12 @@ export default function HalalDashboardPage() {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
+  const isCompetencyStaff =
+    hasPermission("halal.admin") ||
+    hasPermission("halal.supervisor") ||
+    hasPermission("halal.committee") ||
+    hasPermission("halal.review");
+  const showCompetencyDash = hasPermission("halal.competency") || isCompetencyStaff;
   const isBusinessOwner = hasPermission("halal.business");
   const isBusinessOwnerOnly = isBusinessOwner && !isStaff;
 
@@ -37,6 +43,11 @@ export default function HalalDashboardPage() {
     queryKey: ["halal-certificates"],
     queryFn: () => halalApi.certificates.list({ limit: 20 }),
   });
+  const { data: competencyApps } = useQuery({
+    queryKey: ["halal-competency-certificates", "dashboard"],
+    queryFn: () => halalApi.competencyCertificates.list({ limit: 50 }),
+    enabled: showCompetencyDash,
+  });
 
   const apps = applications?.items ?? [];
   const bizList = businesses?.items ?? [];
@@ -50,6 +61,7 @@ export default function HalalDashboardPage() {
     pendingBusinesses: pendingApprovalBiz.length,
     approved: apps.filter((a) => a.status === "APPROVED").length,
     certificates: certificates?.total ?? 0,
+    competencyApplications: competencyApps?.total ?? 0,
   };
 
   if (isLoading) {
@@ -69,7 +81,9 @@ export default function HalalDashboardPage() {
           <p className="text-sm text-muted-foreground mt-0.5">Manage your businesses and certification applications</p>
         </header>
 
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`grid gap-3 grid-cols-2 ${showCompetencyDash ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}
+        >
           <Card
             className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600 cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 transition-colors"
             onClick={() => navigate("/halal/register")}
@@ -110,6 +124,17 @@ export default function HalalDashboardPage() {
               <p className="text-xs text-muted-foreground">My Certificates</p>
             </CardContent>
           </Card>
+          {showCompetencyDash && (
+            <Card
+              className="border-l-4 border-l-teal-500 bg-teal-50/50 dark:bg-teal-950/20 dark:border-l-teal-600 cursor-pointer hover:bg-teal-100/50 dark:hover:bg-teal-950/30 transition-colors"
+              onClick={() => navigate("/halal/competency")}
+            >
+              <CardContent className="pt-3 pb-3">
+                <p className="text-xl font-bold text-teal-800 dark:text-teal-200">{stats.competencyApplications}</p>
+                <p className="text-xs text-muted-foreground">Competency</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -275,6 +300,12 @@ export default function HalalDashboardPage() {
                   <Award className="h-4 w-4 mr-2" />
                   My Certificates
                 </Button>
+                {showCompetencyDash && (
+                  <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => navigate("/halal/competency")}>
+                    <GraduationCap className="h-4 w-4 mr-2" />
+                    Halal Competency
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -286,7 +317,7 @@ export default function HalalDashboardPage() {
   return (
     <div className="p-4 sm:p-6 space-y-8 max-w-6xl mx-auto">
       {/* Stats cards with subtle colors */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className={`grid gap-4 sm:grid-cols-2 ${showCompetencyDash ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
         <Card
           className="border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-l-emerald-600 cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 transition-colors"
           onClick={() => navigate("/halal/register")}
@@ -364,6 +395,22 @@ export default function HalalDashboardPage() {
             </div>
           </CardContent>
         </Card>
+        {showCompetencyDash && (
+          <Card
+            className="border-l-4 border-l-teal-500 bg-teal-50/50 dark:bg-teal-950/20 dark:border-l-teal-600 cursor-pointer hover:bg-teal-100/50 dark:hover:bg-teal-950/30 transition-colors"
+            onClick={() => navigate("/halal/competency")}
+          >
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-teal-800 dark:text-teal-200">{stats.competencyApplications}</p>
+                  <p className="text-sm text-muted-foreground">Competency</p>
+                </div>
+                <GraduationCap className="h-9 w-9 text-teal-500/70" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Businesses Waiting for Approval + Quick Actions */}
@@ -477,6 +524,17 @@ export default function HalalDashboardPage() {
                 <Award className="h-4 w-4 mr-2" />
                 Certificates
               </Button>
+              {showCompetencyDash && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => navigate("/halal/competency")}
+                >
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  Halal Competency
+                </Button>
+              )}
               {isStaff && (
                 <>
                   {pendingApprovalBiz.length > 0 && (
