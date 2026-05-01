@@ -30,6 +30,12 @@ export declare const UpdateSelfDto: z.ZodObject<{
     password: z.ZodOptional<z.ZodString>;
     avatarUrl: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
+export declare const UpdateUserPermissionsDto: z.ZodObject<{
+    overrides: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        permissionId: z.ZodString;
+        allowed: z.ZodBoolean;
+    }, z.core.$strip>>>;
+}, z.core.$strip>;
 export declare const ListUsersQuery: z.ZodObject<{
     search: z.ZodOptional<z.ZodString>;
     roleId: z.ZodOptional<z.ZodString>;
@@ -44,4 +50,5 @@ export type CreateUserDto = z.infer<typeof CreateUserDto>;
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 export type ListUsersQuery = z.infer<typeof ListUsersQuery>;
 export type UpdateSelfDto = z.infer<typeof UpdateSelfDto>;
+export type UpdateUserPermissionsDto = z.infer<typeof UpdateUserPermissionsDto>;
 //# sourceMappingURL=user.dto.d.ts.map

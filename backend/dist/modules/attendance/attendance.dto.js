@@ -2,10 +2,12 @@ import { z } from "zod";
 // Check-in DTO
 export const CheckInDto = z.object({
     location: z.string().min(1, "Location is required"),
+    date: z.string().optional(), // YYYY-MM-DD format, optional for backward compatibility
 });
 // Check-out DTO
 export const CheckOutDto = z.object({
     location: z.string().min(1, "Location is required"),
+    date: z.string().optional(), // YYYY-MM-DD format, optional for backward compatibility
 });
 // List attendance query
 export const ListAttendanceQuery = z.object({

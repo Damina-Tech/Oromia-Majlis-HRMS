@@ -92,6 +92,7 @@ import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
 import MemberDetailPage from "./pages/membership/MemberDetailPage";
 import MyMembershipPage from "./pages/membership/MyMembershipPage";
 import VerifyMembershipPage from "./pages/membership/VerifyMembershipPage";
+import VerifyInstitutionRecognitionPage from "./pages/majlis/VerifyInstitutionRecognitionPage";
 
 const queryClient = new QueryClient();
 
@@ -267,6 +268,8 @@ function AppRoutes() {
       />
       <Route path="/verify/membership" element={<VerifyMembershipPage />} />
       <Route path="/verify/membership/:certificateId" element={<VerifyMembershipPage />} />
+      <Route path="/verify/institution-recognition" element={<VerifyInstitutionRecognitionPage />} />
+      <Route path="/verify/institution-recognition/:certificateNumber" element={<VerifyInstitutionRecognitionPage />} />
 
       {/* Protected Routes */}
       <Route

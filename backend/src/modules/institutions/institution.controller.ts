@@ -157,9 +157,9 @@ export async function createInstitution(req: Request, res: Response) {
       yearEstablished: data.yearEstablished,
       ownershipStatus: data.ownershipStatus,
       createdBy: { connect: { id: currentUserId } },
-      mosqueData: data.mosqueData || null,
-      madrasahData: data.madrasahData || null,
-      markazData: data.markazData || null,
+      mosqueData: data.mosqueData ?? undefined,
+      madrasahData: data.madrasahData ?? undefined,
+      markazData: data.markazData ?? undefined,
     };
     
     // Add geographic relations

@@ -24,6 +24,14 @@ export const UpdateSelfDto = z.object({
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
     avatarUrl: z.string().min(1).optional(),
 });
+export const UpdateUserPermissionsDto = z.object({
+    overrides: z
+        .array(z.object({
+        permissionId: z.string().min(1, "permissionId is required"),
+        allowed: z.boolean(),
+    }))
+        .default([]),
+});
 export const ListUsersQuery = z.object({
     search: z.string().optional(),
     roleId: z.string().optional(),

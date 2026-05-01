@@ -3,6 +3,21 @@ import { CheckInDto, CheckOutDto, ListAttendanceQuery, CreateAttendanceDto, Upda
 import { getLocationInfo } from "../../utils/location.js";
 const prisma = new PrismaClient();
 /**
+ * Extract date from a Date object, creating a new Date with only the date part (time set to 00:00:00)
+ * Uses local date components to ensure the date matches the server's local date
+ */
+function extractDate(date) {
+    // Use local date components to match the server's local date
+    // This ensures consistency when server and users are in the same timezone
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    // Create a new date with only the date part (time set to 00:00:00)
+    const extracted = new Date(year, month, day);
+    extracted.setHours(0, 0, 0, 0);
+    return extracted;
+}
+/**
  * Check in for the day
  */
 export async function checkIn(req, res) {
@@ -12,14 +27,26 @@ export async function checkIn(req, res) {
             return res.status(400).json({ message: "Employee record not found for user" });
         }
         const body = CheckInDto.parse(req.body);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const now = new Date();
+        // Use the date from the request if provided (from frontend in user's timezone),
+        // otherwise extract from the current time
+        let checkInDate;
+        if (body.date) {
+            // Parse the date string (YYYY-MM-DD) and create a date object
+            const [year, month, day] = body.date.split('-').map(Number);
+            checkInDate = new Date(year, month - 1, day);
+            checkInDate.setHours(0, 0, 0, 0);
+        }
+        else {
+            // Fallback: extract date from current time
+            checkInDate = extractDate(now);
+        }
         // Check if already checked in today
         const existing = await prisma.attendance.findUnique({
             where: {
                 employeeId_date: {
                     employeeId,
-                    date: today,
+                    date: checkInDate,
                 },
             },
         });
@@ -29,7 +56,6 @@ export async function checkIn(req, res) {
                 attendance: existing
             });
         }
-        const now = new Date();
         // Get location information
         const locationInfo = getLocationInfo(body.location);
         // Determine status based on check-in time
@@ -46,7 +72,7 @@ export async function checkIn(req, res) {
             where: {
                 employeeId_date: {
                     employeeId,
-                    date: today,
+                    date: checkInDate,
                 },
             },
             update: {
@@ -56,7 +82,7 @@ export async function checkIn(req, res) {
             },
             create: {
                 employeeId,
-                date: today,
+                date: checkInDate,
                 checkInTime: now,
                 checkInLocation: body.location,
                 status,
@@ -102,14 +128,26 @@ export async function checkOut(req, res) {
             return res.status(400).json({ message: "Employee record not found for user" });
         }
         const body = CheckOutDto.parse(req.body);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const now = new Date();
+        // Use the date from the request if provided (from frontend in user's timezone),
+        // otherwise extract from the current time
+        let checkOutDate;
+        if (body.date) {
+            // Parse the date string (YYYY-MM-DD) and create a date object
+            const [year, month, day] = body.date.split('-').map(Number);
+            checkOutDate = new Date(year, month - 1, day);
+            checkOutDate.setHours(0, 0, 0, 0);
+        }
+        else {
+            // Fallback: extract date from current time
+            checkOutDate = extractDate(now);
+        }
         // Find today's attendance record
         const existing = await prisma.attendance.findUnique({
             where: {
                 employeeId_date: {
                     employeeId,
-                    date: today,
+                    date: checkOutDate,
                 },
             },
         });
@@ -122,7 +160,6 @@ export async function checkOut(req, res) {
                 attendance: existing
             });
         }
-        const now = new Date();
         // Calculate work hours
         let workHours = 0;
         if (existing.checkInTime) {
@@ -171,8 +208,8 @@ export async function getTodayStatus(req, res) {
         if (!employeeId) {
             return res.status(400).json({ message: "Employee record not found for user" });
         }
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const today = extractDate(now);
         const attendance = await prisma.attendance.findUnique({
             where: {
                 employeeId_date: {

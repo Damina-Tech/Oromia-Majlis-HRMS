@@ -1,8 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
-import { CreateUserDto, UpdateUserDto, ListUsersQuery, UpdateSelfDto } from "./user.dto.js";
+import { CreateUserDto, UpdateUserDto, ListUsersQuery, UpdateSelfDto, UpdateUserPermissionsDto, } from "./user.dto.js";
 import { CreateRoleDto, UpdateRoleDto } from "./role.dto.js";
 import { paginate } from "../../lib/paginate.js";
+import { buildEffectivePermissionDetails } from "./permission-utils.js";
 const prisma = new PrismaClient();
 export async function listUsers(req, res) {
     try {
@@ -183,30 +184,17 @@ export async function getUser(req, res) {
                         },
                     },
                 },
+                userPermissions: {
+                    include: {
+                        permission: true,
+                    },
+                },
             },
         });
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        // Get all permissions from all roles
-        const permissionsSet = new Set();
-        const permissionsWithDetails = [];
-        const permissionsMap = new Map();
-        user.userRoles.forEach((ur) => {
-            ur.role.permissions.forEach((rp) => {
-                if (!permissionsSet.has(rp.permission.name)) {
-                    permissionsSet.add(rp.permission.name);
-                    permissionsMap.set(rp.permission.name, {
-                        id: rp.permission.id,
-                        name: rp.permission.name,
-                        description: rp.permission.description || undefined,
-                        module: rp.permission.module,
-                        action: rp.permission.action,
-                    });
-                }
-            });
-        });
-        permissionsWithDetails.push(...Array.from(permissionsMap.values()));
+        const permissionsWithDetails = buildEffectivePermissionDetails(user.userRoles, user.userPermissions ?? []);
         // Format response - don't include passwordHash
         const formatted = {
             id: user.id,
@@ -708,26 +696,17 @@ export async function getCurrentUser(req, res) {
                         },
                     },
                 },
+                userPermissions: {
+                    include: {
+                        permission: true,
+                    },
+                },
             },
         });
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        const permissionsMap = new Map();
-        user.userRoles.forEach((ur) => {
-            ur.role.permissions.forEach((rp) => {
-                const perm = rp.permission;
-                if (!permissionsMap.has(perm.id)) {
-                    permissionsMap.set(perm.id, {
-                        id: perm.id,
-                        name: perm.name,
-                        description: perm.description ?? undefined,
-                        module: perm.module,
-                        action: perm.action,
-                    });
-                }
-            });
-        });
+        const permissionsWithDetails = buildEffectivePermissionDetails(user.userRoles, user.userPermissions);
         const formatted = {
             id: user.id,
             email: user.email,
@@ -739,7 +718,7 @@ export async function getCurrentUser(req, res) {
                 name: ur.role.name,
                 description: ur.role.description,
             })),
-            permissions: Array.from(permissionsMap.values()),
+            permissions: permissionsWithDetails,
             employee: user.employee,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
@@ -976,6 +955,98 @@ export async function getPermissions(req, res) {
     catch (error) {
         console.error("Failed to get permissions:", error);
         res.status(500).json({ message: "Failed to fetch permissions" });
+    }
+}
+export async function getUserPermissions(req, res) {
+    try {
+        const { id } = req.params;
+        const user = await prisma.user.findUnique({
+            where: { id },
+            include: {
+                userRoles: {
+                    include: {
+                        role: {
+                            include: {
+                                permissions: {
+                                    include: {
+                                        permission: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                userPermissions: {
+                    include: {
+                        permission: true,
+                    },
+                },
+            },
+        });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        const rolePermissionMap = new Map();
+        user.userRoles.forEach((ur) => {
+            ur.role.permissions.forEach((rp) => {
+                rolePermissionMap.set(rp.permission.id, rp.permission.name);
+            });
+        });
+        const effectivePermissions = buildEffectivePermissionDetails(user.userRoles, user.userPermissions);
+        return res.json({
+            rolePermissionIds: Array.from(rolePermissionMap.keys()),
+            userOverrides: user.userPermissions.map((up) => ({
+                permissionId: up.permissionId,
+                permissionName: up.permission.name,
+                allowed: up.allowed,
+            })),
+            effectivePermissionIds: effectivePermissions.map((p) => p.id),
+            effectivePermissions,
+        });
+    }
+    catch (error) {
+        console.error("Failed to get user permissions:", error);
+        return res.status(500).json({ message: "Failed to fetch user permissions" });
+    }
+}
+export async function updateUserPermissions(req, res) {
+    try {
+        const { id } = req.params;
+        const dto = UpdateUserPermissionsDto.parse(req.body);
+        const user = await prisma.user.findUnique({ where: { id } });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        const permissionIds = dto.overrides.map((o) => o.permissionId);
+        if (permissionIds.length > 0) {
+            const found = await prisma.permission.findMany({
+                where: { id: { in: permissionIds } },
+                select: { id: true },
+            });
+            if (found.length !== permissionIds.length) {
+                return res.status(400).json({ message: "One or more permissions not found" });
+            }
+        }
+        await prisma.$transaction(async (tx) => {
+            await tx.userPermission.deleteMany({ where: { userId: id } });
+            if (dto.overrides.length > 0) {
+                await tx.userPermission.createMany({
+                    data: dto.overrides.map((o) => ({
+                        userId: id,
+                        permissionId: o.permissionId,
+                        allowed: o.allowed,
+                    })),
+                });
+            }
+        });
+        return getUserPermissions(req, res);
+    }
+    catch (error) {
+        if (error.name === "ZodError") {
+            return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+        }
+        console.error("Failed to update user permissions:", error);
+        return res.status(500).json({ message: "Failed to update user permissions" });
     }
 }
 export async function getRole(req, res) {

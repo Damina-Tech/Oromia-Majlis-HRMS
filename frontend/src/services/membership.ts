@@ -163,7 +163,34 @@ export const membershipApi = {
   certificates: {
     downloadUrl: (certificateIdOrId: string) => `${API_BASE_URL}/api/v1${base}/certificates/${certificateIdOrId}/download`,
     verify: (certificateId: string) =>
-      api.get<{ valid: boolean; certificateId: string; fullName: string; category: string; status: string; expiresAt: string }>(
+      api.get<{
+        valid: boolean;
+        certificateId: string;
+        fullName: string;
+        category: string;
+        status: string;
+        issuedAt: string;
+        expiresAt: string;
+        member?: {
+          phone?: string | null;
+          email?: string | null;
+          region?: string | null;
+          zone?: string | null;
+          woreda?: string | null;
+        };
+        subscription?: {
+          id: string;
+          status: string;
+          planName: string;
+          planType: string;
+        };
+        payment?: {
+          method?: string | null;
+          status?: string | null;
+          paidAt?: string | null;
+        } | null;
+        verifiedAt?: string;
+      }>(
         `${base}/verify/${certificateId}`
       ).then((r) => r.data),
   },

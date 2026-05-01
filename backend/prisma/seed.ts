@@ -3,6 +3,26 @@ import bcrypt from "bcrypt";
 import { seedPermissionsAndRoleMappings } from "./permission-seed.shared";
 
 const prisma = new PrismaClient();
+const NEW_SEED_EMAIL_DOMAIN = "oromiamajlis.org";
+const LEGACY_SEED_EMAIL_DOMAIN = "ciro.gov.et";
+
+function toLegacySeedEmail(email: string): string {
+  if (!email.endsWith(`@${NEW_SEED_EMAIL_DOMAIN}`)) return email;
+  return email.replace(`@${NEW_SEED_EMAIL_DOMAIN}`, `@${LEGACY_SEED_EMAIL_DOMAIN}`);
+}
+
+async function migrateLegacyUserEmailIfNeeded(email: string): Promise<void> {
+  const legacyEmail = toLegacySeedEmail(email);
+  if (legacyEmail === email) return;
+  const existingNew = await prisma.user.findUnique({ where: { email } });
+  if (existingNew) return;
+  const existingLegacy = await prisma.user.findUnique({ where: { email: legacyEmail } });
+  if (!existingLegacy) return;
+  await prisma.user.update({
+    where: { id: existingLegacy.id },
+    data: { email },
+  });
+}
 
 async function seedPermissions() {
   await seedPermissionsAndRoleMappings(prisma);
@@ -47,7 +67,8 @@ async function main() {
   console.log("✅ Created departments:", deptNames.join(", "));
 
   // Create admin user
-  const adminEmail = "admin@ciro.gov.et";
+  const adminEmail = "admin@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(adminEmail);
   const adminPassword = await bcrypt.hash("Admin12345!", 10);
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
@@ -73,8 +94,17 @@ async function main() {
 
   // Create admin employee record
   const adminEmp = await prisma.employee.upsert({
-    where: { email: adminEmail },
-    update: {},
+    where: { employeeCode: "EMP-000000" },
+    update: {
+      firstName: "System",
+      lastName: "Admin",
+      email: adminEmail,
+      designation: "System Administrator",
+      status: "ACTIVE",
+      departmentId: depts[3].id,
+      userId: admin.id,
+      salary: 50000.00,
+    },
     create: {
       employeeCode: "EMP-000000",
       firstName: "System",
@@ -94,7 +124,8 @@ async function main() {
   await seedIdCardTemplates(admin);
 
   // Create manager user
-  const managerEmail = "manager@ciro.gov.et";
+  const managerEmail = "manager@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(managerEmail);
   const managerPassword = await bcrypt.hash("Manager123!", 10);
   const managerUser = await prisma.user.upsert({
     where: { email: managerEmail },
@@ -119,8 +150,17 @@ async function main() {
 
   // Create manager employee record
   const managerEmp = await prisma.employee.upsert({
-    where: { email: managerEmail },
-    update: {},
+    where: { employeeCode: "EMP-000001" },
+    update: {
+      firstName: "Main",
+      lastName: "Manager",
+      email: managerEmail,
+      designation: "Department Manager",
+      status: "ACTIVE",
+      departmentId: depts[1].id,
+      userId: managerUser.id,
+      salary: 35000.00,
+    },
     create: {
       employeeCode: "EMP-000001",
       firstName: "Main",
@@ -138,7 +178,8 @@ async function main() {
   console.log("✅ Created manager employee:", managerEmp.employeeCode);
 
   // Create an employee user for testing
-  const employeeEmail = "employee@ciro.gov.et";
+  const employeeEmail = "employee@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(employeeEmail);
   const employeePassword = await bcrypt.hash("Employee123!", 10);
   
   const employeeUser = await prisma.user.upsert({
@@ -163,9 +204,20 @@ async function main() {
   }
 
   // Create employee record
-  const existingEmployee = await prisma.employee.findUnique({ where: { email: employeeEmail } });
-  const employeeEmp = existingEmployee || await prisma.employee.create({
-    data: {
+  const employeeEmp = await prisma.employee.upsert({
+    where: { employeeCode: "EMP-000003" },
+    update: {
+      firstName: "Test",
+      lastName: "Employee",
+      email: employeeEmail,
+      designation: "Software Developer",
+      status: "ACTIVE",
+      departmentId: depts[0].id,
+      userId: employeeUser.id,
+      managerId: managerEmp.id,
+      salary: 25000.00,
+    },
+    create: {
       employeeCode: "EMP-000003",
       firstName: "Test",
       lastName: "Employee",
@@ -177,7 +229,7 @@ async function main() {
       managerId: managerEmp.id, // Reports to manager
       joiningDate: new Date(),
       salary: 25000.00,
-    }
+    },
   });
 
   console.log("✅ Created employee:", employeeEmp.employeeCode);
@@ -192,7 +244,8 @@ async function main() {
   await seedMemberTestUser(admin);
 
   // Create additional department manager (Finance Department)
-  const financeManagerEmail = "finance.manager@ciro.gov.et";
+  const financeManagerEmail = "finance.manager@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(financeManagerEmail);
   const financeManagerPassword = await bcrypt.hash("FinanceMgr123!", 10);
   const financeManagerUser = await prisma.user.upsert({
     where: { email: financeManagerEmail },
@@ -216,8 +269,17 @@ async function main() {
 
   // Create finance manager employee record
   const financeManagerEmp = await prisma.employee.upsert({
-    where: { email: financeManagerEmail },
-    update: {},
+    where: { employeeCode: "EMP-000004" },
+    update: {
+      firstName: "Finance",
+      lastName: "Manager",
+      email: financeManagerEmail,
+      designation: "Finance Department Manager",
+      status: "ACTIVE",
+      departmentId: depts[2].id,
+      userId: financeManagerUser.id,
+      salary: 40000.00,
+    },
     create: {
       employeeCode: "EMP-000004",
       firstName: "Finance",
@@ -234,7 +296,8 @@ async function main() {
   console.log("✅ Created finance manager:", financeManagerEmp.employeeCode);
 
   // Create additional employees under different managers
-  const employee2Email = "john.doe@ciro.gov.et";
+  const employee2Email = "john.doe@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(employee2Email);
   const employee2Password = await bcrypt.hash("Employee123!", 10);
   const employee2User = await prisma.user.upsert({
     where: { email: employee2Email },
@@ -257,8 +320,18 @@ async function main() {
   }
 
   const employee2Emp = await prisma.employee.upsert({
-    where: { email: employee2Email },
-    update: {},
+    where: { employeeCode: "EMP-000005" },
+    update: {
+      firstName: "John",
+      lastName: "Doe",
+      email: employee2Email,
+      designation: "Senior Developer",
+      status: "ACTIVE",
+      departmentId: depts[3].id,
+      userId: employee2User.id,
+      managerId: managerEmp.id,
+      salary: 28000.00,
+    },
     create: {
       employeeCode: "EMP-000005",
       firstName: "John",
@@ -276,7 +349,8 @@ async function main() {
   console.log("✅ Created employee 2:", employee2Emp.employeeCode);
 
   // Create HR user
-  const hrEmail = "hr@ciro.gov.et";
+  const hrEmail = "hr@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(hrEmail);
   const hrPassword = await bcrypt.hash("HrUser123!", 10);
   const hrUser = await prisma.user.upsert({
     where: { email: hrEmail },
@@ -300,8 +374,17 @@ async function main() {
   }
 
   const hrEmp = await prisma.employee.upsert({
-    where: { email: hrEmail },
-    update: {},
+    where: { employeeCode: "EMP-000006" },
+    update: {
+      firstName: "HR",
+      lastName: "Specialist",
+      email: hrEmail,
+      designation: "HR Specialist",
+      status: "ACTIVE",
+      departmentId: depts[1].id,
+      userId: hrUser.id,
+      salary: 30000.00,
+    },
     create: {
       employeeCode: "EMP-000006",
       firstName: "HR",
@@ -318,7 +401,8 @@ async function main() {
   console.log("✅ Created HR user:", hrEmp.employeeCode);
 
   // Create an employee under finance manager
-  const financeEmployeeEmail = "finance.emp@ciro.gov.et";
+  const financeEmployeeEmail = "finance.emp@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(financeEmployeeEmail);
   const financeEmployeePassword = await bcrypt.hash("FinanceEmp123!", 10);
   const financeEmployeeUser = await prisma.user.upsert({
     where: { email: financeEmployeeEmail },
@@ -340,8 +424,18 @@ async function main() {
   }
 
   const financeEmployeeEmp = await prisma.employee.upsert({
-    where: { email: financeEmployeeEmail },
-    update: {},
+    where: { employeeCode: "EMP-000007" },
+    update: {
+      firstName: "Finance",
+      lastName: "Employee",
+      email: financeEmployeeEmail,
+      designation: "Accountant",
+      status: "ACTIVE",
+      departmentId: depts[2].id,
+      userId: financeEmployeeUser.id,
+      managerId: financeManagerEmp.id,
+      salary: 23000.00,
+    },
     create: {
       employeeCode: "EMP-000007",
       firstName: "Finance",
@@ -655,39 +749,39 @@ async function main() {
   console.log("\n📋 Test User Credentials:");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🔴 ADMIN ROLE:");
-  console.log("   Email: admin@ciro.gov.et");
+  console.log("   Email: admin@oromiamajlis.org");
   console.log("   Password: Admin12345!");
   console.log("   Access: Full system access with all permissions");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟡 DEPARTMENT MANAGER ROLES:");
   console.log("   1. Main Manager (HR Department):");
-  console.log("      Email: manager@ciro.gov.et");
+  console.log("      Email: manager@oromiamajlis.org");
   console.log("      Password: Manager123!");
   console.log("   2. Finance Manager (Finance Department):");
-  console.log("      Email: finance.manager@ciro.gov.et");
+  console.log("      Email: finance.manager@oromiamajlis.org");
   console.log("      Password: FinanceMgr123!");
   console.log("   Access: Department management, team oversight");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟢 EMPLOYEE ROLES:");
   console.log("   1. Test Employee (IT Department):");
-  console.log("      Email: employee@ciro.gov.et");
+  console.log("      Email: employee@oromiamajlis.org");
   console.log("      Password: Employee123!");
   console.log("   2. John Doe (IT Department):");
-  console.log("      Email: john.doe@ciro.gov.et");
+  console.log("      Email: john.doe@oromiamajlis.org");
   console.log("      Password: Employee123!");
   console.log("   3. Finance Employee (Finance Department):");
-  console.log("      Email: finance.emp@ciro.gov.et");
+  console.log("      Email: finance.emp@oromiamajlis.org");
   console.log("      Password: FinanceEmp123!");
   console.log("   Access: Basic employee features");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🔵 HR ROLE:");
-  console.log("   Email: hr@ciro.gov.et");
+  console.log("   Email: hr@oromiamajlis.org");
   console.log("   Password: HrUser123!");
   console.log("   Access: HR management features");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟣 MEMBERSHIP ROLES:");
   console.log("   Member (portal - profile/certificate/renewal):");
-  console.log("      Email: member@ciro.gov.et");
+  console.log("      Email: member@oromiamajlis.org");
   console.log("      Password: Member123!");
   console.log("   Representative (register members, mark payment): use ADMIN or create user with MAJLIS_REPRESENTATIVE role");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -760,7 +854,7 @@ async function seedAssets() {
 
   // Create sample assets (only if admin user exists)
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@ciro.gov.et" },
+    where: { email: "admin@oromiamajlis.org" },
   });
 
   if (adminUser && createdCategories.length > 0 && createdLocations.length > 0) {
@@ -1065,7 +1159,7 @@ async function seedDocumentTemplates() {
 
   // Get admin user for createdBy
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@ciro.gov.et" },
+    where: { email: "admin@oromiamajlis.org" },
   });
 
   if (!adminUser) {
@@ -1520,7 +1614,7 @@ async function seedTasks() {
 
   // Get users and employees for task assignment
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@ciro.gov.et" },
+    where: { email: "admin@oromiamajlis.org" },
   });
   
   const employees = await prisma.employee.findMany({
@@ -2439,7 +2533,7 @@ async function seedHalalCertification(adminUser: { id: string }) {
     },
   });
 
-  const inspectorUser = await prisma.user.findFirst({ where: { email: "admin@ciro.gov.et" } });
+  const inspectorUser = await prisma.user.findFirst({ where: { email: "admin@oromiamajlis.org" } });
   if (inspectorUser) {
     await prisma.halalInspection.create({
       data: {
@@ -2498,7 +2592,8 @@ async function seedMemberTestUser(adminUser: { id: string }) {
   const memberRole = await prisma.role.findUnique({ where: { name: "MEMBER" } });
   if (!memberRole) return;
 
-  const memberEmail = "member@ciro.gov.et";
+  const memberEmail = "member@oromiamajlis.org";
+  await migrateLegacyUserEmailIfNeeded(memberEmail);
   const memberPassword = await bcrypt.hash("Member123!", 10);
   const memberUser = await prisma.user.upsert({
     where: { email: memberEmail },

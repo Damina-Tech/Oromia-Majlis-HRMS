@@ -28,6 +28,17 @@ function hasMembershipPermission(req: Request, permission: string): boolean {
   return perms?.includes(permission) ?? false;
 }
 
+function normalizeBaseUrl(raw: string | undefined, fallback: string): string {
+  const candidate = (raw || fallback).trim();
+  const withProtocol = /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+  try {
+    const u = new URL(withProtocol);
+    return u.origin;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Days from now until date (0 if in the past) */
 function daysUntil(date: Date): number {
   const now = new Date();
@@ -604,8 +615,8 @@ export async function initChapaPayment(req: Request, res: Response) {
     if (isNaN(amount) || amount <= 0) {
       return res.status(400).json({ message: "Invalid plan amount" });
     }
-    const apiBase = process.env.APP_BASE_URL || "http://localhost:4000";
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
+    const apiBase = normalizeBaseUrl(process.env.APP_BASE_URL, "http://localhost:4000");
+    const frontendUrl = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
     const txRef = `majlis-${id}-${Date.now()}`;
     const names = sub.member.fullName.trim().split(" ");
     const firstName = names[0] || "Member";
@@ -621,8 +632,8 @@ export async function initChapaPayment(req: Request, res: Response) {
       last_name: lastName,
       phone_number: phoneNumber,
       tx_ref: txRef,
-      callback_url: `${apiBase}/api/v1/membership/subscriptions/${id}/payment/chapa-callback`,
-      return_url: `${frontendUrl}/register/membership?step=success&subscriptionId=${id}`,
+      callback_url: new URL(`/api/v1/membership/subscriptions/${id}/payment/chapa-callback`, apiBase).toString(),
+      return_url: new URL(`/register/membership?step=success&subscriptionId=${id}`, frontendUrl).toString(),
       customization: {
         title: "Majlis Member",
         description: `${sub.member.fullName} - ${sub.plan.name}`,
@@ -1019,13 +1030,31 @@ export async function verifyCertificate(req: Request, res: Response) {
     const { certificateId } = req.params;
     const cert = await prisma.membershipCertificate.findUnique({
       where: { certificateId },
-      include: { member: true, subscription: { include: { plan: true } } },
+      include: {
+        member: {
+          include: {
+            region: { select: { name: true } },
+            zone: { select: { name: true } },
+            woreda: { select: { name: true } },
+          },
+        },
+        subscription: {
+          include: {
+            plan: true,
+            payments: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        },
+      },
     });
     if (!cert) {
       return res.status(404).json({ valid: false, message: "Certificate not found" });
     }
     const now = new Date();
     const valid = cert.expiresAt >= now;
+    const latestPayment = cert.subscription.payments[0] ?? null;
     res.json({
       valid,
       certificateId: cert.certificateId,
@@ -1034,6 +1063,27 @@ export async function verifyCertificate(req: Request, res: Response) {
       issuedAt: cert.issuedAt,
       expiresAt: cert.expiresAt,
       status: valid ? "ACTIVE" : "EXPIRED",
+      member: {
+        phone: cert.member.phone,
+        email: cert.member.email ?? null,
+        region: cert.member.region?.name ?? null,
+        zone: cert.member.zone?.name ?? null,
+        woreda: cert.member.woreda?.name ?? null,
+      },
+      subscription: {
+        id: cert.subscription.id,
+        status: cert.subscription.status,
+        planName: cert.subscription.plan.name,
+        planType: cert.subscription.plan.planType,
+      },
+      payment: latestPayment
+        ? {
+            method: latestPayment.method,
+            status: latestPayment.status,
+            paidAt: latestPayment.paidAt,
+          }
+        : null,
+      verifiedAt: now.toISOString(),
     });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Verification failed" });

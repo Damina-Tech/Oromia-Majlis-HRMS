@@ -1,9 +1,11 @@
 import { z } from "zod";
 export declare const CheckInDto: z.ZodObject<{
     location: z.ZodString;
+    date: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 export declare const CheckOutDto: z.ZodObject<{
     location: z.ZodString;
+    date: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 export declare const ListAttendanceQuery: z.ZodObject<{
     employeeId: z.ZodOptional<z.ZodString>;

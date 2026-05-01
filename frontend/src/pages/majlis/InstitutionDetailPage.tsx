@@ -1,6 +1,6 @@
 "use client";
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -50,6 +52,11 @@ import {
   Library,
   GraduationCap,
   UserCheck,
+  Award,
+  Download,
+  Loader2,
+  CreditCard,
+  Banknote,
 } from "lucide-react";
 import {
   institutionsApi,
@@ -57,9 +64,16 @@ import {
   type Institution,
   type InstitutionRole,
 } from "@/services/institutions";
+import {
+  institutionRecognitionApi,
+  type InstitutionRecognition,
+  INSTITUTION_RECOGNITION_FEE_ETB,
+} from "@/services/institution-recognition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import { listEmployees, type Employee } from "@/services/employees";
 import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
+import { MAJLIS_MANUAL_PAYMENT_BANKS } from "@/constants/majlis-banks";
 
 type StatusBadgeConfig = Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }>;
 
@@ -67,7 +81,42 @@ export default function InstitutionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { hasPermission } = useAuth();
   const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
+  const [recognitionOpen, setRecognitionOpen] = useState(false);
+  const [recognitionStep, setRecognitionStep] = useState<1 | 2>(1);
+  const [createdRecognitionId, setCreatedRecognitionId] = useState<string | null>(null);
+  const [paymentChoice, setPaymentChoice] = useState<"chapa" | "manual">("chapa");
+  const [manualFile, setManualFile] = useState<File | null>(null);
+  const [manualBankId, setManualBankId] = useState("");
+  /** True when the dialog was opened from "Complete payment" (existing PENDING_PAYMENT row). */
+  const [recognitionOpenedForPaymentResume, setRecognitionOpenedForPaymentResume] = useState(false);
+  const [recognitionForm, setRecognitionForm] = useState({
+    institutionNameOnCert: "",
+    zoneCityAdmin: "",
+    districtSubcity: "",
+    gandaKebele: "",
+    issueDate: new Date().toISOString().slice(0, 10),
+    applicantRole: "",
+    communityConsent: "yes" as "yes" | "no",
+    accurate: false,
+  });
+
+  const canGiveRecognition = hasPermission("majlis.institutions.write");
+  const canApproveManual =
+    hasPermission("majlis.institutions.approve") || hasPermission("majlis.membership.admin");
+
+  /** Resume Chapa or manual payment for an existing recognition (step 2 of the dialog). */
+  const openRecognitionPaymentModal = (recognitionId: string) => {
+    setRecognitionOpenedForPaymentResume(true);
+    setCreatedRecognitionId(recognitionId);
+    setRecognitionStep(2);
+    setPaymentChoice("chapa");
+    setManualBankId("");
+    setManualFile(null);
+    setRecognitionOpen(true);
+  };
 
   const { data: institution, isLoading, error } = useQuery({
     queryKey: ["institution", id],
@@ -84,6 +133,12 @@ export default function InstitutionDetailPage() {
   const { data: employees } = useQuery({
     queryKey: ["employees"],
     queryFn: () => listEmployees({ page: 1, pageSize: 1000 }),
+  });
+
+  const { data: recognitionList } = useQuery({
+    queryKey: ["institution-recognitions", id],
+    queryFn: () => institutionRecognitionApi.list(id!),
+    enabled: !!id,
   });
 
   const createAssignmentMutation = useMutation({
@@ -109,6 +164,130 @@ export default function InstitutionDetailPage() {
       toast.error(error.response?.data?.message || "Failed to update assignment");
     },
   });
+
+  const createRecognitionMutation = useMutation({
+    mutationFn: () =>
+      institutionRecognitionApi.create(id!, {
+        institutionNameOnCert: recognitionForm.institutionNameOnCert.trim(),
+        zoneCityAdmin: recognitionForm.zoneCityAdmin.trim(),
+        districtSubcity: recognitionForm.districtSubcity.trim(),
+        gandaKebele: recognitionForm.gandaKebele.trim(),
+        issueDate: new Date(recognitionForm.issueDate).toISOString(),
+        questionnaire: {
+          applicantRole: recognitionForm.applicantRole.trim(),
+          operatingWithCommunityConsent: recognitionForm.communityConsent,
+          informationAccurate: recognitionForm.accurate,
+        },
+      }),
+    onSuccess: (row) => {
+      setRecognitionOpenedForPaymentResume(false);
+      setCreatedRecognitionId(row.id);
+      setRecognitionStep(2);
+      queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+      toast.success("Proceed to payment");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to start recognition");
+    },
+  });
+
+  const approveRecognitionManualMutation = useMutation({
+    mutationFn: (recognitionId: string) => institutionRecognitionApi.approveManual(recognitionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+      toast.success("Manual payment approved. Certificate issued.");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Approval failed");
+    },
+  });
+
+  const chapaInitMutation = useMutation({
+    mutationFn: (recognitionId: string) => institutionRecognitionApi.initChapa(recognitionId),
+    onSuccess: ({ checkoutUrl }) => {
+      window.location.href = checkoutUrl;
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message;
+      const detail =
+        msg && typeof msg === "object" && !Array.isArray(msg)
+          ? JSON.stringify(msg)
+          : typeof msg === "string"
+            ? msg
+            : null;
+      toast.error(detail || "Could not start Chapa checkout");
+    },
+  });
+
+  const manualSubmitMutation = useMutation({
+    mutationFn: async () => {
+      if (!createdRecognitionId) throw new Error("Missing recognition");
+      if (!manualFile) throw new Error("Receipt required");
+      const bank = MAJLIS_MANUAL_PAYMENT_BANKS.find((b) => b.id === manualBankId);
+      if (!bank) throw new Error("Please select a bank");
+      const fd = new FormData();
+      fd.append("receipt", manualFile);
+      fd.append("bankName", bank.name);
+      return institutionRecognitionApi.submitManual(createdRecognitionId, fd);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+      setRecognitionOpen(false);
+      setRecognitionStep(1);
+      setCreatedRecognitionId(null);
+      setManualFile(null);
+      setManualBankId("");
+      toast.success("Receipt submitted. An approver will confirm payment.");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || error.message || "Upload failed");
+    },
+  });
+
+  useEffect(() => {
+    if (!institution) return;
+    setRecognitionForm((f) => ({
+      ...f,
+      institutionNameOnCert: institution.name,
+      zoneCityAdmin: institution.zone?.name ?? "",
+      districtSubcity: institution.woreda?.name ?? "",
+      gandaKebele: institution.kebeleName || institution.kebele?.name || "",
+    }));
+  }, [institution?.id, institution?.name, institution?.zone?.name, institution?.woreda?.name, institution?.kebele?.name, institution?.kebeleName]);
+
+  useEffect(() => {
+    const success = searchParams.get("recognitionPayment");
+    const rid = searchParams.get("recognitionId");
+    if (success !== "success" || !rid || !id) return;
+
+    let cancelled = false;
+    let tries = 0;
+    const poll = async () => {
+      while (!cancelled && tries < 30) {
+        tries++;
+        try {
+          const r = await institutionRecognitionApi.get(rid);
+          queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+          if (r.status === "COMPLETED") {
+            toast.success("Payment confirmed. Recognition certificate is ready.");
+            setSearchParams({}, { replace: true });
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+      if (!cancelled) {
+        toast.info("Still processing payment — refresh this page in a moment if the certificate does not appear.");
+        setSearchParams({}, { replace: true });
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, id, queryClient, setSearchParams]);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -206,13 +385,293 @@ export default function InstitutionDetailPage() {
               </div>
             </div>
           </div>
-          <Button
-            onClick={() => navigate(`/majlis/institutions/${id}/edit`)}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg border-0 self-start sm:self-center"
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
+          <div className="flex flex-wrap gap-2 self-start sm:self-center">
+            <Dialog
+              open={recognitionOpen}
+              onOpenChange={(open) => {
+                setRecognitionOpen(open);
+                if (!open) {
+                  setRecognitionStep(1);
+                  setCreatedRecognitionId(null);
+                  setManualFile(null);
+                  setManualBankId("");
+                  setPaymentChoice("chapa");
+                  setRecognitionOpenedForPaymentResume(false);
+                }
+              }}
+            >
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Institution recognition certificate</DialogTitle>
+                  <DialogDescription>
+                    {recognitionStep === 1
+                      ? "Confirm the details that will appear on the certificate and answer the declaration questions."
+                      : recognitionOpenedForPaymentResume
+                        ? `Complete payment for this request: ${INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB via Chapa or manual bank transfer with receipt.`
+                        : `Official recognition fee: ${INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB. Pay online with Chapa or upload proof of manual bank payment.`}
+                  </DialogDescription>
+                </DialogHeader>
+                {recognitionStep === 1 ? (
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-name">Institution name on certificate</Label>
+                      <Input
+                        id="ir-name"
+                        value={recognitionForm.institutionNameOnCert}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, institutionNameOnCert: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-zone">Godina / Bulchiinsa magaalaa (Zone / city administration)</Label>
+                      <Input
+                        id="ir-zone"
+                        value={recognitionForm.zoneCityAdmin}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, zoneCityAdmin: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-dist">Aanaa / Kutaa magaalaa (District / sub-city)</Label>
+                      <Input
+                        id="ir-dist"
+                        value={recognitionForm.districtSubcity}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, districtSubcity: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-keb">Ganda / Kebele</Label>
+                      <Input
+                        id="ir-keb"
+                        value={recognitionForm.gandaKebele}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, gandaKebele: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-date">Guyyaa ragaa (Issue date)</Label>
+                      <Input
+                        id="ir-date"
+                        type="date"
+                        value={recognitionForm.issueDate}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, issueDate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ir-role">Your role in this request</Label>
+                      <Input
+                        id="ir-role"
+                        placeholder="e.g. Majlis officer, institution chairperson"
+                        value={recognitionForm.applicantRole}
+                        onChange={(e) => setRecognitionForm((f) => ({ ...f, applicantRole: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Does the institution operate with community / committee awareness and consent?</Label>
+                      <RadioGroup
+                        value={recognitionForm.communityConsent}
+                        onValueChange={(v) =>
+                          setRecognitionForm((f) => ({ ...f, communityConsent: v as "yes" | "no" }))
+                        }
+                        className="flex gap-4 pt-1"
+                      >
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="yes" id="ir-consent-yes" />
+                          <Label htmlFor="ir-consent-yes" className="font-normal">
+                            Yes
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="no" id="ir-consent-no" />
+                          <Label htmlFor="ir-consent-no" className="font-normal">
+                            No
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    <div className="flex items-start gap-2 rounded-md border p-3 bg-muted/40">
+                      <Checkbox
+                        id="ir-accurate"
+                        checked={recognitionForm.accurate}
+                        onCheckedChange={(c) => setRecognitionForm((f) => ({ ...f, accurate: c === true }))}
+                      />
+                      <Label htmlFor="ir-accurate" className="text-sm font-normal leading-snug cursor-pointer">
+                        I confirm that the information provided is true and may be verified by the Majlis.
+                      </Label>
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={createRecognitionMutation.isPending}
+                      onClick={() => {
+                        if (!recognitionForm.accurate) {
+                          toast.error("Please confirm accuracy to continue.");
+                          return;
+                        }
+                        createRecognitionMutation.mutate();
+                      }}
+                    >
+                      {createRecognitionMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Continue to payment"
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4 py-2">
+                    <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm">
+                      Amount due: <strong>{INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB</strong>
+                    </div>
+                    <RadioGroup
+                      value={paymentChoice}
+                      onValueChange={(v) => setPaymentChoice(v as "chapa" | "manual")}
+                      className="grid gap-3"
+                    >
+                      <div className="flex items-center gap-2 rounded-md border p-3">
+                        <RadioGroupItem value="chapa" id="pay-chapa" />
+                        <Label htmlFor="pay-chapa" className="flex items-center gap-2 font-normal cursor-pointer flex-1">
+                          <CreditCard className="h-4 w-4" />
+                          Pay with Chapa (card / mobile money)
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-md border p-3">
+                        <RadioGroupItem value="manual" id="pay-manual" />
+                        <Label htmlFor="pay-manual" className="flex items-center gap-2 font-normal cursor-pointer flex-1">
+                          <Banknote className="h-4 w-4" />
+                          Manual bank payment (upload receipt)
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                    {paymentChoice === "chapa" ? (
+                      <Button
+                        className="w-full"
+                        disabled={!createdRecognitionId || chapaInitMutation.isPending}
+                        onClick={() => createdRecognitionId && chapaInitMutation.mutate(createdRecognitionId)}
+                      >
+                        {chapaInitMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Redirecting…
+                          </>
+                        ) : (
+                          "Pay with Chapa"
+                        )}
+                      </Button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Bank you transferred from</Label>
+                          <Select value={manualBankId} onValueChange={setManualBankId}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select bank" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MAJLIS_MANUAL_PAYMENT_BANKS.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {manualBankId ? (
+                          <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+                            {(() => {
+                              const b = MAJLIS_MANUAL_PAYMENT_BANKS.find((x) => x.id === manualBankId);
+                              if (!b) return null;
+                              return (
+                                <>
+                                  <p className="font-medium text-foreground flex items-center gap-1">
+                                    <Building2 className="h-4 w-4 shrink-0" /> Transfer to (Majlis)
+                                  </p>
+                                  <div>
+                                    <span className="text-muted-foreground">Account name: </span>
+                                    {b.accountName}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Account number: </span>
+                                    <span className="font-mono">{b.accountNumber}</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground pt-1">
+                                    Reference: institution recognition · {INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB
+                                  </p>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : null}
+                        <div className="space-y-2">
+                          <Label htmlFor="ir-receipt">Payment receipt (PDF or image)</Label>
+                          <Input
+                            id="ir-receipt"
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => setManualFile(e.target.files?.[0] ?? null)}
+                          />
+                        </div>
+                        <Button
+                          className="w-full"
+                          disabled={
+                            !createdRecognitionId || !manualBankId || !manualFile || manualSubmitMutation.isPending
+                          }
+                          onClick={() => manualSubmitMutation.mutate()}
+                        >
+                          {manualSubmitMutation.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Uploading…
+                            </>
+                          ) : (
+                            "Submit receipt for approval"
+                          )}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          An approver with finance permissions must confirm the transfer before the PDF is generated.
+                        </p>
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={() => {
+                        if (recognitionOpenedForPaymentResume) {
+                          setRecognitionOpen(false);
+                        } else {
+                          setRecognitionStep(1);
+                        }
+                      }}
+                    >
+                      {recognitionOpenedForPaymentResume ? "Close" : "Back"}
+                    </Button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+            {canGiveRecognition ? (
+              <Button
+                onClick={() => {
+                  setRecognitionOpenedForPaymentResume(false);
+                  setRecognitionStep(1);
+                  setCreatedRecognitionId(null);
+                  setManualBankId("");
+                  setManualFile(null);
+                  setRecognitionOpen(true);
+                }}
+                className="bg-amber-500 hover:bg-amber-600 text-white shadow-lg border-0"
+              >
+                <Award className="h-4 w-4 mr-2" />
+                Give Recognition
+              </Button>
+            ) : null}
+            <Button
+              onClick={() => navigate(`/majlis/institutions/${id}/edit`)}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg border-0"
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -263,6 +722,112 @@ export default function InstitutionDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {(recognitionList?.items?.length ?? 0) > 0 ? (
+        <Card className="shadow-md border-amber-200/80 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 border-b py-4">
+            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <Award className="h-5 w-5 text-amber-700" />
+              Recognition certificates
+            </CardTitle>
+            <CardDescription className="text-gray-600">
+              Payment status and PDF downloads for Majlis recognition.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Certificate #</TableHead>
+                  <TableHead>Name on certificate</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recognitionList!.items.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          row.status === "COMPLETED"
+                            ? "default"
+                            : row.status === "MANUAL_PENDING_APPROVAL"
+                              ? "secondary"
+                              : row.status === "PENDING_PAYMENT"
+                                ? "secondary"
+                                : "outline"
+                        }
+                        className={
+                          row.status === "COMPLETED"
+                            ? "bg-emerald-100 text-emerald-900 border-emerald-200"
+                            : row.status === "MANUAL_PENDING_APPROVAL"
+                              ? "bg-amber-100 text-amber-900 border-amber-200"
+                              : row.status === "PENDING_PAYMENT"
+                                ? "bg-sky-100 text-sky-900 border-sky-200"
+                                : ""
+                        }
+                      >
+                        {row.status.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{row.certificateNumber ?? "—"}</TableCell>
+                    <TableCell>{row.institutionNameOnCert}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(row.updatedAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      {row.status === "PENDING_PAYMENT" && canGiveRecognition ? (
+                        <Button
+                          size="sm"
+                          className="bg-amber-600 hover:bg-amber-700 text-white"
+                          onClick={() => openRecognitionPaymentModal(row.id)}
+                        >
+                          <CreditCard className="h-3.5 w-3.5 mr-1" />
+                          Complete payment
+                        </Button>
+                      ) : null}
+                      {row.status === "COMPLETED" && row.certificateNumber ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const blob = await institutionRecognitionApi.downloadBlob(row.id);
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `${row.certificateNumber}.pdf`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            } catch (e: any) {
+                              toast.error(e.response?.data?.message || "Download failed");
+                            }
+                          }}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          PDF
+                        </Button>
+                      ) : null}
+                      {row.status === "MANUAL_PENDING_APPROVAL" && canApproveManual ? (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          disabled={approveRecognitionManualMutation.isPending}
+                          onClick={() => approveRecognitionManualMutation.mutate(row.id)}
+                        >
+                          Approve payment
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Basic Information */}

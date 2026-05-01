@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/index.js";
 import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/announcements/scheduler.js";
+import { processMembershipExpiryReminders } from "./modules/membership/membership-reminder.scheduler.js";
 import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,8 +20,11 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false,
 }));
+// Allow multiple origins (e.g. localhost + network IP when testing from another device)
+const corsOriginRaw = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8080";
+const corsOrigins = corsOriginRaw.split(",").map((o) => o.trim()).filter(Boolean);
 app.use(cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:8080",
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true
 }));
 // Rate limiting - more lenient for development
@@ -71,8 +76,8 @@ app.get("/health", (req, res) => {
 });
 // Debug: Log all incoming requests to /api (before routing)
 app.use("/api", (req, res, next) => {
-    console.log(`≡ƒöì [SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
-    console.log(`≡ƒöì [SERVER] Original URL: ${req.originalUrl}`);
+    console.log(`[SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
+    console.log(`[SERVER] Original URL: ${req.originalUrl}`);
     next();
 });
 // API routes
@@ -118,5 +123,15 @@ app.listen(PORT, () => {
     // Run immediately on startup
     processScheduledAnnouncements().catch(console.error);
     console.log("Γ£à Announcement scheduler started");
+    // Membership expiry reminders: run daily at 9:00 (check every hour for simplicity, or use cron)
+    setInterval(async () => {
+        try {
+            await processMembershipExpiryReminders();
+        }
+        catch (err) {
+            console.error("Membership reminder error:", err);
+        }
+    }, 60 * 60 * 1000); // every hour
+    processMembershipExpiryReminders().catch(console.error);
 });
 //# sourceMappingURL=server.js.map

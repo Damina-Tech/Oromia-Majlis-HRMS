@@ -66,6 +66,8 @@ model User {
   institutionsApproved             Institution[]           @relation("InstitutionApprovedBy")
   assignmentsApproved              InstitutionAssignment[] @relation("AssignmentApprovedBy")
   institutionAuditLogs             InstitutionAuditLog[]   @relation("InstitutionAuditActor")
+  institutionRecognitionsCreated   InstitutionRecognition[] @relation("InstitutionRecognitionCreatedBy")
+  institutionRecognitionManualApproved InstitutionRecognition[] @relation("InstitutionRecognitionManualApprovedBy")
   halalBusinesses                  HalalBusiness[]
   halalInspectionsPerformed        HalalInspection[]      @relation("HalalInspector")
   halalApplicationsReviewed        HalalApplication[]      @relation("HalalReviewer")
@@ -2091,6 +2093,20 @@ enum InstitutionAuditAction {
   ASSIGNMENT_APPROVED
   ASSIGNMENT_REJECTED
   ASSIGNMENT_ENDED
+  INSTITUTION_RECOGNITION_CREATED
+  INSTITUTION_RECOGNITION_ISSUED
+}
+
+enum InstitutionRecognitionStatus {
+  PENDING_PAYMENT
+  MANUAL_PENDING_APPROVAL
+  COMPLETED
+  CANCELLED
+}
+
+enum InstitutionRecognitionPaymentMethod {
+  CHAPA
+  MANUAL
 }
 
 // Geographic Hierarchy
@@ -2200,11 +2216,49 @@ model Institution {
   // Relations
   assignments       InstitutionAssignment[]
   auditLogs         InstitutionAuditLog[]
+  recognitions      InstitutionRecognition[]
   
   @@index([type, status])
   @@index([regionId, zoneId, woredaId])
   @@index([status])
   @@index([createdById])
+}
+
+model InstitutionRecognition {
+  id                        String                             @id @default(cuid())
+  institutionId             String
+  institution               Institution                        @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  status                    InstitutionRecognitionStatus       @default(PENDING_PAYMENT)
+  amountEtb                 Decimal                            @default(10000) @db.Decimal(12, 2)
+
+  institutionNameOnCert     String
+  zoneCityAdmin             String
+  districtSubcity           String
+  gandaKebele               String
+  issueDate                 DateTime
+  questionnaire             Json
+
+  certificateNumber         String?                            @unique
+  pdfUrl                    String?
+  issuedAt                  DateTime?
+
+  paymentMethod             InstitutionRecognitionPaymentMethod?
+  chapaTxRef                String?
+  chapaRefId                String?
+  paymentReceiptUrl         String?
+  bankName                  String?
+  manualPaymentApprovedById String?
+  manualPaymentApprovedBy   User?                              @relation("InstitutionRecognitionManualApprovedBy", fields: [manualPaymentApprovedById], references: [id])
+  manualPaymentApprovedAt   DateTime?
+
+  createdById               String
+  createdBy                 User                               @relation("InstitutionRecognitionCreatedBy", fields: [createdById], references: [id])
+
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
+
+  @@index([institutionId])
+  @@index([status])
 }
 
 // Institution HR Assignment

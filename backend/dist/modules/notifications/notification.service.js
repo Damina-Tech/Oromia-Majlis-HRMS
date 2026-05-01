@@ -21,6 +21,7 @@ const DEFAULT_MODULE_PREFS = {
     DOCUMENT: true,
     ANNOUNCEMENT: true,
     SYSTEM: true,
+    MEMBERSHIP: true,
 };
 export class NotificationService {
     static async getOrCreatePreferences(userId) {

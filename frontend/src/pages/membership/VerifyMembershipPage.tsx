@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle, XCircle, Search } from "lucide-react";
+import { CheckCircle, XCircle, Search, ShieldCheck } from "lucide-react";
 import { membershipApi } from "@/services/membership";
 import { useQuery } from "@tanstack/react-query";
 
@@ -60,11 +60,45 @@ export default function VerifyMembershipPage() {
                 {data.valid ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5 text-amber-600" />}
                 <span className="font-medium">{data.valid ? "Valid certificate" : "Expired"}</span>
               </div>
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Live verification from Oromia Majlis records
+              </div>
               <dl className="grid gap-2 text-sm">
                 <div><dt className="text-muted-foreground">Certificate ID</dt><dd className="font-medium">{data.certificateId}</dd></div>
                 <div><dt className="text-muted-foreground">Name</dt><dd>{data.fullName}</dd></div>
                 <div><dt className="text-muted-foreground">Category</dt><dd>{data.category?.replace(/_/g, " ")}</dd></div>
+                {data.subscription?.planName ? (
+                  <div>
+                    <dt className="text-muted-foreground">Plan</dt>
+                    <dd>{data.subscription.planName}</dd>
+                  </div>
+                ) : null}
+                {data.member?.phone ? (
+                  <div>
+                    <dt className="text-muted-foreground">Phone</dt>
+                    <dd>{data.member.phone}</dd>
+                  </div>
+                ) : null}
+                {data.member?.region || data.member?.zone || data.member?.woreda ? (
+                  <div>
+                    <dt className="text-muted-foreground">Location</dt>
+                    <dd>{[data.member?.region, data.member?.zone, data.member?.woreda].filter(Boolean).join(", ")}</dd>
+                  </div>
+                ) : null}
+                {data.payment?.method ? (
+                  <div>
+                    <dt className="text-muted-foreground">Last payment</dt>
+                    <dd>
+                      {data.payment.method}
+                      {data.payment.paidAt ? ` · ${new Date(data.payment.paidAt).toLocaleDateString()}` : ""}
+                    </dd>
+                  </div>
+                ) : null}
                 <div><dt className="text-muted-foreground">Valid until</dt><dd>{data.expiresAt && new Date(data.expiresAt).toLocaleDateString()}</dd></div>
+                {data.verifiedAt ? (
+                  <div><dt className="text-muted-foreground">Verified at</dt><dd>{new Date(data.verifiedAt).toLocaleString()}</dd></div>
+                ) : null}
               </dl>
             </div>
           ) : null}

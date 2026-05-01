@@ -157,4 +157,57 @@ export const uploadExpenseReceipt = multer({
     },
     fileFilter,
 });
+// Halal certification uploads (license, documents, inspection evidence)
+const halalUploadsDir = path.join(__dirname, "../../uploads/halal");
+if (!fs.existsSync(halalUploadsDir)) {
+    fs.mkdirSync(halalUploadsDir, { recursive: true });
+}
+const halalFileFilter = (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|pdf|doc|docx|mp4|webm/;
+    const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+    const mime = /image\/|application\/pdf|application\/msword|application\/vnd\.|video\//.test(file.mimetype);
+    if (allowed.test(ext) || mime)
+        cb(null, true);
+    else
+        cb(new Error("Invalid file type. Allowed: images, PDF, DOC, video"));
+};
+const halalStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, halalUploadsDir),
+    filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const base = path.basename(file.originalname, ext);
+        cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    },
+});
+export const uploadHalalFile = multer({
+    storage: halalStorage,
+    limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+    fileFilter: halalFileFilter,
+});
+// Membership (profile photo, receipts)
+const membershipUploadsDir = path.join(__dirname, "../../uploads/membership");
+if (!fs.existsSync(membershipUploadsDir)) {
+    fs.mkdirSync(membershipUploadsDir, { recursive: true });
+}
+const membershipStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, membershipUploadsDir),
+    filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname) || ".jpg";
+        const base = path.basename(file.originalname, ext);
+        cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    },
+});
+const membershipFileFilter = (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|pdf/;
+    const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+    if (allowed.test(ext) || /image\//.test(file.mimetype) || file.mimetype === "application/pdf")
+        cb(null, true);
+    else
+        cb(new Error("Invalid file type. Allowed: JPEG, PNG, PDF"));
+};
+export const uploadMembershipFile = multer({
+    storage: membershipStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: membershipFileFilter,
+});
 //# sourceMappingURL=upload.js.map
