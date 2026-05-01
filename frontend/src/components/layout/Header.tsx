@@ -149,6 +149,9 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <DropdownMenuItem onClick={() => handleLanguageChange("am")} className={i18n.language === "am" ? "bg-accent" : ""}>
                 {t("languages.am")}
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleLanguageChange("ar")} className={i18n.language === "ar" ? "bg-accent" : ""}>
+                {t("languages.ar")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
