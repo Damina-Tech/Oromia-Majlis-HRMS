@@ -2322,6 +2322,7 @@ enum HalalBusinessCategory {
   RESTAURANT
   FACTORY
   SLAUGHTERHOUSE
+  OTHER
 }
 
 enum HalalBusinessStatus {
@@ -2378,6 +2379,8 @@ model HalalBusiness {
   id            String               @id @default(cuid())
   name          String
   category      HalalBusinessCategory
+  /// When category is OTHER, free-text description from the applicant
+  categoryOther String?
   status        HalalBusinessStatus   @default(PENDING_APPROVAL)
   licenseUrl    String?              // Path to uploaded license
   contactName   String
@@ -2395,6 +2398,8 @@ model HalalBusiness {
   yearEstablished Int?
   businessType    String?
   tinNumber       String?
+  /// Registration step: total area, production area, lines, shifts, employees (sq km / counts)
+  productionSystem Json?
   declarationSignedAt   DateTime?
   declarationSignature  String?
   declarationChecklist  Json?                // { noAlcohol, noProhibited, majlisCompliance, dataAccurate } from registration
@@ -2411,6 +2416,11 @@ model HalalBusiness {
   latitude      Decimal?             @db.Decimal(10, 8)
   longitude     Decimal?             @db.Decimal(11, 8)
   address       String?
+  /// Multiple owners/managers (JSON array of { fullName, email, phone, nationalId?, gender?, dateOfBirth?, homeAddress?, role? })
+  ownersManagers Json?
+  businessPhone   String?
+  businessEmail   String?
+  businessWebsite String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   applications  HalalApplication[]

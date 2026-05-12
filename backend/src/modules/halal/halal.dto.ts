@@ -1,12 +1,24 @@
 import { z } from "zod";
 import { HalalBusinessCategory, HalalApplicationStatus, HalalBusinessStatus } from "@prisma/client";
 
-export const CreateHalalBusinessDto = z.object({
+export const HalalOwnerManagerPersonDto = z.object({
+  fullName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(1),
+  nationalId: z.string().optional(),
+  gender: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  homeAddress: z.string().optional(),
+  role: z.string().optional(),
+});
+
+const HalalBusinessCreateBody = z.object({
   name: z.string().min(1),
   category: z.nativeEnum(HalalBusinessCategory),
-  contactName: z.string().min(1),
-  contactEmail: z.string().email(),
-  contactPhone: z.string().min(1),
+  categoryOther: z.string().max(400).optional(),
+  contactName: z.string().optional(),
+  contactEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  contactPhone: z.string().optional(),
   regionId: z.string().optional(),
   zoneId: z.string().optional(),
   woredaId: z.string().optional(),
@@ -23,6 +35,19 @@ export const CreateHalalBusinessDto = z.object({
   yearEstablished: z.coerce.number().optional(),
   businessType: z.string().optional(),
   tinNumber: z.string().optional(),
+  productionSystem: z
+    .object({
+      totalCompanyAreaSqKm: z.number().positive(),
+      productionAreaSqKm: z.number().positive(),
+      numProductionLines: z.number().int().min(1),
+      numShifts: z.number().int().min(1),
+      numEmployees: z.number().int().min(1),
+    })
+    .refine((d) => d.productionAreaSqKm <= d.totalCompanyAreaSqKm, {
+      message: "Production area cannot exceed total company area",
+      path: ["productionAreaSqKm"],
+    })
+    .optional(),
   declarationSignature: z.string().optional(),
   declarationChecklist: z.object({
     noAlcohol: z.boolean(),
@@ -39,9 +64,37 @@ export const CreateHalalBusinessDto = z.object({
     url: z.string(),
     type: z.string().optional(),
   })).optional(),
+  ownersManagers: z.array(HalalOwnerManagerPersonDto).min(1).optional(),
+  businessPhone: z.string().optional(),
+  businessEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  businessWebsite: z.string().max(512).optional(),
 });
 
-export const UpdateHalalBusinessDto = CreateHalalBusinessDto.partial();
+export const CreateHalalBusinessDto = HalalBusinessCreateBody.superRefine((data, ctx) => {
+  if (data.category === HalalBusinessCategory.OTHER && !data.categoryOther?.trim()) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Please describe the business category",
+      path: ["categoryOther"],
+    });
+  }
+  const hasOwners = data.ownersManagers && data.ownersManagers.length > 0;
+  if (hasOwners) return;
+  if (!data.contactName?.trim()) {
+    ctx.addIssue({ code: "custom", message: "Contact name is required", path: ["contactName"] });
+  }
+  if (!data.contactEmail?.trim()) {
+    ctx.addIssue({ code: "custom", message: "Contact email is required", path: ["contactEmail"] });
+  } else {
+    const r = z.string().email().safeParse(data.contactEmail);
+    if (!r.success) ctx.addIssue({ code: "custom", message: "Invalid email", path: ["contactEmail"] });
+  }
+  if (!data.contactPhone?.trim()) {
+    ctx.addIssue({ code: "custom", message: "Contact phone is required", path: ["contactPhone"] });
+  }
+});
+
+export const UpdateHalalBusinessDto = HalalBusinessCreateBody.partial();
 
 export const CreateHalalApplicationDto = z.object({
   businessId: z.string(),

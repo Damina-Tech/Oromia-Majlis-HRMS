@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient, HalalApplicationStatus, HalalBusinessStatus, HalalCertificateStatus, HalalAuditAction, HalalPaymentMethod, HalalPaymentStatus } from "@prisma/client";
+import { Prisma, PrismaClient, HalalApplicationStatus, HalalBusinessStatus, HalalBusinessCategory, HalalCertificateStatus, HalalAuditAction, HalalPaymentMethod, HalalPaymentStatus } from "@prisma/client";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
   CreateHalalBusinessDto,
@@ -23,24 +23,60 @@ import fetch from "node-fetch";
 import { sendBusinessApprovedSms, sendCertificateReadySms } from "./halal-sms.js";
 
 const prisma = new PrismaClient();
-const REQUIRED_REGISTRATION_DOCUMENTS = [
+const REQUIRED_FIXED_REGISTRATION_DOCUMENTS = [
   "Health Certificate",
   "ISO 22000 Certificate",
   "TIN Certificate",
-  "Owner ID/Passport",
 ] as const;
+
+function resolveOwnerFullNamesForDocuments(
+  body: { ownersManagers?: { fullName: string }[]; contactName?: string | null },
+  existing: { ownersManagers?: unknown; contactName?: string | null } | null
+): string[] {
+  if (body.ownersManagers && body.ownersManagers.length > 0) {
+    return body.ownersManagers.map((o) => o.fullName.trim()).filter(Boolean);
+  }
+  const raw = existing?.ownersManagers;
+  if (raw && Array.isArray(raw)) {
+    const names = (raw as { fullName?: string }[])
+      .map((o) => (o.fullName || "").trim())
+      .filter(Boolean);
+    if (names.length > 0) return names;
+  }
+  const c = (body.contactName ?? existing?.contactName ?? "").trim();
+  return c ? [c] : [];
+}
 
 function validateRequiredRegistrationDocuments(
   docs: { name: string; url: string; type?: string }[] | undefined,
-  requireAll: boolean
+  requireAll: boolean,
+  ownerFullNames: string[]
 ): string | null {
+  if (!requireAll) return null;
   if (!docs || docs.length === 0) {
-    return requireAll
-      ? "Missing required documents: Health Certificate, ISO 22000 Certificate, TIN Certificate, Owner ID/Passport."
-      : null;
+    return "Missing required documents: Health Certificate, ISO 22000 Certificate, TIN Certificate, Owner ID/Passport.";
   }
   const names = new Set(docs.map((d) => d.name?.trim()));
-  const missing = REQUIRED_REGISTRATION_DOCUMENTS.filter((n) => !names.has(n));
+  const missing: string[] = [];
+  for (const n of REQUIRED_FIXED_REGISTRATION_DOCUMENTS) {
+    if (!names.has(n)) missing.push(n);
+  }
+
+  const owners = ownerFullNames.map((n) => n.trim()).filter(Boolean);
+  if (owners.length === 0) {
+    if (!names.has("Owner ID/Passport")) missing.push("Owner ID/Passport");
+  } else if (owners.length === 1) {
+    const fn = owners[0];
+    const suffixed = `Owner ID/Passport - ${fn}`;
+    const ok = names.has("Owner ID/Passport") || names.has(suffixed);
+    if (!ok) missing.push("Owner ID/Passport");
+  } else {
+    for (const fn of owners) {
+      const label = `Owner ID/Passport - ${fn}`;
+      if (!names.has(label)) missing.push(label);
+    }
+  }
+
   if (missing.length > 0) {
     return `Missing required documents: ${missing.join(", ")}.`;
   }
@@ -278,15 +314,24 @@ export async function registerBusiness(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
     const data = CreateHalalBusinessDto.parse(req.body);
-    const docsError = validateRequiredRegistrationDocuments(data.documents, true);
+    const ownerNames = resolveOwnerFullNamesForDocuments(data, null);
+    const docsError = validateRequiredRegistrationDocuments(data.documents, true, ownerNames);
     if (docsError) return res.status(400).json({ message: docsError });
+    const primary = data.ownersManagers?.[0];
+    const contactName = primary?.fullName ?? data.contactName!;
+    const contactEmail = primary?.email ?? data.contactEmail!;
+    const contactPhone = primary?.phone ?? data.contactPhone!;
     const biz = await prisma.halalBusiness.create({
       data: {
         name: data.name,
         category: data.category,
-        contactName: data.contactName,
-        contactEmail: data.contactEmail,
-        contactPhone: data.contactPhone,
+        categoryOther:
+          data.category === HalalBusinessCategory.OTHER
+            ? data.categoryOther?.trim() || null
+            : null,
+        contactName,
+        contactEmail,
+        contactPhone,
         regionId: data.regionId || undefined,
         zoneId: data.zoneId || undefined,
         woredaId: data.woredaId || undefined,
@@ -294,15 +339,26 @@ export async function registerBusiness(req: Request, res: Response) {
         latitude: data.latitude ?? undefined,
         longitude: data.longitude ?? undefined,
         address: data.address || undefined,
-        ownerNationalId: data.ownerNationalId || undefined,
-        ownerGender: data.ownerGender || undefined,
-        ownerDateOfBirth: data.ownerDateOfBirth ? new Date(data.ownerDateOfBirth) : undefined,
-        ownerHomeAddress: data.ownerHomeAddress || undefined,
-        ownerRole: data.ownerRole || undefined,
+        ownerNationalId: (primary?.nationalId ?? data.ownerNationalId) || undefined,
+        ownerGender: (primary?.gender ?? data.ownerGender) || undefined,
+        ownerDateOfBirth: (() => {
+          const dobStr = (primary?.dateOfBirth || data.ownerDateOfBirth || "").trim();
+          return dobStr ? new Date(dobStr) : undefined;
+        })(),
+        ownerHomeAddress: (primary?.homeAddress ?? data.ownerHomeAddress) || undefined,
+        ownerRole: (primary?.role ?? data.ownerRole) || undefined,
+        ownersManagers:
+          data.ownersManagers && data.ownersManagers.length > 0
+            ? (data.ownersManagers as unknown as Prisma.InputJsonValue)
+            : undefined,
+        businessPhone: data.businessPhone?.trim() || undefined,
+        businessEmail: data.businessEmail?.trim() || undefined,
+        businessWebsite: data.businessWebsite?.trim() || undefined,
         brandName: data.brandName || undefined,
         yearEstablished: data.yearEstablished ?? undefined,
         businessType: data.businessType || undefined,
         tinNumber: data.tinNumber || undefined,
+        productionSystem: data.productionSystem ?? undefined,
         declarationSignature: data.declarationSignature || undefined,
         declarationSignedAt: data.declarationSignature ? new Date() : undefined,
         declarationChecklist: data.declarationChecklist ?? undefined,
@@ -316,7 +372,18 @@ export async function registerBusiness(req: Request, res: Response) {
     await createAuditLog(HalalAuditAction.BUSINESS_REGISTERED, userId, "HalalBusiness", biz.id, undefined, undefined, biz, req.ip, req.get("user-agent"));
     res.status(201).json(biz);
   } catch (e: any) {
-    res.status(400).json({ message: e.message || "Failed to register business" });
+    const msg = e?.message || "Failed to register business";
+    if (
+      typeof msg === "string" &&
+      msg.includes("Unknown argument") &&
+      msg.includes("productionSystem")
+    ) {
+      return res.status(500).json({
+        message:
+          "The Prisma client on this server is out of date relative to the database (field: productionSystem). Stop the backend, run `npx prisma generate` in the backend folder, then restart. On Windows, if generate fails with EPERM, stop all Node processes using this project first.",
+      });
+    }
+    res.status(400).json({ message: msg });
   }
 }
 
@@ -431,12 +498,34 @@ export async function updateBusiness(req: Request, res: Response) {
     const docsError = validateRequiredRegistrationDocuments(
       (data.documents as { name: string; url: string; type?: string }[] | undefined) ??
         (old.documents as { name: string; url: string; type?: string }[] | undefined),
-      true
+      true,
+      resolveOwnerFullNamesForDocuments(data, old)
     );
     if (docsError) return res.status(400).json({ message: docsError });
+    const mergedCategory = data.category ?? old.category;
+    const mergedCategoryOther =
+      data.categoryOther !== undefined
+        ? data.categoryOther
+        : (old as { categoryOther?: string | null }).categoryOther;
+    if (mergedCategory === HalalBusinessCategory.OTHER && !String(mergedCategoryOther ?? "").trim()) {
+      return res.status(400).json({
+        message: 'Please describe the business category when category is "OTHER".',
+      });
+    }
     const updateData: Record<string, unknown> = {};
     if (data.name != null) updateData.name = data.name;
-    if (data.category != null) updateData.category = data.category;
+    if (data.category != null) {
+      updateData.category = data.category;
+      if (data.category !== HalalBusinessCategory.OTHER) {
+        updateData.categoryOther = null;
+      }
+    }
+    if (data.categoryOther !== undefined) {
+      updateData.categoryOther =
+        (data.category ?? old.category) === HalalBusinessCategory.OTHER
+          ? data.categoryOther?.trim() || null
+          : null;
+    }
     if (data.contactName != null) updateData.contactName = data.contactName;
     if (data.contactEmail != null) updateData.contactEmail = data.contactEmail;
     if (data.contactPhone != null) updateData.contactPhone = data.contactPhone;
@@ -456,6 +545,7 @@ export async function updateBusiness(req: Request, res: Response) {
     if (data.yearEstablished !== undefined) updateData.yearEstablished = data.yearEstablished ?? null;
     if (data.businessType !== undefined) updateData.businessType = data.businessType || null;
     if (data.tinNumber !== undefined) updateData.tinNumber = data.tinNumber || null;
+    if (data.productionSystem !== undefined) updateData.productionSystem = data.productionSystem ?? null;
     if (data.declarationSignature !== undefined) {
       updateData.declarationSignature = data.declarationSignature || null;
       updateData.declarationSignedAt = data.declarationSignature ? new Date() : null;
@@ -463,6 +553,26 @@ export async function updateBusiness(req: Request, res: Response) {
     if (data.declarationChecklist !== undefined) updateData.declarationChecklist = data.declarationChecklist ?? null;
     if (data.productList !== undefined) updateData.productList = data.productList ?? null;
     if (data.documents !== undefined) updateData.documents = data.documents ?? null;
+    if (data.ownersManagers !== undefined) {
+      updateData.ownersManagers =
+        data.ownersManagers && data.ownersManagers.length > 0
+          ? (data.ownersManagers as unknown as Prisma.InputJsonValue)
+          : null;
+      const p = data.ownersManagers?.[0];
+      if (p) {
+        updateData.contactName = p.fullName;
+        updateData.contactEmail = p.email;
+        updateData.contactPhone = p.phone;
+        updateData.ownerNationalId = p.nationalId || null;
+        updateData.ownerGender = p.gender || null;
+        updateData.ownerDateOfBirth = p.dateOfBirth ? new Date(p.dateOfBirth) : null;
+        updateData.ownerHomeAddress = p.homeAddress || null;
+        updateData.ownerRole = p.role || null;
+      }
+    }
+    if (data.businessPhone !== undefined) updateData.businessPhone = data.businessPhone?.trim() || null;
+    if (data.businessEmail !== undefined) updateData.businessEmail = data.businessEmail?.trim() || null;
+    if (data.businessWebsite !== undefined) updateData.businessWebsite = data.businessWebsite?.trim() || null;
     const updated = await prisma.halalBusiness.update({
       where: { id },
       data: updateData as any,
@@ -470,7 +580,18 @@ export async function updateBusiness(req: Request, res: Response) {
     });
     res.json(updated);
   } catch (e: any) {
-    res.status(400).json({ message: e.message || "Failed to update business" });
+    const msg = e?.message || "Failed to update business";
+    if (
+      typeof msg === "string" &&
+      msg.includes("Unknown argument") &&
+      msg.includes("productionSystem")
+    ) {
+      return res.status(500).json({
+        message:
+          "The Prisma client on this server is out of date relative to the database (field: productionSystem). Stop the backend, run `npx prisma generate` in the backend folder, then restart. On Windows, if generate fails with EPERM, stop all Node processes using this project first.",
+      });
+    }
+    res.status(400).json({ message: msg });
   }
 }
 

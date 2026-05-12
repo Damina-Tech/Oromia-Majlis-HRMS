@@ -35,6 +35,8 @@ import {
   Package,
   PenLine,
   ExternalLink,
+  Factory,
+  Users,
 } from "lucide-react";
 import { halalApi, type HalalBusiness, type HalalApplicationStatus } from "@/services/halal";
 import { resolveFileUrl } from "@/config/api";
@@ -51,6 +53,10 @@ const APPLICATION_STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   APPROVED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40",
   REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/40",
 };
+
+function formatDate(d: string | undefined): string {
+  return d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
+}
 
 export default function HalalBusinessDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -134,6 +140,12 @@ export default function HalalBusinessDetailPage() {
   if (!business) return <div className="p-6">Business not found</div>;
 
   const biz = business as HalalBusiness & { applications?: any[] };
+  const businessCategoryLabel =
+    biz.category === "OTHER"
+      ? biz.categoryOther?.trim()
+        ? `Other (${biz.categoryOther.trim()})`
+        : "Other"
+      : biz.category.replace(/_/g, " ");
   const applications = biz.applications ?? [];
   const activeApplication = applications.find((a) =>
     ["DRAFT", "SUBMITTED", "INSPECTION", "REVIEW"].includes(a.status)
@@ -161,12 +173,147 @@ export default function HalalBusinessDetailPage() {
     approvedByAdmin: null,
   };
 
-  const formatDate = (d: string | undefined) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—");
+  const ownersManagersList =
+    Array.isArray(biz.ownersManagers) && biz.ownersManagers.length > 0 ? biz.ownersManagers : null;
 
-  /** Parse pipe-delimited product description into labeled rows (e.g. "Ingredients: x | Source: y" -> [{ label: "Ingredients", value: "x" }, ...]) */
-  function parseProductDescription(description: string): { label: string; value: string }[] {
+  /** One row in the product detail list; `certUrl` shows a blue View link after `value`. */
+  type ProductDetailRow = { label: string; value: string; certUrl?: string };
+
+  function renderProductDetailValue(row: ProductDetailRow): React.ReactNode {
+    const v = row.value?.trim() ?? "";
+    const cert = row.certUrl?.trim();
+    const certHref =
+      cert && (cert.startsWith("/") || cert.startsWith("http://") || cert.startsWith("https://"))
+        ? resolveFileUrl(cert)
+        : undefined;
+
+    if (certHref) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className="break-words">{v || "—"}</span>
+          <a
+            href={certHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 shrink-0"
+          >
+            View <ExternalLink className="h-3 w-3" />
+          </a>
+        </span>
+      );
+    }
+
+    // Legacy rows: single line stored as "… certificate" with URL in value
+    if (
+      /certificate/i.test(row.label) &&
+      v &&
+      (v.startsWith("/") || v.startsWith("http://") || v.startsWith("https://"))
+    ) {
+      return (
+        <a
+          href={resolveFileUrl(v)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+        >
+          View <ExternalLink className="h-3 w-3" />
+        </a>
+      );
+    }
+    return v || "—";
+  }
+
+  /** Parse product description: v2/v3 JSON from registration form, or legacy pipe-delimited text. */
+  function parseProductDescription(description: string): ProductDetailRow[] {
     if (!description?.trim()) return [];
-    const segments = description.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
+    const raw = description.trim();
+    if (raw.startsWith("{")) {
+      try {
+        const j = JSON.parse(raw) as {
+          v?: number;
+          productCategory?: string;
+          productNames?: string[];
+          productNamesOther?: string;
+          slaughterMethod?: string;
+          storageMethod?: string;
+          anyIngredients?: boolean;
+          ingredientDescription?: string;
+          ingredientCertUrl?: string;
+          ingredients?: { description?: string; certUrl?: string }[];
+          packaging?: boolean;
+          packagingDescription?: string;
+          packagingCertUrl?: string;
+          packagingItems?: { description?: string; certUrl?: string }[];
+        };
+        if (j?.v === 2 || j?.v === 3) {
+          const rows: ProductDetailRow[] = [];
+          if (j.productCategory) rows.push({ label: "Product category", value: j.productCategory.replace(/_/g, " ") });
+          const names =
+            j.productCategory === "OTHER"
+              ? (j.productNamesOther || "").trim()
+              : (j.productNames || []).filter(Boolean).join(", ");
+          if (names) rows.push({ label: "Product names", value: names });
+          if (j.slaughterMethod) rows.push({ label: "Slaughter method", value: j.slaughterMethod });
+          if (j.storageMethod) rows.push({ label: "Storage method", value: j.storageMethod });
+          rows.push({ label: "Any ingredients", value: j.anyIngredients ? "Yes" : "No" });
+          if (j.anyIngredients) {
+            if (j.v === 3 && Array.isArray(j.ingredients) && j.ingredients.length > 0) {
+              j.ingredients.forEach((ing, i) => {
+                const desc = (ing?.description ?? "").trim();
+                const cert = (ing?.certUrl ?? "").trim();
+                if (desc || cert) {
+                  rows.push({
+                    label: `Ingredient ${i + 1}`,
+                    value: desc || "—",
+                    certUrl: cert || undefined,
+                  });
+                }
+              });
+            } else {
+              const desc = (j.ingredientDescription ?? "").trim();
+              const cert = (j.ingredientCertUrl ?? "").trim();
+              if (desc || cert) {
+                rows.push({
+                  label: "Ingredient note",
+                  value: desc || "—",
+                  certUrl: cert || undefined,
+                });
+              }
+            }
+          }
+          rows.push({ label: "Packaging", value: j.packaging ? "Yes" : "No" });
+          if (j.packaging) {
+            if (j.v === 3 && Array.isArray(j.packagingItems) && j.packagingItems.length > 0) {
+              j.packagingItems.forEach((pkg, i) => {
+                const desc = (pkg?.description ?? "").trim();
+                const cert = (pkg?.certUrl ?? "").trim();
+                if (desc || cert) {
+                  rows.push({
+                    label: `Packaging ${i + 1}`,
+                    value: desc || "—",
+                    certUrl: cert || undefined,
+                  });
+                }
+              });
+            } else {
+              const desc = (j.packagingDescription ?? "").trim();
+              const cert = (j.packagingCertUrl ?? "").trim();
+              if (desc || cert) {
+                rows.push({
+                  label: "Packaging description",
+                  value: desc || "—",
+                  certUrl: cert || undefined,
+                });
+              }
+            }
+          }
+          return rows;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    const segments = raw.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
     return segments.map((seg) => {
       const colonIdx = seg.indexOf(": ");
       if (colonIdx > 0) {
@@ -220,7 +367,7 @@ export default function HalalBusinessDetailPage() {
           </Badge>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-muted-foreground">
-          <span>{biz.category.replace("_", " ")}</span>
+          <span>{businessCategoryLabel}</span>
           {locationStr && <span>• {locationStr}</span>}
           {biz.createdAt && <span>• Registered {formatDate(biz.createdAt)}</span>}
           {applications.length > 0 && (
@@ -229,24 +376,63 @@ export default function HalalBusinessDetailPage() {
         </div>
       </div>
 
-      {/* Two-column: Owner + Business/Location */}
+      {/* Owners / managers (full registration list) + primary contact fallback */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="shadow-sm border-emerald-200/50 dark:border-emerald-900/30 overflow-hidden">
           <CardHeader className="py-3 px-4">
             <CardTitle className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 text-sm font-semibold">
-              <User className="h-4 w-4 text-emerald-600" />
-              Owner & contact
+              {ownersManagersList ? (
+                <Users className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <User className="h-4 w-4 text-emerald-600" />
+              )}
+              {ownersManagersList ? "Owners & managers" : "Owner & contact"}
             </CardTitle>
+            <CardDescription className="text-xs">
+              {ownersManagersList
+                ? "Everyone listed on the registration form."
+                : "Primary contact on file (legacy or single owner)."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
-            <InfoRow label="Contact person" value={biz.contactName} />
-            <InfoRow label="Email" value={biz.contactEmail} href={`mailto:${biz.contactEmail}`} />
-            <InfoRow label="Phone" value={biz.contactPhone} />
-            {biz.ownerNationalId && <InfoRow label="National ID" value={biz.ownerNationalId} />}
-            {biz.ownerGender && <InfoRow label="Gender" value={biz.ownerGender} />}
-            {biz.ownerDateOfBirth && <InfoRow label="Date of birth" value={formatDate(biz.ownerDateOfBirth)} />}
-            {biz.ownerRole && <InfoRow label="Role" value={biz.ownerRole} />}
-            {biz.ownerHomeAddress && <InfoRow label="Home address" value={biz.ownerHomeAddress} />}
+            {ownersManagersList ? (
+              <div className="space-y-4">
+                {ownersManagersList.map((o, idx) => (
+                  <div
+                    key={`${o.email}-${idx}`}
+                    className="rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/20 dark:bg-emerald-950/15 p-3 space-y-0"
+                  >
+                    <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-100 mb-2 pb-2 border-b border-emerald-200/50 dark:border-emerald-800/40">
+                      {idx === 0 ? "Primary contact — " : ""}#{idx + 1} {o.fullName || "—"}
+                    </p>
+                    <InfoRow label="Email" value={o.email || "—"} href={o.email ? `mailto:${o.email}` : undefined} />
+                    <InfoRow label="Phone" value={o.phone || "—"} />
+                    {o.nationalId != null && String(o.nationalId).trim() !== "" && (
+                      <InfoRow label="National ID / Passport" value={o.nationalId} />
+                    )}
+                    {o.gender != null && String(o.gender).trim() !== "" && <InfoRow label="Gender" value={o.gender} />}
+                    {o.dateOfBirth != null && String(o.dateOfBirth).trim() !== "" && (
+                      <InfoRow label="Date of birth" value={formatDate(o.dateOfBirth)} />
+                    )}
+                    {o.role != null && String(o.role).trim() !== "" && <InfoRow label="Role" value={o.role} />}
+                    {o.homeAddress != null && String(o.homeAddress).trim() !== "" && (
+                      <InfoRow label="Home address" value={o.homeAddress} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <InfoRow label="Contact person" value={biz.contactName} />
+                <InfoRow label="Email" value={biz.contactEmail} href={`mailto:${biz.contactEmail}`} />
+                <InfoRow label="Phone" value={biz.contactPhone} />
+                {biz.ownerNationalId && <InfoRow label="National ID" value={biz.ownerNationalId} />}
+                {biz.ownerGender && <InfoRow label="Gender" value={biz.ownerGender} />}
+                {biz.ownerDateOfBirth && <InfoRow label="Date of birth" value={formatDate(biz.ownerDateOfBirth)} />}
+                {biz.ownerRole && <InfoRow label="Role" value={biz.ownerRole} />}
+                {biz.ownerHomeAddress && <InfoRow label="Home address" value={biz.ownerHomeAddress} />}
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -256,17 +442,68 @@ export default function HalalBusinessDetailPage() {
               <Building2 className="h-4 w-4 text-blue-600" />
               Business & legal
             </CardTitle>
+            <CardDescription className="text-xs">Details from the registration form.</CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
             <InfoRow label="Business name" value={biz.name} />
-            {biz.brandName && <InfoRow label="Brand / trade" value={biz.brandName} />}
-            <InfoRow label="Category" value={biz.category.replace("_", " ")} />
-            {biz.yearEstablished != null && <InfoRow label="Year established" value={String(biz.yearEstablished)} />}
-            {biz.businessType && <InfoRow label="Business type" value={biz.businessType} />}
-            {biz.tinNumber && <InfoRow label="TIN number" value={biz.tinNumber} />}
+            <InfoRow label="Brand / trade name" value={biz.brandName?.trim() ? biz.brandName : "—"} />
+            <InfoRow label="Category" value={businessCategoryLabel} />
+            <InfoRow
+              label="Year established"
+              value={biz.yearEstablished != null && !Number.isNaN(Number(biz.yearEstablished)) ? String(biz.yearEstablished) : "—"}
+            />
+            <InfoRow label="Business type" value={biz.businessType?.trim() ? biz.businessType : "—"} />
+            <InfoRow label="TIN number" value={biz.tinNumber?.trim() ? biz.tinNumber : "—"} />
+            <InfoRow label="Business phone" value={biz.businessPhone?.trim() ? biz.businessPhone : "—"} />
+            <InfoRow
+              label="Business email"
+              value={biz.businessEmail?.trim() ? biz.businessEmail : "—"}
+              href={biz.businessEmail?.trim() ? `mailto:${biz.businessEmail.trim()}` : undefined}
+            />
+            <InfoRow
+              label="Website"
+              value={
+                biz.businessWebsite?.trim() ? (
+                  <a
+                    href={biz.businessWebsite.trim().match(/^https?:\/\//i) ? biz.businessWebsite.trim() : `https://${biz.businessWebsite.trim()}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline break-all"
+                  >
+                    {biz.businessWebsite.trim()}
+                  </a>
+                ) : (
+                  "—"
+                )
+              }
+            />
           </CardContent>
         </Card>
       </div>
+
+      {biz.productionSystem ? (
+        <Card className="shadow-sm border-sky-200/50 dark:border-sky-900/30 overflow-hidden">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sky-800 dark:text-sky-200 text-sm font-semibold">
+              <Factory className="h-4 w-4 text-sky-600" />
+              Production system
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 pt-0 grid gap-0 sm:grid-cols-2">
+            <InfoRow
+              label="Total company area"
+              value={`${biz.productionSystem.totalCompanyAreaSqKm} sq km`}
+            />
+            <InfoRow
+              label="Production area"
+              value={`${biz.productionSystem.productionAreaSqKm} sq km`}
+            />
+            <InfoRow label="Production lines" value={String(biz.productionSystem.numProductionLines)} />
+            <InfoRow label="Shifts" value={String(biz.productionSystem.numShifts)} />
+            <InfoRow label="Employees" value={String(biz.productionSystem.numEmployees)} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Location + Documents side by side */}
       <div className="grid gap-5 lg:grid-cols-2">
@@ -278,12 +515,8 @@ export default function HalalBusinessDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
-            {biz.address && (
-              <InfoRow
-                label="Address"
-                value={[biz.address, biz.kebeleName ? `Kebele: ${biz.kebeleName}` : null].filter(Boolean).join(" • ")}
-              />
-            )}
+            <InfoRow label="Street / area" value={biz.address?.trim() ? biz.address : "—"} />
+            <InfoRow label="Kebele" value={biz.kebeleName?.trim() ? biz.kebeleName : "—"} />
             {(biz.region || biz.zone || biz.woreda) && (
               <InfoRow
                 label="Region / Zone / Woreda"
@@ -296,7 +529,7 @@ export default function HalalBusinessDetailPage() {
                 <p className="text-sm font-mono mt-0.5">{lat.toFixed(6)}, {lng.toFixed(6)}</p>
               </div>
             )}
-            {!biz.address && !biz.region && !hasValidCoords && (
+            {!biz.address?.trim() && !biz.kebeleName?.trim() && !biz.region && !hasValidCoords && (
               <p className="text-sm text-muted-foreground py-2">No location information.</p>
             )}
           </CardContent>
@@ -308,6 +541,7 @@ export default function HalalBusinessDetailPage() {
               <FileText className="h-4 w-4 text-blue-600" />
               Documents
             </CardTitle>
+            <CardDescription className="text-xs">Certificates and IDs submitted with registration (plus license if uploaded).</CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
             {biz.licenseUrl ? (
@@ -344,15 +578,15 @@ export default function HalalBusinessDetailPage() {
 
       {/* Products + Declaration */}
       <div className="grid gap-5 lg:grid-cols-2">
-        {productList.length > 0 && (
-          <Card className="shadow-sm border-violet-200/50 dark:border-violet-900/30 overflow-hidden">
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="flex items-center gap-2 text-violet-800 dark:text-violet-200 text-sm font-semibold">
-                <Package className="h-4 w-4 text-violet-600" />
-                Products / services
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0">
+        <Card className="shadow-sm border-violet-200/50 dark:border-violet-900/30 overflow-hidden">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-violet-800 dark:text-violet-200 text-sm font-semibold">
+              <Package className="h-4 w-4 text-violet-600" />
+              Products / services
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 pt-0">
+            {productList.length > 0 ? (
               <ul className="space-y-4">
                 {productList.map((p, i) => {
                   const rows = p.description ? parseProductDescription(p.description) : [];
@@ -365,8 +599,10 @@ export default function HalalBusinessDetailPage() {
                         <dl className="px-3 py-2 space-y-1.5">
                           {rows.map((row, j) => (
                             <div key={j} className="flex flex-col sm:flex-row sm:gap-2 gap-0.5">
-                              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0 sm:w-28">{row.label}</dt>
-                              <dd className="text-sm text-foreground break-words">{row.value}</dd>
+                              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0 sm:w-36">
+                                {row.label}
+                              </dt>
+                              <dd className="text-sm text-foreground break-words">{renderProductDetailValue(row)}</dd>
                             </div>
                           ))}
                         </dl>
@@ -375,29 +611,43 @@ export default function HalalBusinessDetailPage() {
                           <p className="px-3 py-2 text-sm text-muted-foreground">{p.description}</p>
                         )
                       )}
+                      {!p.description && rows.length === 0 && (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">No detail payload for this line.</p>
+                      )}
                     </li>
                   );
                 })}
               </ul>
-            </CardContent>
-          </Card>
-        )}
-        {(biz.declarationSignature || biz.declarationSignedAt || declarationChecklist) && (
+            ) : (
+              <p className="text-sm text-muted-foreground py-1">No product lines were saved with this registration.</p>
+            )}
+          </CardContent>
+        </Card>
+        {(declarationChecklist || biz.declarationSignature || biz.declarationSignedAt) && (
           <Card className="shadow-sm border-amber-200/50 dark:border-amber-900/30 overflow-hidden">
             <CardHeader className="py-3 px-4">
               <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-sm font-semibold">
                 <PenLine className="h-4 w-4 text-amber-600" />
-                Declaration
+                Declaration & signature
               </CardTitle>
+              <CardDescription className="text-xs">As submitted on registration.</CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-0 space-y-3">
-              {declarationChecklist && (
+              {declarationChecklist ? (
                 <ul className="space-y-2">
                   {[
-                    { key: "noAlcohol", label: "No alcohol or pork used", checked: declarationChecklist.noAlcohol },
-                    { key: "noProhibited", label: "No prohibited ingredients used", checked: declarationChecklist.noProhibited },
-                    { key: "majlisCompliance", label: "Full compliance with Majlis standards", checked: declarationChecklist.majlisCompliance },
-                    { key: "dataAccurate", label: "All submitted data is accurate", checked: declarationChecklist.dataAccurate },
+                    { key: "noAlcohol", label: "No alcohol or pork used", checked: !!declarationChecklist.noAlcohol },
+                    {
+                      key: "noProhibited",
+                      label: "No prohibited ingredients used",
+                      checked: !!declarationChecklist.noProhibited,
+                    },
+                    {
+                      key: "majlisCompliance",
+                      label: "Full compliance with Majlis standards",
+                      checked: !!declarationChecklist.majlisCompliance,
+                    },
+                    { key: "dataAccurate", label: "All submitted data is accurate", checked: !!declarationChecklist.dataAccurate },
                   ].map((item) => (
                     <li key={item.key} className="flex items-center gap-2 text-sm">
                       {item.checked ? (
@@ -409,13 +659,18 @@ export default function HalalBusinessDetailPage() {
                     </li>
                   ))}
                 </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No declaration checklist stored for this record.</p>
               )}
-              {biz.declarationSignature && (
-                <p className="text-sm font-medium pt-1 border-t border-amber-200/50 dark:border-amber-800/30">{biz.declarationSignature}</p>
-              )}
-              {biz.declarationSignedAt && (
+              {biz.declarationSignature ? (
+                <div className="pt-2 border-t border-amber-200/50 dark:border-amber-800/30">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Digital signature</span>
+                  <p className="text-sm font-medium mt-1">{biz.declarationSignature}</p>
+                </div>
+              ) : null}
+              {biz.declarationSignedAt ? (
                 <p className="text-xs text-muted-foreground">Signed on {formatDate(biz.declarationSignedAt)}</p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         )}
@@ -637,7 +892,7 @@ export default function HalalBusinessDetailPage() {
             <div className="rounded-md border border-emerald-200/50 dark:border-emerald-800/40 bg-emerald-50/30 dark:bg-emerald-950/20 p-3 text-sm space-y-1">
               <p><span className="text-muted-foreground">Business:</span> {biz.name}</p>
               <p><span className="text-muted-foreground">Owner:</span> {biz.contactName}</p>
-              <p><span className="text-muted-foreground">Category:</span> {biz.category.replace("_", " ")}</p>
+              <p><span className="text-muted-foreground">Category:</span> {businessCategoryLabel}</p>
               <p><span className="text-muted-foreground">TIN:</span> {biz.tinNumber || "—"}</p>
             </div>
             <div className="space-y-2 rounded-md border border-violet-200/50 dark:border-violet-800/40 bg-violet-50/20 dark:bg-violet-950/20 p-3">

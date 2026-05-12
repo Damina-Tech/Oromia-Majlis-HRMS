@@ -9,7 +9,8 @@ export type HalalBusinessCategory =
   | "MEDICINE"
   | "RESTAURANT"
   | "FACTORY"
-  | "SLAUGHTERHOUSE";
+  | "SLAUGHTERHOUSE"
+  | "OTHER";
 
 export type HalalApplicationStatus =
   | "DRAFT"
@@ -27,6 +28,8 @@ export interface HalalBusiness {
   id: string;
   name: string;
   category: HalalBusinessCategory;
+  /** Free text when category is OTHER */
+  categoryOther?: string | null;
   status?: HalalBusinessStatus;
   licenseUrl?: string;
   contactName: string;
@@ -48,10 +51,32 @@ export interface HalalBusiness {
   ownerDateOfBirth?: string;
   ownerHomeAddress?: string;
   ownerRole?: string;
+  /** Multiple owners/managers from registration (JSON array) */
+  ownersManagers?: Array<{
+    fullName: string;
+    email: string;
+    phone: string;
+    nationalId?: string;
+    gender?: string;
+    dateOfBirth?: string;
+    homeAddress?: string;
+    role?: string;
+  }>;
+  businessPhone?: string;
+  businessEmail?: string;
+  businessWebsite?: string;
   brandName?: string;
   yearEstablished?: number;
   businessType?: string;
   tinNumber?: string;
+  /** Registration: facility scale and workforce */
+  productionSystem?: {
+    totalCompanyAreaSqKm: number;
+    productionAreaSqKm: number;
+    numProductionLines: number;
+    numShifts: number;
+    numEmployees: number;
+  } | null;
   declarationSignature?: string;
   declarationSignedAt?: string;
   declarationChecklist?: {
