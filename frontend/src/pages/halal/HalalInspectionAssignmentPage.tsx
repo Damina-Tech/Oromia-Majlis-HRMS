@@ -40,7 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowLeft, UserPlus, ClipboardCheck, Eye, Calendar, Pencil, Trash2 } from "lucide-react";
-import { halalApi } from "@/services/halal";
+import { halalApi, type HalalInspectionExpertRole, getHalalInspectionExpertRoleLabel } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -51,7 +51,8 @@ export default function HalalInspectionAssignmentPage() {
   const preselectedAppId = (location.state as any)?.applicationId;
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [applicationId, setApplicationId] = useState(preselectedAppId || "");
-  const [inspectorIds, setInspectorIds] = useState<string[]>([]);
+  const [technicalInspectorIds, setTechnicalInspectorIds] = useState<string[]>([]);
+  const [shariaInspectorIds, setShariaInspectorIds] = useState<string[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInspectionId, setEditingInspectionId] = useState("");
@@ -93,8 +94,11 @@ export default function HalalInspectionAssignmentPage() {
   const inspections = inspectionsData?.items ?? [];
 
   const assignMutation = useMutation({
-    mutationFn: (data: { applicationId: string; inspectorIds: string[]; scheduledAt?: string }) =>
-      halalApi.inspections.assign(data),
+    mutationFn: (data: {
+      applicationId: string;
+      scheduledAt?: string;
+      assignments: { inspectorId: string; expertRole: HalalInspectionExpertRole }[];
+    }) => halalApi.inspections.assign(data),
     onSuccess: (response) => {
       toast.success(
         response.assignedCount > 1
@@ -105,7 +109,8 @@ export default function HalalInspectionAssignmentPage() {
       queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
       setAssignModalOpen(false);
       setApplicationId("");
-      setInspectorIds([]);
+      setTechnicalInspectorIds([]);
+      setShariaInspectorIds([]);
       setScheduledAt("");
     },
     onError: (e: any) => {
@@ -146,13 +151,27 @@ export default function HalalInspectionAssignmentPage() {
 
   const handleAssignSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!applicationId || inspectorIds.length === 0) {
-      toast.error("Please select application and at least one inspector");
+    if (!applicationId) {
+      toast.error("Please select an application");
+      return;
+    }
+    if (technicalInspectorIds.length < 1) {
+      toast.error("Select at least one Technical expert");
+      return;
+    }
+    const assignments: { inspectorId: string; expertRole: HalalInspectionExpertRole }[] = [
+      ...technicalInspectorIds.map((inspectorId) => ({ inspectorId, expertRole: "TECHNICAL_EXPERT" as const })),
+      ...shariaInspectorIds.map((inspectorId) => ({ inspectorId, expertRole: "SHARIA_EXPERT" as const })),
+    ];
+    if (assignments.length < 2) {
+      toast.error(
+        "At least two inspectors are required (for example two technical, or one technical and one sharia)."
+      );
       return;
     }
     assignMutation.mutate({
       applicationId,
-      inspectorIds,
+      assignments,
       scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
     });
   };
@@ -265,6 +284,7 @@ export default function HalalInspectionAssignmentPage() {
                     <TableRow>
                       <TableHead>Business / Application</TableHead>
                       <TableHead>Inspector</TableHead>
+                      <TableHead className="whitespace-nowrap">Expert type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Scheduled</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -280,6 +300,9 @@ export default function HalalInspectionAssignmentPage() {
                           {ins.inspector
                             ? `${ins.inspector.firstName} ${ins.inspector.lastName}`
                             : "—"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {getHalalInspectionExpertRoleLabel(ins.expertRole ?? "TECHNICAL_EXPERT")}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -361,6 +384,9 @@ export default function HalalInspectionAssignmentPage() {
                             ? `${ins.inspector.firstName} ${ins.inspector.lastName}`
                             : "—"}
                         </p>
+                        <p className="text-xs text-muted-foreground">
+                          {getHalalInspectionExpertRoleLabel(ins.expertRole ?? "TECHNICAL_EXPERT")}
+                        </p>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge
                             variant={ins.completedAt ? "default" : "secondary"}
@@ -429,14 +455,26 @@ export default function HalalInspectionAssignmentPage() {
       </Card>
 
       {/* Assign Inspection modal */}
-      <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
-        <DialogContent>
+      <Dialog
+        open={assignModalOpen}
+        onOpenChange={(o) => {
+          if (assignMutation.isPending) return;
+          setAssignModalOpen(o);
+          if (!o) {
+            setTechnicalInspectorIds([]);
+            setShariaInspectorIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-violet-600" /> Assign inspection
             </DialogTitle>
             <DialogDescription>
-              Select an application and one or more eligible inspectors. Only users with halal.inspector permission can be assigned.
+              Pick the application, then choose at least one <strong>Technical expert</strong> and a total of{" "}
+              <strong>at least two</strong> inspectors. <strong>Sharia expert</strong> is optional. Committee review
+              only needs <strong>one</strong> completed inspection report.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAssignSubmit} className="space-y-4">
@@ -467,43 +505,99 @@ export default function HalalInspectionAssignmentPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Inspectors</Label>
-              <div className="max-h-48 overflow-y-auto rounded-md border p-3 space-y-2">
-                {loadingInspectors && (
-                  <p className="text-sm text-muted-foreground">Loading inspectors...</p>
-                )}
-                {!loadingInspectors && inspectors?.map((inspector) => {
-                  const checked = inspectorIds.includes(inspector.id);
-                  return (
-                    <label
-                      key={inspector.id}
-                      className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) => {
-                          setInspectorIds((prev) =>
-                            next
-                              ? Array.from(new Set([...prev, inspector.id]))
-                              : prev.filter((id) => id !== inspector.id)
-                          );
-                        }}
-                      />
-                      <span className="text-sm">
-                        {inspector.firstName} {inspector.lastName} ({inspector.email})
-                      </span>
-                    </label>
-                  );
-                })}
-                {(!inspectors || inspectors.length === 0) && !loadingInspectors && (
-                  <p className="text-sm text-muted-foreground">No eligible inspectors available</p>
-                )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 min-w-0">
+                <Label>Technical expert</Label>
+                <p className="text-xs text-muted-foreground">Required — at least one.</p>
+                <div className="max-h-52 overflow-y-auto rounded-md border p-3 space-y-2">
+                  {loadingInspectors && (
+                    <p className="text-sm text-muted-foreground">Loading inspectors...</p>
+                  )}
+                  {!loadingInspectors &&
+                    inspectors?.map((inspector) => {
+                      const checked = technicalInspectorIds.includes(inspector.id);
+                      return (
+                        <label
+                          key={inspector.id}
+                          className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) => {
+                              if (next && shariaInspectorIds.includes(inspector.id)) {
+                                toast.error("Each inspector can only be selected in one column.");
+                                return;
+                              }
+                              if (next) {
+                                setShariaInspectorIds((s) => s.filter((x) => x !== inspector.id));
+                                setTechnicalInspectorIds((prev) =>
+                                  Array.from(new Set([...prev, inspector.id]))
+                                );
+                              } else {
+                                setTechnicalInspectorIds((prev) =>
+                                  prev.filter((x) => x !== inspector.id)
+                                );
+                              }
+                            }}
+                          />
+                          <span className="text-sm break-words">
+                            {inspector.firstName} {inspector.lastName}{" "}
+                            <span className="text-muted-foreground">({inspector.email})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <p className="text-xs text-muted-foreground">Selected: {technicalInspectorIds.length}</p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Selected: {inspectorIds.length}
-              </p>
+              <div className="space-y-2 min-w-0">
+                <Label>Sharia expert</Label>
+                <p className="text-xs text-muted-foreground">Optional.</p>
+                <div className="max-h-52 overflow-y-auto rounded-md border p-3 space-y-2">
+                  {loadingInspectors && (
+                    <p className="text-sm text-muted-foreground">Loading inspectors...</p>
+                  )}
+                  {!loadingInspectors &&
+                    inspectors?.map((inspector) => {
+                      const checked = shariaInspectorIds.includes(inspector.id);
+                      return (
+                        <label
+                          key={`sharia-${inspector.id}`}
+                          className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) => {
+                              if (next && technicalInspectorIds.includes(inspector.id)) {
+                                toast.error("Each inspector can only be selected in one column.");
+                                return;
+                              }
+                              if (next) {
+                                setTechnicalInspectorIds((t) => t.filter((x) => x !== inspector.id));
+                                setShariaInspectorIds((prev) =>
+                                  Array.from(new Set([...prev, inspector.id]))
+                                );
+                              } else {
+                                setShariaInspectorIds((prev) =>
+                                  prev.filter((x) => x !== inspector.id)
+                                );
+                              }
+                            }}
+                          />
+                          <span className="text-sm break-words">
+                            {inspector.firstName} {inspector.lastName}{" "}
+                            <span className="text-muted-foreground">({inspector.email})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <p className="text-xs text-muted-foreground">Selected: {shariaInspectorIds.length}</p>
+              </div>
             </div>
+            {(!inspectors || inspectors.length === 0) && !loadingInspectors && (
+              <p className="text-sm text-muted-foreground">No eligible inspectors available</p>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="scheduledAt">Scheduled date (optional)</Label>
@@ -513,6 +607,9 @@ export default function HalalInspectionAssignmentPage() {
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Total: {technicalInspectorIds.length + shariaInspectorIds.length} (min. 2, with ≥1 technical)
+              </p>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -521,7 +618,12 @@ export default function HalalInspectionAssignmentPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={assignMutation.isPending || !applicationId || inspectorIds.length === 0}
+                disabled={
+                  assignMutation.isPending ||
+                  !applicationId ||
+                  technicalInspectorIds.length < 1 ||
+                  technicalInspectorIds.length + shariaInspectorIds.length < 2
+                }
               >
                 {assignMutation.isPending ? "Assigning..." : "Assign inspectors"}
               </Button>

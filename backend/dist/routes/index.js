@@ -20,6 +20,7 @@ import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
 import institutionRoutes from "../modules/institutions/institution.routes.js";
+import institutionRecognitionRoutes from "../modules/institutions/institution-recognition.routes.js";
 import halalRoutes from "../modules/halal/halal.routes.js";
 import membershipRoutes from "../modules/membership/membership.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
@@ -54,6 +55,8 @@ router.use("/v1/dashboard", dashboardRoutes);
 router.use("/v1/leads", requireAuth, hasAnyPermission("leads.read", "leads.write", "leads.manage"), leadsRoutes);
 router.use("/v1/notifications", requireAuth, notificationRoutes);
 router.use("/v1/institutions", requireAuth, institutionRoutes);
+// Institution recognition (mixed public / protected routes inside router)
+router.use("/v1/institution-recognitions", institutionRecognitionRoutes);
 // Halal certification - some routes public (verify), most require auth
 router.use("/v1/halal", halalRoutes);
 // Majlis membership - public registration + admin/representative

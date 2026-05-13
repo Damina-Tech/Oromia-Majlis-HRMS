@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Building2, Loader2, Plus, Eye, Pencil, Trash2, Search } from "lucide-react";
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 const BUSINESS_STATUS_COLORS: Record<string, string> = {
   PENDING_APPROVAL: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -42,8 +43,15 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
 export default function HalalRegisterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  /** Owners cannot edit or delete a business after approval; staff may. */
+  const canOwnerMutateBusinessRegistration = (status: string | undefined) => {
+    if (status !== "APPROVED") return true;
+    return hasPermission("halal.admin") || hasPermission("halal.supervisor");
+  };
 
   const { data: businessesData, isLoading } = useQuery({
     queryKey: ["halal-businesses", searchQuery],
@@ -133,7 +141,9 @@ export default function HalalRegisterPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {businesses.map((b) => (
+                    {businesses.map((b) => {
+                      const canMutate = canOwnerMutateBusinessRegistration(b.status);
+                      return (
                       <TableRow
                         key={b.id}
                         className="cursor-pointer hover:bg-muted/50"
@@ -167,6 +177,12 @@ export default function HalalRegisterPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              disabled={!canMutate}
+                              title={
+                                !canMutate
+                                  ? "This business is approved and can no longer be edited."
+                                  : "Edit registration"
+                              }
                               onClick={() => navigate(`/halal/register/${b.id}/edit`)}
                             >
                               <Pencil className="h-4 w-4" />
@@ -174,6 +190,12 @@ export default function HalalRegisterPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              disabled={!canMutate}
+                              title={
+                                !canMutate
+                                  ? "This business is approved and cannot be deleted."
+                                  : "Delete business"
+                              }
                               onClick={() => setDeleteId(b.id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
@@ -181,12 +203,15 @@ export default function HalalRegisterPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <div className="md:hidden divide-y">
-                {businesses.map((b) => (
+                {businesses.map((b) => {
+                  const canMutate = canOwnerMutateBusinessRegistration(b.status);
+                  return (
                   <div
                     key={b.id}
                     className="flex items-center justify-between p-4 hover:bg-muted/30 cursor-pointer"
@@ -205,15 +230,36 @@ export default function HalalRegisterPage() {
                       <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/businesses/${b.id}`)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/register/${b.id}/edit`)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={!canMutate}
+                        title={
+                          !canMutate
+                            ? "This business is approved and can no longer be edited."
+                            : "Edit registration"
+                        }
+                        onClick={() => navigate(`/halal/register/${b.id}/edit`)}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteId(b.id)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={!canMutate}
+                        title={
+                          !canMutate
+                            ? "This business is approved and cannot be deleted."
+                            : "Delete business"
+                        }
+                        onClick={() => setDeleteId(b.id)}
+                      >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}

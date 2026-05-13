@@ -232,3 +232,22 @@ export const uploadMembershipFile = multer({
   fileFilter: membershipFileFilter,
 });
 
+// Document template source files (e.g. Halal certification agreement PDF)
+const documentTemplateSourceDir = path.join(__dirname, "../../uploads/document-template-sources");
+if (!fs.existsSync(documentTemplateSourceDir)) {
+  fs.mkdirSync(documentTemplateSourceDir, { recursive: true });
+}
+const documentTemplateSourceStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, documentTemplateSourceDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext);
+    cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+export const uploadDocumentTemplateSourceFile = multer({
+  storage: documentTemplateSourceStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: halalFileFilter,
+});
+

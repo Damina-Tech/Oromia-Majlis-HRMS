@@ -14,6 +14,8 @@ export interface DocumentTemplate {
   language: "EN" | "AM" | "OR";
   tags: string[];
   active: boolean;
+  /** Server path to uploaded blank agreement (PDF/DOC), e.g. /uploads/document-template-sources/... */
+  sourceFileUrl?: string | null;
   mergeFields?: any;
   createdBy: string;
   updatedBy?: string;
@@ -80,6 +82,7 @@ export interface CreateTemplateData {
   contentPlain?: string;
   language?: DocumentTemplate["language"];
   tags?: string[];
+  sourceFileUrl?: string;
 }
 
 export interface UpdateTemplateData {
@@ -92,6 +95,7 @@ export interface UpdateTemplateData {
   language?: DocumentTemplate["language"];
   tags?: string[];
   active?: boolean;
+  sourceFileUrl?: string | null;
 }
 
 export interface GenerateDocumentData {
@@ -122,6 +126,7 @@ export const listTemplates = async (params?: {
   active?: boolean;
   language?: string;
   tags?: string;
+  code?: string;
 }) => {
   const response = await api.get("/documents/templates", { params });
   return response.data;
@@ -134,6 +139,13 @@ export const getTemplate = async (id: string) => {
 
 export const createTemplate = async (data: CreateTemplateData) => {
   const response = await api.post("/documents/templates", data);
+  return response.data;
+};
+
+export const uploadTemplateSourceFile = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post<{ url: string }>("/documents/templates/source-upload", formData);
   return response.data;
 };
 

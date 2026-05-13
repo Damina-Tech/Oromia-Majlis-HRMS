@@ -27,6 +27,19 @@ function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;
 }
 
+/** Upload a PDF/DOC master file for a template (e.g. Halal blank agreement). */
+export async function uploadTemplateSourceFile(req: Request, res: Response) {
+  try {
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const url = `/uploads/document-template-sources/${file.filename}`;
+    return res.status(200).json({ url });
+  } catch (error: any) {
+    console.error("Upload template source error:", error);
+    return res.status(500).json({ message: error.message || "Upload failed" });
+  }
+}
+
 /**
  * List document templates
  */
@@ -65,6 +78,10 @@ export async function listTemplates(req: Request, res: Response) {
     if (query.tags) {
       const tagArray = query.tags.split(",").map((t) => t.trim());
       where.tags = { hasSome: tagArray };
+    }
+
+    if (query.code?.trim()) {
+      where.code = query.code.trim();
     }
 
     const { skip, take } = paginate(query.page, query.pageSize);
@@ -250,12 +267,14 @@ export async function updateTemplate(req: Request, res: Response) {
       mergeFields = fields.length > 0 ? { fields } : null;
     }
 
+    const bumpVersion = !!(data.content || data.sourceFileUrl !== undefined);
+
     const template = await prisma.documentTemplate.update({
       where: { id },
       data: {
         ...data,
         updatedBy: currentUserId,
-        version: data.content ? existing.version + 1 : existing.version,
+        version: bumpVersion ? existing.version + 1 : existing.version,
         mergeFields: mergeFields ? (mergeFields as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
       include: {

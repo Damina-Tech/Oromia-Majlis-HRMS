@@ -132,6 +132,18 @@ export interface HalalApplication {
   approvedById?: string;
   approvedAt?: string;
   rejectionReason?: string;
+  /** Committee notes when approved (admin-only in API responses for business owners). */
+  committeeNotes?: string | null;
+  /** Meeting minutes file URL when approving (admin-only in API responses for business owners). */
+  meetingMinutesUrl?: string | null;
+  /** Blank agreement document URL (stored on application or from server env). */
+  agreementTemplateUrl?: string | null;
+  /** Resolved template URL for download (API may set from env when application field is empty). */
+  agreementTemplateResolvedUrl?: string | null;
+  agreementOwnerSignedUrl?: string | null;
+  agreementOwnerSubmittedAt?: string | null;
+  agreementMajlisSignedUrl?: string | null;
+  agreementMajlisApprovedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   inspections?: HalalInspection[];
@@ -140,12 +152,52 @@ export interface HalalApplication {
   certificateLifecycle?: HalalCertificateLifecycle;
 }
 
+/** True once a signed agreement is on file; withdrawal/deletion of the application is blocked (server enforces too). */
+export function isHalalApplicationWithdrawLockedByAgreement(
+  app: Pick<HalalApplication, "agreementOwnerSubmittedAt" | "agreementMajlisApprovedAt" | "agreementOwnerSignedUrl">
+): boolean {
+  return !!(
+    app.agreementOwnerSubmittedAt ||
+    app.agreementMajlisApprovedAt ||
+    app.agreementOwnerSignedUrl
+  );
+}
+
+/**
+ * Human-readable workflow status for list UIs — matches the header badge on the Halal application detail page
+ * (same rules as raw `status` + agreement milestones).
+ */
+export function getHalalApplicationStatusBadgeLabel(app: HalalApplication): string {
+  const agreementDone = !!app.agreementMajlisApprovedAt;
+  switch (app.status) {
+    case "REVIEW":
+      return "Payment pending";
+    case "INSPECTION":
+      return "Committee review";
+    case "SUBMITTED":
+      if (!agreementDone) {
+        return app.agreementOwnerSubmittedAt ? "Agreement (Majlis)" : "Agreement";
+      }
+      return "Inspection";
+    default:
+      return app.status;
+  }
+}
+
+export type HalalInspectionExpertRole = "TECHNICAL_EXPERT" | "SHARIA_EXPERT";
+
+export function getHalalInspectionExpertRoleLabel(role: HalalInspectionExpertRole | string | undefined): string {
+  if (role === "SHARIA_EXPERT") return "Sharia expert";
+  return "Technical expert";
+}
+
 export interface HalalInspection {
   id: string;
   applicationId: string;
   application?: HalalApplication;
   inspectorId: string;
-  inspector?: { id: string; firstName: string; lastName: string };
+  inspector?: { id: string; firstName: string; lastName: string; email?: string };
+  expertRole?: HalalInspectionExpertRole;
   scheduledAt?: string;
   completedAt?: string;
   checklistData?: Record<string, unknown>;
@@ -454,6 +506,20 @@ export const halalApi = {
     update: (id: string, data: Partial<HalalApplication>) => api.patch<HalalApplication>(`/halal/applications/${id}`, data).then((r) => r.data),
     delete: (id: string) => api.delete(`/halal/applications/${id}`),
     submit: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/submit`).then((r) => r.data),
+    uploadAgreementOwnerDocument: (id: string, file: File) => {
+      const form = new FormData();
+      form.append("document", file);
+      return api.post<HalalApplication>(`/halal/applications/${id}/agreement/owner`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
+    uploadAgreementMajlisDocument: (id: string, file: File) => {
+      const form = new FormData();
+      form.append("document", file);
+      return api.post<HalalApplication>(`/halal/applications/${id}/agreement/majlis`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data);
+    },
     confirmPayment: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/confirm-payment`).then((r) => r.data),
     initChapaPayment: (id: string) =>
       api.post<{ checkoutUrl: string; txRef: string }>(`/halal/applications/${id}/payment/chapa-init`).then((r) => r.data),
@@ -474,8 +540,11 @@ export const halalApi = {
     list: (params?: { page?: number; limit?: number; inspectorId?: string; applicationId?: string; completed?: string }) =>
       api.get<PaginatedResponse<HalalInspection>>("/halal/inspections", { params }).then((r) => r.data),
     get: (id: string) => api.get<HalalInspection>(`/halal/inspections/${id}`).then((r) => r.data),
-    assign: (data: { applicationId: string; inspectorIds: string[]; scheduledAt?: string }) =>
-      api.post<AssignInspectionsResponse>("/halal/inspections", data).then((r) => r.data),
+    assign: (data: {
+      applicationId: string;
+      scheduledAt?: string;
+      assignments: { inspectorId: string; expertRole: HalalInspectionExpertRole }[];
+    }) => api.post<AssignInspectionsResponse>("/halal/inspections", data).then((r) => r.data),
     update: (id: string, data: { inspectorId?: string; scheduledAt?: string | null }) =>
       api.patch<HalalInspection>(`/halal/inspections/${id}`, data).then((r) => r.data),
     delete: (id: string) => api.delete(`/halal/inspections/${id}`),

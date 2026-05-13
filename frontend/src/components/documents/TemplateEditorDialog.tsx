@@ -18,13 +18,13 @@ import {
   Italic,
   Underline,
   List,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  Type,
+  Loader2,
 } from "lucide-react";
-import { type DocumentTemplate, type CreateTemplateData, type UpdateTemplateData, type MergeField } from "@/services/documents";
+import { type DocumentTemplate, type CreateTemplateData, type UpdateTemplateData, type MergeField, uploadTemplateSourceFile } from "@/services/documents";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
+
+const HALAL_AGREEMENT_DEFAULT_HTML = `<p><strong>Halal certification agreement</strong></p><p>This template is used with a printable PDF. Download the attached file, sign and stamp it, then upload the signed copy from the Halal application page.</p>`;
 
 interface TemplateEditorDialogProps {
   open: boolean;
@@ -33,6 +33,7 @@ interface TemplateEditorDialogProps {
   template?: DocumentTemplate;
   mode: "create" | "edit";
   onSubmit: (data: CreateTemplateData | UpdateTemplateData) => Promise<void>;
+  agreementPreset?: "halal" | null;
 }
 
 export default function TemplateEditorDialog({
@@ -42,6 +43,7 @@ export default function TemplateEditorDialog({
   template,
   mode,
   onSubmit,
+  agreementPreset = null,
 }: TemplateEditorDialogProps) {
   const [formData, setFormData] = useState({
     code: template?.code || "",
@@ -56,9 +58,16 @@ export default function TemplateEditorDialog({
   const [activeTab, setActiveTab] = useState<"visual" | "html">("visual");
   const [selectedCategory, setSelectedCategory] = useState<string>("employee");
   const [showMergeFields, setShowMergeFields] = useState(false);
+  const [sourceFileUrl, setSourceFileUrl] = useState("");
+  const [uploadingSource, setUploadingSource] = useState(false);
 
   useEffect(() => {
-    if (template && open) {
+    if (!open) {
+      setSourceFileUrl("");
+      setUploadingSource(false);
+      return;
+    }
+    if (template) {
       setFormData({
         code: template.code,
         name: template.name,
@@ -68,7 +77,19 @@ export default function TemplateEditorDialog({
         language: template.language,
         tags: template.tags?.join(", ") || "",
       });
-    } else if (!template && open) {
+      setSourceFileUrl(template.sourceFileUrl || "");
+    } else if (agreementPreset === "halal" && mode === "create") {
+      setFormData({
+        code: "HALAL_CERTIFICATION_AGREEMENT",
+        name: "Halal certification agreement (blank)",
+        category: "CERTIFICATE",
+        description: "Blank agreement for Halal certification. Upload the printable PDF below.",
+        content: HALAL_AGREEMENT_DEFAULT_HTML,
+        language: "EN",
+        tags: "halal, agreement",
+      });
+      setSourceFileUrl("");
+    } else {
       setFormData({
         code: "",
         name: "",
@@ -78,22 +99,47 @@ export default function TemplateEditorDialog({
         language: "EN",
         tags: "",
       });
+      setSourceFileUrl("");
     }
-  }, [template, open]);
+  }, [template, open, agreementPreset, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.code || !formData.name || !formData.content) {
+    if (!formData.code || !formData.name) {
+      return;
+    }
+    if (!formData.content?.trim() && !sourceFileUrl) {
+      toast.error("Add template HTML content or upload a PDF/DOC agreement file");
       return;
     }
 
-    const data: CreateTemplateData | UpdateTemplateData = {
-      ...formData,
-      tags: formData.tags ? formData.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-    };
+    const tags = formData.tags ? formData.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
 
-    await onSubmit(data);
+    if (mode === "create") {
+      const data: CreateTemplateData = {
+        code: formData.code,
+        name: formData.name,
+        category: formData.category,
+        description: formData.description || undefined,
+        content: formData.content?.trim() || "<p></p>",
+        language: formData.language,
+        tags,
+        sourceFileUrl: sourceFileUrl || undefined,
+      };
+      await onSubmit(data);
+    } else {
+      const data: UpdateTemplateData = {
+        name: formData.name,
+        category: formData.category,
+        description: formData.description || undefined,
+        content: formData.content,
+        language: formData.language,
+        tags,
+        sourceFileUrl: sourceFileUrl || null,
+      };
+      await onSubmit(data);
+    }
   };
 
   const insertMergeField = (field: string) => {
@@ -409,6 +455,52 @@ export default function TemplateEditorDialog({
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3">
+            <div>
+              <Label>Printable agreement file (PDF / DOC)</Label>
+              <p className="text-xs text-gray-500 mt-1">
+                For Halal certification, applicants download this file from their application. You can keep the HTML
+                above as short instructions; the uploaded file is what they print and sign.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                disabled={uploadingSource}
+                className="max-w-md"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadingSource(true);
+                  try {
+                    const { url } = await uploadTemplateSourceFile(file);
+                    setSourceFileUrl(url);
+                    toast.success("File attached to template");
+                  } catch (err: unknown) {
+                    const msg =
+                      err && typeof err === "object" && "response" in err
+                        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                        : undefined;
+                    toast.error(msg || "Upload failed");
+                  } finally {
+                    setUploadingSource(false);
+                    e.target.value = "";
+                  }
+                }}
+              />
+              {uploadingSource ? <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden /> : null}
+            </div>
+            {sourceFileUrl ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
+                <code className="text-xs break-all text-gray-700">{sourceFileUrl}</code>
+                <Button type="button" variant="outline" size="sm" onClick={() => setSourceFileUrl("")}>
+                  Remove file
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div>

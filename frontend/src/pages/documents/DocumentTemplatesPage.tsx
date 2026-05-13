@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -36,16 +34,15 @@ import {
   Trash2,
   Eye,
   FileText,
-  Copy,
-  Archive,
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { resolveFileUrl } from "@/config/api";
 import {
   listTemplates,
-  getTemplate,
   createTemplate,
   updateTemplate,
   deleteTemplate,
@@ -85,6 +82,7 @@ export default function DocumentTemplatesPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
+  const [createAgreementPreset, setCreateAgreementPreset] = useState<"halal" | null>(null);
 
   // Merge fields
   const [mergeFields, setMergeFields] = useState<MergeField>({});
@@ -196,10 +194,27 @@ export default function DocumentTemplatesPage() {
           <p className="text-gray-600 mt-1">Manage document templates and generate letters</p>
         </div>
         {canManage && (
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Template
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateAgreementPreset(null);
+                setCreateDialogOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create template
+            </Button>
+            <Button
+              onClick={() => {
+                setCreateAgreementPreset("halal");
+                setCreateDialogOpen(true);
+              }}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Halal agreement (blank)
+            </Button>
+          </div>
         )}
       </div>
 
@@ -289,10 +304,27 @@ export default function DocumentTemplatesPage() {
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">No templates found</p>
               {canManage && (
-                <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Template
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setCreateAgreementPreset(null);
+                      setCreateDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create template
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setCreateAgreementPreset("halal");
+                      setCreateDialogOpen(true);
+                    }}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Halal agreement (blank)
+                  </Button>
+                </div>
               )}
             </div>
           ) : (
@@ -307,6 +339,7 @@ export default function DocumentTemplatesPage() {
                       <TableHead>Status</TableHead>
                       <TableHead>Version</TableHead>
                       <TableHead>Generated</TableHead>
+                      <TableHead>Source file</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -338,6 +371,20 @@ export default function DocumentTemplatesPage() {
                         </TableCell>
                         <TableCell>v{template.version}</TableCell>
                         <TableCell>{template._count?.generatedDocuments || 0}</TableCell>
+                        <TableCell>
+                          {template.sourceFileUrl ? (
+                            <a
+                              href={resolveFileUrl(template.sourceFileUrl) || template.sourceFileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-primary underline"
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -412,10 +459,14 @@ export default function DocumentTemplatesPage() {
       {createDialogOpen && (
         <TemplateEditorDialog
           open={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
+          onOpenChange={(open) => {
+            setCreateDialogOpen(open);
+            if (!open) setCreateAgreementPreset(null);
+          }}
           mergeFields={mergeFields}
           onSubmit={handleCreate}
           mode="create"
+          agreementPreset={createAgreementPreset}
         />
       )}
 

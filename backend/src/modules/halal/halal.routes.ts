@@ -16,6 +16,8 @@ import {
   updateApplication,
   deleteApplication,
   submitApplication,
+  uploadApplicationAgreementOwner,
+  uploadApplicationAgreementMajlis,
   confirmPayment,
   initChapaPayment,
   chapaCallback,
@@ -154,6 +156,20 @@ router.get("/applications/:id", requireAuth, hasAnyPermission(...HALAL_MODULE_AC
 router.patch("/applications/:id", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), updateApplication);
 router.delete("/applications/:id", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), deleteApplication);
 router.post("/applications/:id/submit", requireAuth, hasAnyPermission("halal.business"), submitApplication);
+router.post(
+  "/applications/:id/agreement/owner",
+  requireAuth,
+  hasAnyPermission("halal.business"),
+  uploadHalalFile.single("document"),
+  uploadApplicationAgreementOwner
+);
+router.post(
+  "/applications/:id/agreement/majlis",
+  requireAuth,
+  hasAnyPermission("halal.admin", "halal.supervisor", "halal.committee"),
+  uploadHalalFile.single("document"),
+  uploadApplicationAgreementMajlis
+);
 router.post("/applications/:id/confirm-payment", requireAuth, hasAnyPermission("halal.admin", "halal.finance"), confirmPayment);
 router.post("/applications/:id/payment/chapa-init", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), initChapaPayment);
 router.get("/applications/:id/payment/chapa-callback", chapaCallback); // Public - Chapa calls this

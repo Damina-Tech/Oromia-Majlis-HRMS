@@ -28,6 +28,8 @@ export const CreateDocumentTemplateDto = z.object({
   language: DocumentLanguageEnum.optional().default("EN"),
   tags: z.array(z.string()).optional().default([]),
   mergeFields: z.record(z.string(), z.any()).optional(),
+  /** Uploaded blank agreement PDF/DOC path (see POST /documents/templates/source-upload) */
+  sourceFileUrl: z.string().min(1).max(500).optional(),
 });
 
 export type CreateDocumentTemplateDto = z.infer<typeof CreateDocumentTemplateDto>;
@@ -44,6 +46,7 @@ export const UpdateDocumentTemplateDto = z.object({
   tags: z.array(z.string()).optional(),
   active: z.boolean().optional(),
   mergeFields: z.record(z.string(), z.any()).optional(),
+  sourceFileUrl: z.string().min(1).max(500).optional().nullable(),
 });
 
 export type UpdateDocumentTemplateDto = z.infer<typeof UpdateDocumentTemplateDto>;
@@ -58,6 +61,7 @@ export const ListTemplatesQuery = z.object({
   active: z.coerce.boolean().optional(),
   language: DocumentLanguageEnum.optional(),
   tags: z.string().optional(), // Comma-separated tags
+  code: z.string().optional(),
   sortBy: z.enum(["name", "category", "createdAt", "updatedAt"]).optional().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
 });

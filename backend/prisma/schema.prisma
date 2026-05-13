@@ -977,6 +977,8 @@ model DocumentTemplate {
   tags               String[]
   active             Boolean                      @default(true)
   mergeFields        Json?
+  /// Optional uploaded blank agreement (PDF/DOC path under /uploads/...) for Halal and similar workflows
+  sourceFileUrl      String?
   createdBy          String
   updatedBy          String?
   createdAt          DateTime                     @default(now())
@@ -2457,6 +2459,18 @@ model HalalApplication {
   approver        User?                  @relation("HalalApprover", fields: [approvedById], references: [id])
   approvedAt      DateTime?
   rejectionReason String?
+  /// Committee / certification head notes when approving (internal; not exposed to business owner via API).
+  committeeNotes    String?
+  /// Uploaded meeting minutes path when approving (internal; not exposed to business owner via API).
+  meetingMinutesUrl String?
+  /// Blank agreement PDF (or URL) for this application; may be set from HALAL_AGREEMENT_TEMPLATE_URL on submit.
+  agreementTemplateUrl            String?
+  /// Owner-uploaded signed/stamped agreement file path under /uploads/halal/
+  agreementOwnerSignedUrl       String?
+  agreementOwnerSubmittedAt     DateTime?
+  /// Majlis-uploaded fully executed agreement (both parties); set together with approval timestamp.
+  agreementMajlisSignedUrl        String?
+  agreementMajlisApprovedAt     DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   inspections     HalalInspection[]
@@ -2490,12 +2504,19 @@ model HalalPayment {
   @@index([chapaTxRef])
 }
 
+enum HalalInspectionExpertRole {
+  TECHNICAL_EXPERT
+  SHARIA_EXPERT
+}
+
 model HalalInspection {
   id            String         @id @default(cuid())
   applicationId String
   application   HalalApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   inspectorId   String
   inspector     User           @relation("HalalInspector", fields: [inspectorId], references: [id])
+  /// Technical vs Sharia expert lane for this inspection assignment.
+  expertRole    HalalInspectionExpertRole @default(TECHNICAL_EXPERT)
   scheduledAt   DateTime?
   completedAt   DateTime?
   checklistData Json?          // Category-based checklist results

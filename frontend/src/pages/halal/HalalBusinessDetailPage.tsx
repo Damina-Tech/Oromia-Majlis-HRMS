@@ -38,7 +38,14 @@ import {
   Factory,
   Users,
 } from "lucide-react";
-import { halalApi, type HalalBusiness, type HalalApplicationStatus } from "@/services/halal";
+import {
+  halalApi,
+  type HalalBusiness,
+  type HalalApplication,
+  type HalalApplicationStatus,
+  isHalalApplicationWithdrawLockedByAgreement,
+  getHalalApplicationStatusBadgeLabel,
+} from "@/services/halal";
 import { resolveFileUrl } from "@/config/api";
 import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
 import { useAuth } from "@/contexts/AuthContext";
@@ -66,19 +73,12 @@ export default function HalalBusinessDetailPage() {
   const isStaff = hasPermission("halal.admin") || hasPermission("halal.supervisor");
   const isAdmin = hasPermission("halal.admin");
   const isHalalAdmin = hasPermission("halal.admin");
-  const isSupervisor = hasPermission("halal.supervisor");
   const [withdrawId, setWithdrawId] = useState<string | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
-  const [approvalRole, setApprovalRole] = useState<"SUPERVISOR" | "ADMIN" | null>(null);
   const [approvalChecklist, setApprovalChecklist] = useState<Record<string, boolean>>({});
   const [approvalNote, setApprovalNote] = useState("");
   const [detailsConfirmed, setDetailsConfirmed] = useState(false);
 
-  const SUPERVISOR_QUESTIONS = [
-    { key: "siteVisited", label: "I conducted on-site review of the business premises." },
-    { key: "docsVerified", label: "I verified required documents and business identity." },
-    { key: "halalReadiness", label: "I confirm baseline Halal readiness for operations." },
-  ] as const;
   const ADMIN_QUESTIONS = [
     { key: "supervisorReviewed", label: "Supervisor review is completed and recorded." },
     { key: "complianceChecked", label: "I checked compliance, policy, and submitted records." },
@@ -103,14 +103,13 @@ export default function HalalBusinessDetailPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (data: { role: "SUPERVISOR" | "ADMIN"; checklist: Record<string, boolean>; note?: string; detailsConfirmed: boolean }) =>
-      halalApi.businesses.approve(id!, data),
+    mutationFn: (data: { checklist: Record<string, boolean>; note?: string; detailsConfirmed: boolean }) =>
+      halalApi.businesses.approve(id!, { role: "ADMIN", ...data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-business", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-businesses"] });
       toast.success("Business approval step recorded.");
       setApprovalOpen(false);
-      setApprovalRole(null);
       setApprovalChecklist({});
       setApprovalNote("");
       setDetailsConfirmed(false);
@@ -118,13 +117,20 @@ export default function HalalBusinessDetailPage() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve"),
   });
 
-  const canWithdraw = (app: { status: string; feePaidAt?: string | null }) =>
-    app.status === "DRAFT" || (app.status === "SUBMITTED" && !app.feePaidAt);
+  /** After the owner uploads a signed agreement (or Majlis finalizes it), the application cannot be withdrawn. */
+  const canWithdraw = (app: Pick<
+    HalalApplication,
+    | "status"
+    | "feePaidAt"
+    | "agreementOwnerSubmittedAt"
+    | "agreementMajlisApprovedAt"
+    | "agreementOwnerSignedUrl"
+  >) =>
+    !isHalalApplicationWithdrawLockedByAgreement(app) &&
+    (app.status === "DRAFT" || (app.status === "SUBMITTED" && !app.feePaidAt));
 
-  const openApprovalModal = (role: "SUPERVISOR" | "ADMIN") => {
-    setApprovalRole(role);
-    const qs = role === "SUPERVISOR" ? SUPERVISOR_QUESTIONS : ADMIN_QUESTIONS;
-    setApprovalChecklist(Object.fromEntries(qs.map((q) => [q.key, false])));
+  const openApprovalModal = () => {
+    setApprovalChecklist(Object.fromEntries(ADMIN_QUESTIONS.map((q) => [q.key, false])));
     setApprovalNote("");
     setDetailsConfirmed(false);
     setApprovalOpen(true);
@@ -713,9 +719,16 @@ export default function HalalBusinessDetailPage() {
                   onClick={() => navigate(`/halal/applications/${app.id}`)}
                 >
                   <div className="min-w-0 flex-1">
-                    <Badge className={`${APPLICATION_STATUS_COLORS[app.status]} text-xs`}>{app.status}</Badge>
+                    <Badge className={`${APPLICATION_STATUS_COLORS[app.status]} text-xs`}>
+                      {getHalalApplicationStatusBadgeLabel(app)}
+                    </Badge>
                     {app.submittedAt && (
                       <p className="text-xs text-muted-foreground mt-0.5">Submitted {formatDate(app.submittedAt)}</p>
+                    )}
+                    {isHalalApplicationWithdrawLockedByAgreement(app) && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                        Withdraw unavailable — certification agreement on file.
+                      </p>
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -753,7 +766,11 @@ export default function HalalBusinessDetailPage() {
               Apply for Halal certification
             </Button>
             {!canStartCert && activeApplication && (
-              <p className="text-sm text-muted-foreground mt-2">Complete or withdraw the current application first.</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {isHalalApplicationWithdrawLockedByAgreement(activeApplication)
+                  ? "Complete the current application first. Withdraw is not available after the certification agreement has been signed and uploaded."
+                  : "Complete or withdraw the current application first."}
+              </p>
             )}
             {!canStartCert && !activeApplication && (
               <p className="text-sm text-muted-foreground mt-2">
@@ -808,23 +825,14 @@ export default function HalalBusinessDetailPage() {
           </CardTitle>
           <CardDescription>
             {bizStatus === "APPROVED"
-              ? "Approval completed by Supervisor and Department Head."
-              : "Pending approval. Requires both Supervisor and Department Head."}
+              ? "Approved by Department Head."
+              : "Pending approval. Department Head approval is sufficient."}
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-4 space-y-4">
           {bizStatus !== "APPROVED" ? (
             <>
               <div className="flex flex-wrap gap-2">
-                <Badge
-                  className={
-                    approvalProgress.supervisorApproved
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                  }
-                >
-                  Supervisor: {approvalProgress.supervisorApproved ? "Approved" : "Pending"}
-                </Badge>
                 <Badge
                   className={
                     approvalProgress.adminApproved
@@ -839,18 +847,9 @@ export default function HalalBusinessDetailPage() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950/30"
-                    disabled={!isSupervisor || approvalProgress.supervisorApproved || approveMutation.isPending}
-                    onClick={() => openApprovalModal("SUPERVISOR")}
-                  >
-                    Supervisor review
-                  </Button>
-                  <Button
-                    size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     disabled={!isAdmin || approvalProgress.adminApproved || approveMutation.isPending}
-                    onClick={() => openApprovalModal("ADMIN")}
+                    onClick={() => openApprovalModal()}
                   >
                     Department Head approval
                   </Button>
@@ -859,13 +858,6 @@ export default function HalalBusinessDetailPage() {
             </>
           ) : (
             <div className="space-y-2 text-sm rounded-md border border-emerald-200/50 dark:border-emerald-800/40 bg-background/70 p-3">
-              {approvalProgress.approvedBySupervisor && (
-                <p>
-                  <span className="text-muted-foreground">Supervisor:</span>{" "}
-                  {approvalProgress.approvedBySupervisor.name} ({approvalProgress.approvedBySupervisor.email}) on{" "}
-                  {formatDate(approvalProgress.approvedBySupervisor.at)}
-                </p>
-              )}
               {approvalProgress.approvedByAdmin && (
                 <p>
                   <span className="text-muted-foreground">Department Head:</span>{" "}
@@ -882,10 +874,10 @@ export default function HalalBusinessDetailPage() {
         <DialogContent>
           <DialogHeader className="pb-2">
             <DialogTitle className="text-emerald-900 dark:text-emerald-100">
-              {approvalRole === "SUPERVISOR" ? "Supervisor on-site review" : "Department Head approval"}
+              Department Head approval
             </DialogTitle>
             <DialogDescription>
-              Answer the checklist, confirm business details, then approve this step.
+              Answer the checklist, confirm business details, then approve this step. Department Head approval alone is sufficient.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -897,7 +889,7 @@ export default function HalalBusinessDetailPage() {
             </div>
             <div className="space-y-2 rounded-md border border-violet-200/50 dark:border-violet-800/40 bg-violet-50/20 dark:bg-violet-950/20 p-3">
               <p className="text-sm font-medium text-violet-900 dark:text-violet-100">Checklist</p>
-              {(approvalRole === "SUPERVISOR" ? SUPERVISOR_QUESTIONS : ADMIN_QUESTIONS).map((q) => (
+              {ADMIN_QUESTIONS.map((q) => (
                 <div key={q.key} className="flex items-center gap-2">
                   <Checkbox
                     id={`approval-${q.key}`}
@@ -935,15 +927,12 @@ export default function HalalBusinessDetailPage() {
             <Button
               disabled={
                 approveMutation.isPending ||
-                !approvalRole ||
                 !detailsConfirmed ||
                 Object.values(approvalChecklist).some((x) => !x)
               }
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={() =>
-                approvalRole &&
                 approveMutation.mutate({
-                  role: approvalRole,
                   checklist: approvalChecklist,
                   note: approvalNote || undefined,
                   detailsConfirmed,

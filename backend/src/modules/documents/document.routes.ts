@@ -10,6 +10,7 @@ import {
   listGeneratedDocuments,
   downloadDocument,
   getMergeFields,
+  uploadTemplateSourceFile,
 } from "./document.controller.js";
 import {
   getDocumentSettings,
@@ -24,8 +25,17 @@ import {
   deleteDocumentRequest,
 } from "./document-request.controller.js";
 import { hasPermission } from "../../middleware/auth.js";
+import { uploadDocumentTemplateSourceFile } from "../../lib/upload.js";
 
 const router = Router();
+
+// Must be registered before /templates/:id so "source-upload" is not captured as an id
+router.post(
+  "/templates/source-upload",
+  hasPermission("documents.manage"),
+  uploadDocumentTemplateSourceFile.single("file"),
+  uploadTemplateSourceFile
+);
 
 // Template routes
 router.get("/templates", hasPermission("documents.view"), listTemplates);

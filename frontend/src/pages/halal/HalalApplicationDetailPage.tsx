@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,11 +44,21 @@ import {
   Phone,
   User,
   Shield,
+  Download,
 } from "lucide-react";
-import { halalApi, type HalalApplication, type HalalApplicationStatus } from "@/services/halal";
+import {
+  halalApi,
+  type HalalApplication,
+  type HalalApplicationStatus,
+  type HalalInspectionExpertRole,
+  isHalalApplicationWithdrawLockedByAgreement,
+  getHalalApplicationStatusBadgeLabel,
+  getHalalInspectionExpertRoleLabel,
+} from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveFileUrl } from "@/config/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,8 +79,9 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
     description: "Review your application details and click Submit when ready. You can edit until you submit.",
   },
   SUBMITTED: {
-    title: "Inspection in progress",
-    description: "Your application was submitted. Assigned inspectors will inspect your business and submit the inspection result.",
+    title: "Certification agreement",
+    description:
+      "Download the agreement template, sign and stamp it, then upload your signed copy. After Majlis signs and uploads the executed agreement, inspection can be scheduled.",
   },
   REVIEW: {
     title: "Pay certification fee",
@@ -86,17 +97,47 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
   },
   REJECTED: {
     title: "Application not approved",
-    description: "Your application was not approved. See the rejection reason below. You may submit a new application.",
+    description:
+      "Your application was not approved. You may submit a new application when you are ready. Contact the certification office if you need more information.",
   },
 };
 
-const WORKFLOW_STEPS = [
-  { key: "DRAFT", label: "Submitted", icon: FileText },
-  { key: "SUBMITTED", label: "Inspection", icon: Building2 },
+type HalalWorkflowDisplayKey =
+  | "DRAFT"
+  | "AGREEMENT"
+  | "INSPECTION_QUEUE"
+  | "INSPECTION"
+  | "REVIEW"
+  | "APPROVED"
+  | "REJECTED";
+
+const WORKFLOW_STEPS: { key: HalalWorkflowDisplayKey; label: string; icon: typeof FileText }[] = [
+  { key: "DRAFT", label: "Application", icon: FileText },
+  { key: "AGREEMENT", label: "Agreement", icon: Shield },
+  { key: "INSPECTION_QUEUE", label: "Inspection", icon: Building2 },
   { key: "INSPECTION", label: "Committee review", icon: AlertCircle },
   { key: "REVIEW", label: "Payment", icon: CreditCard },
   { key: "APPROVED", label: "Certificate", icon: Award },
 ];
+
+function getHalalWorkflowDisplayKey(app: HalalApplication): HalalWorkflowDisplayKey {
+  switch (app.status) {
+    case "REJECTED":
+      return "REJECTED";
+    case "DRAFT":
+      return "DRAFT";
+    case "SUBMITTED":
+      return app.agreementMajlisApprovedAt ? "INSPECTION_QUEUE" : "AGREEMENT";
+    case "INSPECTION":
+      return "INSPECTION";
+    case "REVIEW":
+      return "REVIEW";
+    case "APPROVED":
+      return "APPROVED";
+    default:
+      return "DRAFT";
+  }
+}
 
 const ETHIOPIAN_BANKS = [
   "Commercial Bank of Ethiopia",
@@ -143,7 +184,7 @@ export default function HalalMyApplicationDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isAdminContext = location.pathname.startsWith("/admin/halal/applications");
@@ -160,11 +201,14 @@ export default function HalalMyApplicationDetailPage() {
   const [paymentMethod, setPaymentMethod] = useState<"chapa" | "manual">("chapa");
   const [manualBank, setManualBank] = useState("");
   const [manualReceipt, setManualReceipt] = useState<File | null>(null);
+  const ownerAgreementFileRef = useRef<HTMLInputElement>(null);
+  const majlisAgreementFileRef = useRef<HTMLInputElement>(null);
 
   const { data: app, isLoading } = useQuery({
     queryKey: ["halal-application", id],
     queryFn: () => halalApi.applications.get(id!),
     enabled: !!id,
+    refetchOnWindowFocus: true,
   });
 
   const submitMutation = useMutation({
@@ -175,6 +219,28 @@ export default function HalalMyApplicationDetailPage() {
       toast.success("Application submitted successfully");
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to submit"),
+  });
+
+  const ownerAgreementUploadMutation = useMutation({
+    mutationFn: (file: File) => halalApi.applications.uploadAgreementOwnerDocument(id!, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Signed agreement uploaded");
+      if (ownerAgreementFileRef.current) ownerAgreementFileRef.current.value = "";
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to upload agreement"),
+  });
+
+  const majlisAgreementUploadMutation = useMutation({
+    mutationFn: (file: File) => halalApi.applications.uploadAgreementMajlisDocument(id!, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Majlis agreement recorded. Inspection may now be scheduled.");
+      if (majlisAgreementFileRef.current) majlisAgreementFileRef.current.value = "";
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to upload Majlis agreement"),
   });
 
   const chapaInitMutation = useMutation({
@@ -234,12 +300,47 @@ export default function HalalMyApplicationDetailPage() {
   });
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [assignInspectorsOpen, setAssignInspectorsOpen] = useState(false);
+  const [assignTechnicalIds, setAssignTechnicalIds] = useState<string[]>([]);
+  const [assignShariaIds, setAssignShariaIds] = useState<string[]>([]);
+  const [assignScheduledAt, setAssignScheduledAt] = useState("");
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [meetingMinutesFile, setMeetingMinutesFile] = useState<File | null>(null);
   const [isUploadingMeetingMinutes, setIsUploadingMeetingMinutes] = useState(false);
+
+  const { data: inspectorsForAssign, isLoading: loadingInspectorsForAssign } = useQuery({
+    queryKey: ["halal-inspectors"],
+    queryFn: () => halalApi.inspectors.list(),
+    enabled: assignInspectorsOpen,
+  });
+
+  const assignInspectorsMutation = useMutation({
+    mutationFn: (data: {
+      applicationId: string;
+      scheduledAt?: string;
+      assignments: { inspectorId: string; expertRole: HalalInspectionExpertRole }[];
+    }) => halalApi.inspections.assign(data),
+    onSuccess: (response) => {
+      toast.success(
+        response.assignedCount > 1
+          ? `${response.assignedCount} inspectors assigned successfully`
+          : "Inspection assigned successfully"
+      );
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      setAssignInspectorsOpen(false);
+      setAssignTechnicalIds([]);
+      setAssignShariaIds([]);
+      setAssignScheduledAt("");
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to assign inspection");
+    },
+  });
 
   const approveMutation = useMutation({
     mutationFn: (payload: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
@@ -268,21 +369,92 @@ export default function HalalMyApplicationDetailPage() {
   if (!app) return <div className="p-6 text-muted-foreground">Application not found</div>;
 
   const application = app as HalalApplication;
+  const agreementTemplateRaw =
+    application.agreementTemplateResolvedUrl || application.agreementTemplateUrl || "";
+  const agreementTemplateFullUrl = agreementTemplateRaw ? resolveFileUrl(agreementTemplateRaw) : undefined;
   const feeAmount = HALAL_CERTIFICATION_FEE;
   const isPaid = !!application.feePaidAt;
   const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
   const effectiveStatus = application.status;
-  const currentStepIndex = WORKFLOW_STEPS.findIndex((s) => s.key === effectiveStatus);
-  const baseHint = NEXT_ACTION_HINTS[effectiveStatus];
+  const agreementDone = !!application.agreementMajlisApprovedAt;
+  const withdrawLockedByAgreement = isHalalApplicationWithdrawLockedByAgreement(application);
+  const isApplicationOwner = !!user?.id && application.business?.userId === user.id;
+  const displayStepKey = getHalalWorkflowDisplayKey(application);
+  const currentStepIndex =
+    displayStepKey === "REJECTED" ? -1 : WORKFLOW_STEPS.findIndex((s) => s.key === displayStepKey);
+  const baseHint = (() => {
+    // Stepper is on "Inspection" while API status stays SUBMITTED until committee moves it forward
+    if (application.status === "SUBMITTED" && agreementDone) {
+      if (isApplicationOwner) {
+        return {
+          title: "Inspection scheduling",
+          description:
+            "Your certification agreement is complete. Majlis will assign inspectors and arrange site visits. You will see inspection details here once they are scheduled.",
+        };
+      }
+      if (canCompleteInspection) {
+        return {
+          title: "Inspection stage",
+          description:
+            "The agreement is finalized. Assign at least two inspectors (Technical experts, and optionally Sharia experts). After at least one inspection report is submitted, you can move this application to committee review.",
+        };
+      }
+      if (isStaff) {
+        return {
+          title: "Inspection stage",
+          description:
+            "The agreement is complete. Inspectors will be assigned and facility inspections carried out before this application proceeds to committee review and payment.",
+        };
+      }
+      return {
+        title: "Inspection stage",
+        description:
+          "The certification agreement is complete. The workflow continues with inspections, then committee review and certification fee payment.",
+      };
+    }
+    if (application.status === "SUBMITTED" && !agreementDone) {
+      if (isApplicationOwner) {
+        if (!application.agreementOwnerSubmittedAt) {
+          return {
+            title: "Sign and upload your agreement",
+            description:
+              "Download the blank agreement, sign and stamp it, then upload the scanned or PDF copy. Majlis will countersign and finalize before inspection begins.",
+          };
+        }
+        return {
+          title: "Waiting for Majlis",
+          description:
+            "Your signed agreement has been received. Majlis will review it, sign and stamp their side, and upload the executed agreement before inspection can be scheduled.",
+        };
+      }
+      if (!application.agreementOwnerSubmittedAt) {
+        return {
+          title: "Agreement — awaiting applicant",
+          description:
+            "The business owner must download the agreement template, sign and stamp it, and upload their signed copy before Majlis can countersign.",
+        };
+      }
+      return {
+        title: "Agreement — Majlis action required",
+        description:
+          "The owner has uploaded their signed agreement. Review it, complete Majlis signing and stamping, then upload the fully executed agreement.",
+      };
+    }
+    return NEXT_ACTION_HINTS[application.status];
+  })();
   // When inspection is completed, show awaiting-admin message
   const hint =
-    effectiveStatus === "INSPECTION" && hasCompletedInspection
+    application.status === "INSPECTION" && hasCompletedInspection
       ? {
           title: "Ready for committee review",
           description:
             "Inspection has been completed. The committee can now review and decide whether to approve this application for payment.",
         }
       : baseHint;
+  const hideInspectionsUntilOwnerAgreement =
+    application.status === "SUBMITTED" && isApplicationOwner && !agreementDone;
+  const assignInspectorsBlockedByAgreement =
+    application.status === "SUBMITTED" && !agreementDone;
   const isRejected = application.status === "REJECTED";
   const bizDocs = application.documents ?? application.business?.documents ?? [];
   const ownerIdUrl = getOwnerIdDocumentUrl(bizDocs);
@@ -339,13 +511,7 @@ export default function HalalMyApplicationDetailPage() {
             </p>
           </div>
           <Badge className={`text-sm font-medium px-3 py-1 ${STATUS_COLORS[effectiveStatus]}`}>
-            {effectiveStatus === "REVIEW"
-              ? "Payment pending"
-              : effectiveStatus === "INSPECTION"
-                ? "Committee review"
-                : effectiveStatus === "SUBMITTED"
-                  ? "Inspection"
-                : effectiveStatus}
+            {getHalalApplicationStatusBadgeLabel(application)}
           </Badge>
         </div>
       </div>
@@ -360,10 +526,8 @@ export default function HalalMyApplicationDetailPage() {
           <div className="flex items-stretch">
             {WORKFLOW_STEPS.map((step, i) => {
               const Icon = step.icon;
-              const isPast = isRejected ? i < 4 : i < currentStepIndex;
-              const isCurrent =
-                !isRejected && effectiveStatus === step.key;
-              const isFuture = !isPast && !isCurrent;
+              const isPast = isRejected || i < currentStepIndex;
+              const isCurrent = !isRejected && displayStepKey === step.key;
               const isLast = i === WORKFLOW_STEPS.length - 1;
 
               return (
@@ -420,6 +584,156 @@ export default function HalalMyApplicationDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Certification agreement: template, owner upload, Majlis countersign (before inspection) */}
+      {!isRejected && application.status === "SUBMITTED" && !agreementDone && (
+        <Card className="shadow-sm border-amber-200/70 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/15">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
+              <Shield className="h-5 w-5 shrink-0" />
+              Halal certification agreement
+            </CardTitle>
+            <CardDescription>
+              Download the standard agreement, read it carefully and complete signing and stamping on it, reupload scanned quality PDF, then proceed to
+              inspection once Majlis has uploaded the executed document.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">1. Agreement template</p>
+              {agreementTemplateFullUrl ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a href={agreementTemplateFullUrl} target="_blank" rel="noopener noreferrer">
+                      <Eye className="h-4 w-4 mr-2" />
+                      View template
+                    </a>
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a href={agreementTemplateFullUrl} download>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download template
+                    </a>
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-800 dark:text-amber-200 rounded-md border border-amber-300/60 bg-amber-100/40 dark:bg-amber-950/40 px-3 py-2">
+                  No agreement template is available yet. Majlis can upload the blank PDF under{" "}
+                  <strong>Document Templates</strong> (template code{" "}
+                  <code className="text-xs">HALAL_CERTIFICATION_AGREEMENT</code>, with a file attached), set{" "}
+                  <code className="text-xs">HALAL_AGREEMENT_TEMPLATE_URL</code> on the server, or set a custom template
+                  URL on this application. Refresh the page after the template is saved.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3 border-t pt-4">
+              <p className="text-sm font-medium text-foreground">2. Business owner — signed agreement</p>
+              {application.agreementOwnerSignedUrl && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Uploaded:</span>
+                  <Button type="button" variant="link" className="h-auto p-0" asChild>
+                    <a
+                      href={resolveFileUrl(application.agreementOwnerSignedUrl) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View owner-signed file
+                    </a>
+                  </Button>
+                  {application.agreementOwnerSubmittedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      ({new Date(application.agreementOwnerSubmittedAt).toLocaleString()})
+                    </span>
+                  )}
+                </div>
+              )}
+              {isApplicationOwner && (
+                <div className="space-y-2 max-w-md">
+                  <Label htmlFor="halal-owner-agreement-file">Upload signed & stamped agreement</Label>
+                  <Input
+                    id="halal-owner-agreement-file"
+                    ref={ownerAgreementFileRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    disabled={ownerAgreementUploadMutation.isPending}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={ownerAgreementUploadMutation.isPending}
+                    onClick={() => {
+                      const f = ownerAgreementFileRef.current?.files?.[0];
+                      if (!f) {
+                        toast.error("Choose a file to upload");
+                        return;
+                      }
+                      ownerAgreementUploadMutation.mutate(f);
+                    }}
+                  >
+                    {ownerAgreementUploadMutation.isPending ? "Uploading…" : "Submit owner-signed agreement"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Sign and stamp the printed agreement (or use a qualified e-signature), then upload a clear PDF or
+                    scan. You may replace your upload until Majlis finalizes.
+                  </p>
+                </div>
+              )}
+              {!isApplicationOwner && !application.agreementOwnerSubmittedAt && (
+                <p className="text-sm text-muted-foreground">Waiting for the business owner to upload their signed copy.</p>
+              )}
+            </div>
+
+            {canCommitteeReview && (
+              <div className="space-y-3 border-t pt-4">
+                <p className="text-sm font-medium text-foreground">3. Majlis — countersign & finalize</p>
+                {!application.agreementOwnerSubmittedAt ? (
+                  <p className="text-sm text-muted-foreground">
+                    The owner must upload their signed agreement before you can add the Majlis signature and finalize.
+                  </p>
+                ) : (
+                  <>
+                    {!application.agreementMajlisApprovedAt && (
+                      <div className="space-y-2 max-w-md">
+                        <Label htmlFor="halal-majlis-agreement-file">Upload Majlis signed & stamped agreement</Label>
+                        <Input
+                          id="halal-majlis-agreement-file"
+                          ref={majlisAgreementFileRef}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                          disabled={majlisAgreementUploadMutation.isPending}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={majlisAgreementUploadMutation.isPending}
+                          onClick={() => {
+                            const f = majlisAgreementFileRef.current?.files?.[0];
+                            if (!f) {
+                              toast.error("Choose the executed agreement file to upload");
+                              return;
+                            }
+                            majlisAgreementUploadMutation.mutate(f);
+                          }}
+                        >
+                          {majlisAgreementUploadMutation.isPending
+                            ? "Uploading…"
+                            : "Submit Majlis-signed agreement & finalize"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          After reviewing the owner&apos;s copy, add Majlis signing and stamping, then upload the fully
+                          executed document. This completes the agreement stage and allows inspector assignment.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Next action hint */}
       <Card
         className={`border-2 ${
@@ -442,15 +756,17 @@ export default function HalalMyApplicationDetailPage() {
                 <Send className="h-4 w-4 mr-2" />
                 {submitMutation.isPending ? "Submitting…" : "Submit application"}
               </Button>
-              <Button
-                variant="outline"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setWithdrawOpen(true)}
-                disabled={withdrawMutation.isPending}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Withdraw application
-              </Button>
+              {!withdrawLockedByAgreement && (
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setWithdrawOpen(true)}
+                  disabled={withdrawMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Withdraw application
+                </Button>
+              )}
             </>
           )}
           {application.status === "APPROVED" && isPaid && (
@@ -748,7 +1064,9 @@ export default function HalalMyApplicationDetailPage() {
       )} */}
 
       {/* Inspections - read-only for owner; staff sees Complete button + result when completed */}
-      {application.inspections && application.inspections.length > 0 && (
+      {application.inspections &&
+        application.inspections.length > 0 &&
+        !hideInspectionsUntilOwnerAgreement && (
         <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
           <CardHeader>
             <CardTitle>Inspections</CardTitle>
@@ -761,15 +1079,37 @@ export default function HalalMyApplicationDetailPage() {
               {application.inspections.map((ins) => {
                 const data = ins.checklistData as Record<string, unknown> | undefined;
                 const overallPassed = data?.overallPassed as boolean | undefined;
-                const observations = (data?.observations as string) || ins.notes || "";
+                const legacyObservations = (data?.observations as string) || "";
                 const recommendations = data?.recommendations as string | undefined;
                 const additionalNotes = (data?.additionalNotes as string) || "";
+                const ncUrlRaw = data?.nonConformityReportUrl as string | undefined;
+                const ncName = (data?.nonConformityReportFileName as string) || "Non-conformity report";
+                const evUrlRaw = data?.evidenceReportUrl as string | undefined;
+                const evName = (data?.evidenceReportFileName as string) || "Evidence report";
+                const ncUrl = ncUrlRaw ? resolveFileUrl(ncUrlRaw) : undefined;
+                const evUrl = evUrlRaw ? resolveFileUrl(evUrlRaw) : undefined;
+                const hasNewUploads = Boolean(ncUrlRaw || evUrlRaw);
                 const reportUrlRaw = data?.inspectionReportUrl as string | undefined;
                 const reportFileName = (data?.inspectionReportFileName as string) || "Inspection report";
                 const reportUrl = reportUrlRaw ? resolveFileUrl(reportUrlRaw) : undefined;
-                const checklistKeys = ["premisesClean", "equipmentHalalCompliant", "storageProper", "ingredientTraceability", "noProhibitedSubstances", "personnelTrained"];
+                const checklistKeys = [
+                  "premisesClean",
+                  "equipmentHalalCompliant",
+                  "storageProper",
+                  "ingredientTraceability",
+                  "noProhibitedSubstances",
+                  "personnelTrained",
+                ];
                 const checklistMet = checklistKeys.filter((k) => data?.[k] === true).length;
-                const hasResult = ins.completedAt && data;
+                const hasLegacyResult =
+                  overallPassed !== undefined ||
+                  checklistKeys.some((k) => data?.[k] === true) ||
+                  Boolean(legacyObservations) ||
+                  Boolean(reportUrlRaw);
+                const hasResult = Boolean(
+                  ins.completedAt &&
+                    (data || hasNewUploads || hasLegacyResult || recommendations || additionalNotes || ins.notes)
+                );
 
                 return (
                   <li
@@ -781,6 +1121,9 @@ export default function HalalMyApplicationDetailPage() {
                         <p className="font-medium text-sm truncate">
                           {ins.inspector?.firstName} {ins.inspector?.lastName}
                         </p>
+                        <Badge variant="outline" className="text-[10px] font-normal mt-0.5">
+                          {getHalalInspectionExpertRoleLabel(ins.expertRole ?? "TECHNICAL_EXPERT")}
+                        </Badge>
                         {ins.scheduledAt && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             Scheduled: {new Date(ins.scheduledAt).toLocaleString()}
@@ -808,51 +1151,88 @@ export default function HalalMyApplicationDetailPage() {
                     </div>
                     {hasResult && (
                       <div className="border-t bg-muted/20 px-3 py-2.5 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Result</span>
-                          <Badge
-                            className={
-                              overallPassed === true
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border-0"
-                                : overallPassed === false
-                                  ? "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-0"
-                                  : "bg-muted text-muted-foreground border-0"
-                            }
-                          >
-                            {overallPassed === true ? "Passed" : overallPassed === false ? "Failed" : "—"}
-                          </Badge>
-                          {typeof checklistMet === "number" && checklistKeys.length > 0 && (
-                            <span className="text-xs font-medium text-foreground/70">
-                              Checklist: {checklistMet}/{checklistKeys.length} items met
+                        {hasNewUploads && (
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">
+                              Submitted reports
                             </span>
-                          )}
-                          {reportUrl && (
-                            <a
-                              href={reportUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:underline"
+                            <div className="flex flex-wrap gap-2">
+                              {ncUrl && (
+                                <a
+                                  href={ncUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  {ncName}
+                                </a>
+                              )}
+                              {evUrl && (
+                                <a
+                                  href={evUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  {evName}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {!hasNewUploads && hasLegacyResult && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Result</span>
+                            <Badge
+                              className={
+                                overallPassed === true
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border-0"
+                                  : overallPassed === false
+                                    ? "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-0"
+                                    : "bg-muted text-muted-foreground border-0"
+                              }
                             >
-                              Attachment: {reportFileName}
-                            </a>
-                          )}
-                        </div>
-                        {observations && (
+                              {overallPassed === true ? "Passed" : overallPassed === false ? "Failed" : "—"}
+                            </Badge>
+                            {typeof checklistMet === "number" && checklistKeys.length > 0 && (
+                              <span className="text-xs font-medium text-foreground/70">
+                                Checklist: {checklistMet}/{checklistKeys.length} items met
+                              </span>
+                            )}
+                            {reportUrl && (
+                              <a
+                                href={reportUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Attachment: {reportFileName}
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {!hasNewUploads && legacyObservations && (
                           <div>
-                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Observations</p>
-                            <p className="text-sm text-foreground/90 line-clamp-2">{observations}</p>
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
+                              Observations
+                            </p>
+                            <p className="text-sm text-foreground/90 line-clamp-4">{legacyObservations}</p>
                           </div>
                         )}
                         {recommendations && (
                           <div>
-                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Recommendations</p>
-                            <p className="text-sm text-foreground/90 line-clamp-2">{recommendations}</p>
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
+                              Recommendations
+                            </p>
+                            <p className="text-sm text-foreground/90 line-clamp-4">{recommendations}</p>
                           </div>
                         )}
                         {(additionalNotes || ins.notes) && (
                           <div>
-                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">Additional note</p>
-                            <p className="text-sm text-foreground/90 line-clamp-2">
+                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
+                              Additional note
+                            </p>
+                            <p className="text-sm text-foreground/90 line-clamp-4">
                               {additionalNotes || ins.notes}
                             </p>
                           </div>
@@ -867,16 +1247,26 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
-      {/* Rejection reason */}
-      {application.status === "REJECTED" && application.rejectionReason && (
+      {/* Rejection: business owner sees a generic message (detailed reason is admin-only). Staff see the recorded reason. */}
+      {application.status === "REJECTED" && isApplicationOwner && !isHalalAdmin && (
+        <Card className="border-2 border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20">
+          <CardHeader>
+            <CardTitle className="text-red-700 dark:text-red-300">Application not approved</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-800/90 dark:text-red-200/90">
+              Your application was not approved. Please contact the certification office if you need more information.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      {application.status === "REJECTED" && !isApplicationOwner && application.rejectionReason && (
         <Card className="border-2 border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20">
           <CardHeader>
             <CardTitle className="text-red-700 dark:text-red-300">Rejection reason</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-red-800/90 dark:text-red-200/90">
-              {application.rejectionReason}
-            </p>
+            <p className="text-red-800/90 dark:text-red-200/90">{application.rejectionReason}</p>
           </CardContent>
         </Card>
       )}
@@ -996,11 +1386,20 @@ export default function HalalMyApplicationDetailPage() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={hasCompletedInspection}
-                title={hasCompletedInspection ? "Inspection already completed; cannot reassign" : undefined}
-                onClick={() =>
-                  navigate("/admin/halal/inspections", { state: { applicationId: application.id } })
+                disabled={hasCompletedInspection || assignInspectorsBlockedByAgreement}
+                title={
+                  hasCompletedInspection
+                    ? "Inspection already completed; cannot reassign"
+                    : assignInspectorsBlockedByAgreement
+                      ? "The certification agreement must be completed by the owner and finalized by Majlis before inspectors can be assigned."
+                      : undefined
                 }
+                onClick={() => {
+                  setAssignTechnicalIds([]);
+                  setAssignShariaIds([]);
+                  setAssignScheduledAt("");
+                  setAssignInspectorsOpen(true);
+                }}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
                 Assign inspectors
@@ -1010,12 +1409,73 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
+      {/* Halal admin only: committee notes, meeting minutes, and full rejection rationale */}
+      {isHalalAdmin &&
+        ["REVIEW", "REJECTED", "APPROVED"].includes(application.status) &&
+        (Boolean(
+          (application.committeeNotes && String(application.committeeNotes).trim()) ||
+            (application.meetingMinutesUrl && String(application.meetingMinutesUrl).trim()) ||
+            (application.status === "REJECTED" && application.rejectionReason?.trim())
+        )) && (
+          <Card className="shadow-sm border-indigo-200/60 dark:border-indigo-900/40 bg-indigo-50/20 dark:bg-indigo-950/20">
+            <CardHeader>
+              <CardTitle className="text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
+                <FileText className="h-5 w-5 shrink-0" />
+                Committee decision (admin)
+              </CardTitle>
+              <CardDescription>
+                Committee notes, meeting minutes, and rejection rationale are visible only to Halal administrators, not
+                to the business owner.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              {application.committeeNotes?.trim() ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Committee notes
+                  </p>
+                  <p className="text-foreground/90 whitespace-pre-wrap">{application.committeeNotes.trim()}</p>
+                </div>
+              ) : null}
+              {application.meetingMinutesUrl?.trim() ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Meeting minutes
+                  </p>
+                  <a
+                    href={resolveFileUrl(application.meetingMinutesUrl.trim()) ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                  >
+                    <Eye className="h-4 w-4" />
+                    View uploaded minutes
+                  </a>
+                </div>
+              ) : null}
+              {application.status === "REJECTED" && application.rejectionReason?.trim() ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Rejection reason (record)
+                  </p>
+                  <p className="text-red-900/90 dark:text-red-200/90 whitespace-pre-wrap">
+                    {application.rejectionReason.trim()}
+                  </p>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        )}
+
       {/* Approve dialog */}
       <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Approve application</DialogTitle>
-            <DialogDescription>Add optional notes for the approval.</DialogDescription>
+            <DialogDescription>
+              Optional notes and meeting minutes are saved for Halal administrators only; they are not shown to the
+              business owner.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -1063,7 +1523,8 @@ export default function HalalMyApplicationDetailPage() {
           <DialogHeader>
             <DialogTitle>Reject application</DialogTitle>
             <DialogDescription>
-              Provide a reason for rejection. This will be shared with the applicant.
+              Provide a reason for rejection. It is stored for Halal administrators; the applicant only sees a general
+              notice on their application.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -1098,6 +1559,196 @@ export default function HalalMyApplicationDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Assign inspectors — modal on this page (no navigation to inspections list) */}
+      <Dialog
+        open={assignInspectorsOpen}
+        onOpenChange={(open) => {
+          if (assignInspectorsMutation.isPending) return;
+          setAssignInspectorsOpen(open);
+          if (!open) {
+            setAssignTechnicalIds([]);
+            setAssignShariaIds([]);
+            setAssignScheduledAt("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-violet-600" />
+              Assign inspectors
+            </DialogTitle>
+            <DialogDescription>
+              Choose at least one <strong>Technical expert</strong> and a total of <strong>at least two</strong>{" "}
+              inspectors. <strong>Sharia expert</strong> is optional (for example, one technical + one sharia, or two
+              technical). Committee review can continue once <strong>at least one</strong> inspection report has been
+              submitted.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!id) return;
+              if (assignTechnicalIds.length < 1) {
+                toast.error("Select at least one Technical expert");
+                return;
+              }
+              const assignments: { inspectorId: string; expertRole: HalalInspectionExpertRole }[] = [
+                ...assignTechnicalIds.map((inspectorId) => ({
+                  inspectorId,
+                  expertRole: "TECHNICAL_EXPERT" as const,
+                })),
+                ...assignShariaIds.map((inspectorId) => ({
+                  inspectorId,
+                  expertRole: "SHARIA_EXPERT" as const,
+                })),
+              ];
+              if (assignments.length < 2) {
+                toast.error(
+                  "At least two inspectors are required (for example two technical experts, or one technical and one sharia expert)."
+                );
+                return;
+              }
+              assignInspectorsMutation.mutate({
+                applicationId: id,
+                assignments,
+                scheduledAt: assignScheduledAt
+                  ? new Date(assignScheduledAt).toISOString()
+                  : undefined,
+              });
+            }}
+          >
+            <div className="space-y-2">
+              <Label>Application</Label>
+              <p className="text-sm rounded-md border bg-muted/30 px-3 py-2">
+                {application.business?.name ?? application.businessId}
+                <span className="text-muted-foreground"> · {application.status}</span>
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 min-w-0">
+                <Label>Technical expert</Label>
+                <p className="text-xs text-muted-foreground">Required — at least one. Counts toward the minimum of two.</p>
+                <div className="max-h-52 overflow-y-auto rounded-md border p-3 space-y-2">
+                  {loadingInspectorsForAssign && (
+                    <p className="text-sm text-muted-foreground">Loading inspectors…</p>
+                  )}
+                  {!loadingInspectorsForAssign &&
+                    inspectorsForAssign?.map((inspector) => {
+                      const checked = assignTechnicalIds.includes(inspector.id);
+                      return (
+                        <label
+                          key={inspector.id}
+                          className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) => {
+                              if (next && assignShariaIds.includes(inspector.id)) {
+                                toast.error("Each inspector can only be selected in one column.");
+                                return;
+                              }
+                              if (next) {
+                                setAssignShariaIds((s) => s.filter((x) => x !== inspector.id));
+                                setAssignTechnicalIds((prev) => Array.from(new Set([...prev, inspector.id])));
+                              } else {
+                                setAssignTechnicalIds((prev) => prev.filter((x) => x !== inspector.id));
+                              }
+                            }}
+                          />
+                          <span className="text-sm break-words">
+                            {inspector.firstName} {inspector.lastName}
+                            <span className="text-muted-foreground"> ({inspector.email})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <p className="text-xs text-muted-foreground">Selected: {assignTechnicalIds.length}</p>
+              </div>
+              <div className="space-y-2 min-w-0">
+                <Label>Sharia expert</Label>
+                <p className="text-xs text-muted-foreground">Optional — use when a dedicated Sharia inspector is assigned.</p>
+                <div className="max-h-52 overflow-y-auto rounded-md border p-3 space-y-2">
+                  {loadingInspectorsForAssign && (
+                    <p className="text-sm text-muted-foreground">Loading inspectors…</p>
+                  )}
+                  {!loadingInspectorsForAssign &&
+                    inspectorsForAssign?.map((inspector) => {
+                      const checked = assignShariaIds.includes(inspector.id);
+                      return (
+                        <label
+                          key={`sharia-${inspector.id}`}
+                          className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) => {
+                              if (next && assignTechnicalIds.includes(inspector.id)) {
+                                toast.error("Each inspector can only be selected in one column.");
+                                return;
+                              }
+                              if (next) {
+                                setAssignTechnicalIds((t) => t.filter((x) => x !== inspector.id));
+                                setAssignShariaIds((prev) => Array.from(new Set([...prev, inspector.id])));
+                              } else {
+                                setAssignShariaIds((prev) => prev.filter((x) => x !== inspector.id));
+                              }
+                            }}
+                          />
+                          <span className="text-sm break-words">
+                            {inspector.firstName} {inspector.lastName}
+                            <span className="text-muted-foreground"> ({inspector.email})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <p className="text-xs text-muted-foreground">Selected: {assignShariaIds.length}</p>
+              </div>
+            </div>
+            {!loadingInspectorsForAssign &&
+              (!inspectorsForAssign || inspectorsForAssign.length === 0) && (
+                <p className="text-sm text-muted-foreground">No eligible inspectors available.</p>
+              )}
+            <div className="space-y-2">
+              <Label htmlFor="assign-scheduled-at">Scheduled date (optional)</Label>
+              <Input
+                id="assign-scheduled-at"
+                type="datetime-local"
+                value={assignScheduledAt}
+                onChange={(e) => setAssignScheduledAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Total selected: {assignTechnicalIds.length + assignShariaIds.length} (minimum 2, with at least 1
+                technical)
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAssignInspectorsOpen(false)}
+                disabled={assignInspectorsMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  assignInspectorsMutation.isPending ||
+                  assignTechnicalIds.length < 1 ||
+                  assignTechnicalIds.length + assignShariaIds.length < 2
+                }
+              >
+                {assignInspectorsMutation.isPending ? "Assigning…" : "Assign inspectors"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Withdraw confirmation dialog */}
       <AlertDialog
         open={withdrawOpen}
@@ -1114,6 +1765,11 @@ export default function HalalMyApplicationDetailPage() {
                   Payment has not been confirmed yet, so you can still withdraw this application.
                 </span>
               )}
+              {withdrawLockedByAgreement && (
+                <span className="block mt-2 text-destructive font-medium">
+                  Withdrawal is not allowed after the certification agreement has been signed and uploaded.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1121,7 +1777,7 @@ export default function HalalMyApplicationDetailPage() {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending}
+              disabled={withdrawMutation.isPending || withdrawLockedByAgreement}
             >
               {withdrawMutation.isPending ? "Withdrawing…" : "Withdraw"}
             </AlertDialogAction>

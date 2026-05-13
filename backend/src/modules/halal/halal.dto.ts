@@ -133,17 +133,69 @@ export const ManualPaymentDto = z.object({
   bankName: z.string().min(1, "Bank name is required"),
 });
 
-export const AssignInspectionDto = z.object({
-  applicationId: z.string(),
-  inspectorId: z.string().optional(),
-  inspectorIds: z.array(z.string().min(1)).min(1).optional(),
-  scheduledAt: z.string().datetime().optional(),
-}).refine((data) => {
-  return !!data.inspectorId || (Array.isArray(data.inspectorIds) && data.inspectorIds.length > 0);
-}, {
-  message: "At least one inspector is required",
-  path: ["inspectorIds"],
+export const AssignInspectionAssignmentEntryDto = z.object({
+  inspectorId: z.string().min(1),
+  expertRole: z.enum(["TECHNICAL_EXPERT", "SHARIA_EXPERT"]),
 });
+
+export const AssignInspectionDto = z
+  .object({
+    applicationId: z.string(),
+    inspectorId: z.string().optional(),
+    inspectorIds: z.array(z.string().min(1)).optional(),
+    assignments: z.array(AssignInspectionAssignmentEntryDto).optional(),
+    scheduledAt: z.string().datetime().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasAssignments = Array.isArray(data.assignments) && data.assignments.length > 0;
+    const legacyIds = [
+      ...(data.inspectorId ? [data.inspectorId] : []),
+      ...(data.inspectorIds ?? []),
+    ];
+    const hasLegacy = legacyIds.length > 0;
+
+    if (hasAssignments && hasLegacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use either assignments or inspectorId / inspectorIds, not both.",
+        path: ["assignments"],
+      });
+      return;
+    }
+    if (hasAssignments) {
+      const a = data.assignments!;
+      if (a.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "At least two inspectors must be assigned.",
+          path: ["assignments"],
+        });
+      }
+      if (!a.some((x) => x.expertRole === "TECHNICAL_EXPERT")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "At least one Technical Expert is required.",
+          path: ["assignments"],
+        });
+      }
+      const ids = a.map((x) => x.inspectorId);
+      if (new Set(ids).size !== ids.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Each inspector may only be assigned once.",
+          path: ["assignments"],
+        });
+      }
+      return;
+    }
+    if (!hasLegacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide assignments (recommended) or at least one inspectorId / inspectorIds.",
+        path: ["assignments"],
+      });
+    }
+  });
 
 export const CompleteInspectionDto = z.object({
   checklistData: z.record(z.string(), z.unknown()).optional(),

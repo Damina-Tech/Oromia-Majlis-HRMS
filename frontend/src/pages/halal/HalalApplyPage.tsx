@@ -25,7 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, FileText, Eye, Trash2, AlertCircle, Search } from "lucide-react";
-import { halalApi, type HalalApplicationStatus } from "@/services/halal";
+import { halalApi, type HalalApplication, type HalalApplicationStatus, isHalalApplicationWithdrawLockedByAgreement, getHalalApplicationStatusBadgeLabel } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -86,7 +86,13 @@ export default function HalalApplyPage() {
     onError: (e: any) => toast.error(e.response?.data?.message || "Failed to delete"),
   });
 
-  const handleDelete = (app: { id: string; status: string }) => {
+  const handleDelete = (app: HalalApplication) => {
+    if (isHalalApplicationWithdrawLockedByAgreement(app)) {
+      toast.error(
+        "This application cannot be withdrawn after the certification agreement has been signed and uploaded."
+      );
+      return;
+    }
     if (!isAdmin && app.status !== "DRAFT") {
       toast.error("Only draft applications can be deleted");
       return;
@@ -195,7 +201,7 @@ export default function HalalApplyPage() {
                       >
                         <TableCell className="font-medium">{a.business?.name ?? a.businessId}</TableCell>
                         <TableCell>
-                          <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                          <Badge className={STATUS_COLORS[a.status]}>{getHalalApplicationStatusBadgeLabel(a)}</Badge>
                         </TableCell>
                         <TableCell>
                           {a.status === "DRAFT" ? (
@@ -214,7 +220,8 @@ export default function HalalApplyPage() {
                             <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/applications/${a.id}`)}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {(a.status === "DRAFT" || isAdmin) && (
+                            {(a.status === "DRAFT" || isAdmin) &&
+                              !isHalalApplicationWithdrawLockedByAgreement(a) && (
                               <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} title={isAdmin ? "Delete (admin)" : "Delete"}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -236,7 +243,7 @@ export default function HalalApplyPage() {
                     <div>
                       <p className="font-medium">{a.business?.name ?? a.businessId}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                        <Badge className={STATUS_COLORS[a.status]}>{getHalalApplicationStatusBadgeLabel(a)}</Badge>
                         {a.status !== "DRAFT" && (
                           <span className={`text-xs font-medium ${a.feePaidAt ? "text-green-600 dark:text-green-500" : "text-amber-600 dark:text-amber-500"}`}>
                             {a.feePaidAt ? "Paid" : "Fee pending"}
@@ -248,7 +255,7 @@ export default function HalalApplyPage() {
                       <Button variant="ghost" size="icon" onClick={() => navigate(`/halal/applications/${a.id}`)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {(a.status === "DRAFT" || isAdmin) && (
+                      {(a.status === "DRAFT" || isAdmin) && !isHalalApplicationWithdrawLockedByAgreement(a) && (
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(a)} title={isAdmin ? "Delete (admin)" : "Delete"}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>

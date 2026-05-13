@@ -1,5 +1,17 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient, HalalApplicationStatus, HalalBusinessStatus, HalalBusinessCategory, HalalCertificateStatus, HalalAuditAction, HalalPaymentMethod, HalalPaymentStatus } from "@prisma/client";
+import {
+  Prisma,
+  PrismaClient,
+  HalalApplicationStatus,
+  HalalBusinessStatus,
+  HalalBusinessCategory,
+  HalalCertificateStatus,
+  HalalAuditAction,
+  HalalPaymentMethod,
+  HalalPaymentStatus,
+  DocumentTemplateStatus,
+  HalalInspectionExpertRole,
+} from "@prisma/client";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
   CreateHalalBusinessDto,
@@ -261,7 +273,7 @@ async function generateCertificateForApplication(
   return certificate;
 }
 
-type BusinessApprovalRole = "SUPERVISOR" | "ADMIN";
+type BusinessApprovalRole = "ADMIN";
 
 async function getBusinessApprovalProgress(businessId: string) {
   const logs = await prisma.halalAuditLog.findMany({
@@ -273,19 +285,11 @@ async function getBusinessApprovalProgress(businessId: string) {
     include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
-  const supervisor = logs.find((l) => (l.newValue as any)?.approvalRole === "SUPERVISOR");
   const admin = logs.find((l) => (l.newValue as any)?.approvalRole === "ADMIN");
   return {
-    supervisorApproved: !!supervisor,
     adminApproved: !!admin,
-    approvedBySupervisor: supervisor
-      ? {
-          userId: supervisor.actor.id,
-          name: `${supervisor.actor.firstName} ${supervisor.actor.lastName}`.trim(),
-          email: supervisor.actor.email,
-          at: supervisor.createdAt,
-        }
-      : null,
+    supervisorApproved: false,
+    approvedBySupervisor: null,
     approvedByAdmin: admin
       ? {
           userId: admin.actor.id,
@@ -659,8 +663,7 @@ export async function approveBusiness(req: Request, res: Response) {
     const { id } = req.params;
     const perms = (req as any).user?.permissions as string[] | undefined;
     const canAdmin = perms?.includes("halal.admin") ?? false;
-    const canReview = perms?.includes("halal.supervisor") ?? false;
-    if (!canAdmin && !canReview) {
+    if (!canAdmin) {
       return res.status(403).json({ message: "Access denied" });
     }
     const body = (req.body ?? {}) as {
@@ -669,36 +672,18 @@ export async function approveBusiness(req: Request, res: Response) {
       note?: string;
       detailsConfirmed?: boolean;
     };
-    const requestedRole = body.role;
-    const approvalRole: BusinessApprovalRole =
-      requestedRole === "ADMIN" || requestedRole === "SUPERVISOR"
-        ? requestedRole
-        : (canAdmin ? "ADMIN" : "SUPERVISOR");
-    if (approvalRole === "ADMIN" && !canAdmin) {
-      return res.status(403).json({ message: "Only halal.admin can perform admin approval." });
-    }
-    if (approvalRole === "SUPERVISOR" && !canReview && !canAdmin) {
-      return res.status(403).json({ message: "Only halal.supervisor or halal.admin can perform supervisor review." });
-    }
+    const approvalRole: BusinessApprovalRole = "ADMIN";
     const biz = await prisma.halalBusiness.findUnique({ where: { id }, include: { region: true, zone: true, woreda: true } });
     if (!biz) return res.status(404).json({ message: "Business not found" });
     if (biz.status === HalalBusinessStatus.REJECTED) {
       return res.status(400).json({ message: "Rejected businesses cannot be approved." });
     }
     const progress = await getBusinessApprovalProgress(id);
-    if (approvalRole === "SUPERVISOR" && progress.supervisorApproved) {
-      return res.status(400).json({ message: "Supervisor review is already completed for this business." });
-    }
     if (approvalRole === "ADMIN" && progress.adminApproved) {
       return res.status(400).json({ message: "Admin approval is already completed for this business." });
     }
 
-    const supervisorApproved = progress.supervisorApproved || approvalRole === "SUPERVISOR";
-    const adminApproved = progress.adminApproved || approvalRole === "ADMIN";
-    const nextStatus =
-      supervisorApproved && adminApproved
-        ? HalalBusinessStatus.APPROVED
-        : HalalBusinessStatus.PENDING_APPROVAL;
+    const nextStatus = HalalBusinessStatus.APPROVED;
 
     const updated = await prisma.halalBusiness.update({
       where: { id },
@@ -838,6 +823,49 @@ export async function listApplications(req: Request, res: Response) {
 
 const DEFAULT_CERTIFICATION_FEE = 20000;
 
+/**
+ * Blank agreement file from Document Templates (uploaded PDF/DOC path).
+ * Uses ACTIVE or DRAFT so newly uploaded agreements work before an admin flips status to ACTIVE.
+ */
+async function getHalalAgreementBlankSourceUrlFromTemplate(): Promise<string | null> {
+  const code = process.env.HALAL_AGREEMENT_TEMPLATE_CODE?.trim() || "HALAL_CERTIFICATION_AGREEMENT";
+  const tpl = await prisma.documentTemplate.findFirst({
+    where: {
+      code,
+      active: true,
+      status: { in: [DocumentTemplateStatus.ACTIVE, DocumentTemplateStatus.DRAFT] },
+      sourceFileUrl: { not: null },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { sourceFileUrl: true },
+  });
+  return tpl?.sourceFileUrl?.trim() || null;
+}
+
+/** Resolve blank agreement URL: explicit per-app URL → document template upload → env (or legacy snapshot). */
+async function attachAgreementTemplateResolvedUrl<T extends Record<string, unknown>>(
+  app: T
+): Promise<T & { agreementTemplateResolvedUrl: string | null }> {
+  const envUrl = process.env.HALAL_AGREEMENT_TEMPLATE_URL?.trim() || "";
+  const rawStored = typeof app.agreementTemplateUrl === "string" ? app.agreementTemplateUrl.trim() : "";
+  const fromDoc = await getHalalAgreementBlankSourceUrlFromTemplate();
+
+  const storedIsExplicitOverride = Boolean(rawStored && rawStored !== envUrl);
+  if (storedIsExplicitOverride) {
+    return { ...app, agreementTemplateResolvedUrl: rawStored };
+  }
+  if (fromDoc) {
+    return { ...app, agreementTemplateResolvedUrl: fromDoc };
+  }
+  if (rawStored) {
+    return { ...app, agreementTemplateResolvedUrl: rawStored };
+  }
+  if (envUrl) {
+    return { ...app, agreementTemplateResolvedUrl: envUrl };
+  }
+  return { ...app, agreementTemplateResolvedUrl: null };
+}
+
 export async function getApplication(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
@@ -863,13 +891,27 @@ export async function getApplication(req: Request, res: Response) {
     if (isAdmin && app.status === HalalApplicationStatus.DRAFT) {
       return res.status(404).json({ message: "Application not found" });
     }
+
+    const sanitizeHalalApplicationPayload = (payload: Record<string, unknown>) => {
+      if (isHalalAdmin) return payload;
+      const isOwner = Boolean(userId && app.business.userId === userId);
+      const next = { ...payload };
+      delete next.committeeNotes;
+      delete next.meetingMinutesUrl;
+      if (isOwner) delete next.rejectionReason;
+      return next;
+    };
+
     if (isHalalAdmin && app.certificate) {
-      return res.json({
+      const withLifecycle = {
         ...app,
         certificateLifecycle: buildCertificateLifecycle(app.certificate),
-      });
+      } as any;
+      return res.json(
+        sanitizeHalalApplicationPayload((await attachAgreementTemplateResolvedUrl(withLifecycle)) as any) as any
+      );
     }
-    res.json(app);
+    res.json(sanitizeHalalApplicationPayload((await attachAgreementTemplateResolvedUrl(app as any)) as any) as any);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get application" });
   }
@@ -903,6 +945,23 @@ export async function deleteApplication(req: Request, res: Response) {
     if (!app) return res.status(404).json({ message: "Application not found" });
     const isOwner = app.business.userId === userId;
     if (!isAdmin && !isOwner) return res.status(403).json({ message: "Access denied" });
+
+    const agreementRow = app as typeof app & {
+      agreementOwnerSubmittedAt?: Date | null;
+      agreementMajlisApprovedAt?: Date | null;
+      agreementOwnerSignedUrl?: string | null;
+    };
+    const agreementCommitted =
+      !!agreementRow.agreementOwnerSubmittedAt ||
+      !!agreementRow.agreementMajlisApprovedAt ||
+      (typeof agreementRow.agreementOwnerSignedUrl === "string" && agreementRow.agreementOwnerSignedUrl.trim() !== "");
+    if (agreementCommitted) {
+      return res.status(400).json({
+        message:
+          "This application cannot be withdrawn after the certification agreement has been signed and uploaded.",
+      });
+    }
+
     if (!isAdmin) {
       // Owner: can withdraw before payment is confirmed.
       const withdrawableWhileUnpaid: HalalApplicationStatus[] = [
@@ -1213,13 +1272,123 @@ export async function submitApplication(req: Request, res: Response) {
     }
     const app = await prisma.halalApplication.update({
       where: { id },
-      data: { status: HalalApplicationStatus.SUBMITTED, submittedAt: new Date() },
+      data: {
+        status: HalalApplicationStatus.SUBMITTED,
+        submittedAt: new Date(),
+      },
       include: { business: true },
     });
     await createAuditLog(HalalAuditAction.APPLICATION_SUBMITTED, userId, "HalalApplication", id, id, old, app, req.ip, req.get("user-agent"));
-    res.json(app);
+    res.json(await attachAgreementTemplateResolvedUrl(app as any));
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to submit application" });
+  }
+}
+
+/** Owner uploads signed/stamped certification agreement (PDF or scan). */
+export async function uploadApplicationAgreementOwner(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) {
+      return res.status(403).json({ message: "Only the business owner can upload the signed agreement" });
+    }
+    if (app.status !== HalalApplicationStatus.SUBMITTED) {
+      return res.status(400).json({ message: "Agreement upload is only allowed for submitted applications." });
+    }
+    const appRow = app as typeof app & {
+      agreementMajlisApprovedAt?: Date | null;
+      agreementOwnerSubmittedAt?: Date | null;
+      agreementOwnerSignedUrl?: string | null;
+    };
+    if (appRow.agreementMajlisApprovedAt) {
+      return res.status(400).json({ message: "The agreement has already been finalized by Majlis." });
+    }
+    const url = `/uploads/halal/${file.filename}`;
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: {
+        agreementOwnerSignedUrl: url,
+        agreementOwnerSubmittedAt: new Date(),
+      } as Prisma.HalalApplicationUpdateInput,
+      include: {
+        business: { include: { region: true, zone: true, woreda: true } },
+        inspections: { include: { inspector: true } },
+        certificate: true,
+      },
+    });
+    res.json(await attachAgreementTemplateResolvedUrl(updated as any));
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to upload agreement" });
+  }
+}
+
+/** Majlis staff uploads fully executed agreement and marks bilateral workflow complete. */
+export async function uploadApplicationAgreementMajlis(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const canAct =
+      perms?.includes("halal.admin") || perms?.includes("halal.supervisor") || perms?.includes("halal.committee");
+    if (!canAct) return res.status(403).json({ message: "Access denied" });
+    const { id } = req.params;
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.status !== HalalApplicationStatus.SUBMITTED) {
+      return res.status(400).json({ message: "Agreement can only be finalized while the application is in the agreement stage." });
+    }
+    const appRow = app as typeof app & {
+      agreementMajlisApprovedAt?: Date | null;
+      agreementOwnerSubmittedAt?: Date | null;
+      agreementOwnerSignedUrl?: string | null;
+    };
+    if (!appRow.agreementOwnerSubmittedAt || !appRow.agreementOwnerSignedUrl) {
+      return res.status(400).json({
+        message: "The business owner must upload their signed agreement before Majlis can sign and finalize.",
+      });
+    }
+    if (appRow.agreementMajlisApprovedAt) {
+      return res.status(400).json({ message: "Agreement has already been finalized." });
+    }
+    const url = `/uploads/halal/${file.filename}`;
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: {
+        agreementMajlisSignedUrl: url,
+        agreementMajlisApprovedAt: new Date(),
+      } as Prisma.HalalApplicationUpdateInput,
+      include: {
+        business: { include: { region: true, zone: true, woreda: true } },
+        inspections: { include: { inspector: true } },
+        certificate: true,
+      },
+    });
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_REVIEWED,
+      userId,
+      "HalalApplication",
+      id,
+      id,
+      app,
+      { agreementMajlisSignedUrl: url, agreementMajlisApprovedAt: (updated as { agreementMajlisApprovedAt?: Date }).agreementMajlisApprovedAt },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await attachAgreementTemplateResolvedUrl(updated as any));
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to upload Majlis agreement" });
   }
 }
 
@@ -1235,7 +1404,7 @@ export async function approveApplication(req: Request, res: Response) {
     }
     const completed = old.inspections.some((i) => i.completedAt != null);
     if (!completed && body.approved) {
-      return res.status(400).json({ message: "Inspection must be completed before approval" });
+      return res.status(400).json({ message: "At least one inspection must be completed before approval" });
     }
     const app = await prisma.halalApplication.update({
       where: { id },
@@ -1243,7 +1412,16 @@ export async function approveApplication(req: Request, res: Response) {
         status: body.approved ? HalalApplicationStatus.REVIEW : HalalApplicationStatus.REJECTED,
         approvedById: body.approved ? userId : null,
         approvedAt: body.approved ? new Date() : null,
-        rejectionReason: body.approved ? null : (body.rejectionReason || "Rejected"),
+        rejectionReason: body.approved ? null : body.rejectionReason || "Rejected",
+        ...(body.approved
+          ? {
+              committeeNotes: body.notes?.trim() ? body.notes.trim() : null,
+              meetingMinutesUrl: body.meetingMinutesUrl?.trim() ? body.meetingMinutesUrl.trim() : null,
+            }
+          : {
+              committeeNotes: null,
+              meetingMinutesUrl: null,
+            }),
       },
       include: { business: true },
     });
@@ -1330,13 +1508,30 @@ export async function assignInspection(req: Request, res: Response) {
       applicationId?: string;
       inspectorId?: string;
       inspectorIds?: string[];
+      assignments?: { inspectorId: string; expertRole: "TECHNICAL_EXPERT" | "SHARIA_EXPERT" }[];
       scheduledAt?: string;
     };
     const applicationId = body.applicationId || (req.params as any).applicationId;
-    const { inspectorId, inspectorIds, scheduledAt } = AssignInspectionDto.parse({ ...body, applicationId });
-    const selectedInspectorIds = Array.from(
-      new Set([...(inspectorIds ?? []), ...(inspectorId ? [inspectorId] : [])])
-    );
+    const parsed = AssignInspectionDto.parse({ ...body, applicationId });
+    const { inspectorId, inspectorIds, scheduledAt, assignments } = parsed;
+
+    let assignmentRows: { inspectorId: string; expertRole: HalalInspectionExpertRole }[] = [];
+    if (assignments && assignments.length > 0) {
+      assignmentRows = assignments.map((a) => ({
+        inspectorId: a.inspectorId,
+        expertRole: a.expertRole as HalalInspectionExpertRole,
+      }));
+    } else {
+      const legacyIds = Array.from(
+        new Set([...(inspectorIds ?? []), ...(inspectorId ? [inspectorId] : [])])
+      );
+      assignmentRows = legacyIds.map((id) => ({
+        inspectorId: id,
+        expertRole: HalalInspectionExpertRole.TECHNICAL_EXPERT,
+      }));
+    }
+
+    const selectedInspectorIds = assignmentRows.map((r) => r.inspectorId);
     if (!applicationId) return res.status(400).json({ message: "applicationId is required" });
     if (selectedInspectorIds.length === 0) {
       return res.status(400).json({ message: "At least one inspector is required" });
@@ -1351,6 +1546,12 @@ export async function assignInspection(req: Request, res: Response) {
       app.status !== HalalApplicationStatus.INSPECTION
     ) {
       return res.status(400).json({ message: "Application must be in inspection workflow" });
+    }
+    if (app.status === HalalApplicationStatus.SUBMITTED && !(app as { agreementMajlisApprovedAt?: Date | null }).agreementMajlisApprovedAt) {
+      return res.status(400).json({
+        message:
+          "The certification agreement must be signed by the business owner and finalized by Majlis before inspectors can be assigned.",
+      });
     }
     const hasCompletedInspection = app.inspections.some((i) => i.completedAt != null);
     if (hasCompletedInspection) {
@@ -1405,17 +1606,18 @@ export async function assignInspection(req: Request, res: Response) {
       select: { inspectorId: true },
     });
     const alreadyAssignedInspectorIds = new Set(existingAssignments.map((a) => a.inspectorId));
-    const newInspectorIds = selectedInspectorIds.filter((id) => !alreadyAssignedInspectorIds.has(id));
-    if (newInspectorIds.length === 0) {
+    const newRows = assignmentRows.filter((row) => !alreadyAssignedInspectorIds.has(row.inspectorId));
+    if (newRows.length === 0) {
       return res.status(400).json({ message: "Selected inspectors are already assigned to this application." });
     }
 
     const createdInspections = [];
-    for (const selectedId of newInspectorIds) {
+    for (const row of newRows) {
       const ins = await prisma.halalInspection.create({
         data: {
           applicationId,
-          inspectorId: selectedId,
+          inspectorId: row.inspectorId,
+          expertRole: row.expertRole,
           scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         },
         include: { application: { include: { business: true } }, inspector: true },
