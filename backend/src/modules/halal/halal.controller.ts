@@ -11,6 +11,7 @@ import {
   HalalPaymentStatus,
   DocumentTemplateStatus,
   HalalInspectionExpertRole,
+  HalalCompetencyStatus,
 } from "@prisma/client";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
@@ -25,6 +26,7 @@ import {
   CreateRenewalDto,
   CreateViolationDto,
   ManualPaymentDto,
+  SubmitHalalApplicationCompetencyWorkersDto,
   ListHalalBusinessesQuery,
   ListHalalApplicationsQuery,
   ListHalalInspectionsQuery,
@@ -458,6 +460,7 @@ export async function getBusiness(req: Request, res: Response) {
             HalalApplicationStatus.SUBMITTED,
             HalalApplicationStatus.INSPECTION,
             HalalApplicationStatus.REVIEW,
+            HalalApplicationStatus.PENDING_COMPETENCY_LINK,
           ],
         },
       },
@@ -740,6 +743,7 @@ export async function createApplication(req: Request, res: Response) {
             HalalApplicationStatus.SUBMITTED,
             HalalApplicationStatus.INSPECTION,
             HalalApplicationStatus.REVIEW,
+            HalalApplicationStatus.PENDING_COMPETENCY_LINK,
           ],
         },
       },
@@ -881,6 +885,23 @@ export async function getApplication(req: Request, res: Response) {
         certificate: isHalalAdmin
           ? { include: { renewals: { orderBy: { renewedAt: "desc" } } } }
           : true,
+        competencyWorkerLinks: {
+          include: {
+            competencyCertificate: {
+              select: {
+                id: true,
+                fullName: true,
+                certificateNumber: true,
+                employerName: true,
+                jobTitle: true,
+                expiresAt: true,
+                issuedAt: true,
+                pdfUrl: true,
+                status: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
@@ -892,8 +913,16 @@ export async function getApplication(req: Request, res: Response) {
       return res.status(404).json({ message: "Application not found" });
     }
 
+    const canViewCommitteePayload =
+      isHalalAdmin ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.committee") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.finance");
+
     const sanitizeHalalApplicationPayload = (payload: Record<string, unknown>) => {
-      if (isHalalAdmin) return payload;
+      if (canViewCommitteePayload) return payload;
       const isOwner = Boolean(userId && app.business.userId === userId);
       const next = { ...payload };
       delete next.committeeNotes;
@@ -1001,11 +1030,10 @@ export async function confirmPayment(req: Request, res: Response) {
     if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
     const updated = await prisma.halalApplication.update({
       where: { id },
-      data: { feePaidAt: new Date(), status: HalalApplicationStatus.APPROVED },
+      data: { feePaidAt: new Date(), status: HalalApplicationStatus.PENDING_COMPETENCY_LINK },
       include: { business: true },
     });
     await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, userId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
-    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
     res.json(updated);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to confirm payment" });
@@ -1130,7 +1158,7 @@ export async function chapaCallback(req: Request, res: Response) {
       where: { id },
       data: {
         feePaidAt: new Date(),
-        status: HalalApplicationStatus.APPROVED,
+        status: HalalApplicationStatus.PENDING_COMPETENCY_LINK,
         paymentMethod: "CHAPA",
         chapaTxRef: trx_ref,
         chapaRefId: ref_id || null,
@@ -1150,7 +1178,17 @@ export async function chapaCallback(req: Request, res: Response) {
         chapaRefId: ref_id || null,
       },
     });
-    await generateCertificateForApplication(id, updatedApp.business.userId, req.ip, req.get("user-agent"));
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_APPROVED,
+      updatedApp.business.userId,
+      "HalalApplication",
+      id,
+      id,
+      app,
+      updatedApp,
+      req.ip,
+      req.get("user-agent")
+    );
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
@@ -1250,14 +1288,159 @@ export async function approveManualPayment(req: Request, res: Response) {
 
     const updated = await prisma.halalApplication.update({
       where: { id },
-      data: { feePaidAt: new Date(), status: HalalApplicationStatus.APPROVED },
+      data: { feePaidAt: new Date(), status: HalalApplicationStatus.PENDING_COMPETENCY_LINK },
       include: { business: true },
     });
     await createAuditLog(HalalAuditAction.APPLICATION_APPROVED, actorId, "HalalApplication", id, id, app, updated, req.ip, req.get("user-agent"));
-    await generateCertificateForApplication(id, actorId, req.ip, req.get("user-agent"));
     res.json(updated);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to approve manual payment" });
+  }
+}
+
+export async function listApplicationCompetencyWorkerCandidates(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isPrivileged =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.committee") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.finance");
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (!isPrivileged && app.business.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK) {
+      return res.status(400).json({
+        message:
+          "The list of competency-certified workers is available only after the certification fee is paid and before Halal workers are confirmed for this application.",
+      });
+    }
+    const now = new Date();
+    const rows = await prisma.halalCompetencyCertificate.findMany({
+      where: {
+        status: HalalCompetencyStatus.ISSUED,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        certificateNumber: { not: null },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        certificateNumber: true,
+        employerName: true,
+        jobTitle: true,
+        expiresAt: true,
+        issuedAt: true,
+      },
+      orderBy: { fullName: "asc" },
+    });
+    const bizLower = (app.business.name || "").trim().toLowerCase();
+    const sorted = [...rows].sort((a, b) => {
+      const am = bizLower && a.employerName.toLowerCase().includes(bizLower) ? 0 : 1;
+      const bm = bizLower && b.employerName.toLowerCase().includes(bizLower) ? 0 : 1;
+      if (am !== bm) return am - bm;
+      return a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" });
+    });
+    res.json({ items: sorted });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to list competency workers" });
+  }
+}
+
+export async function submitApplicationCompetencyWorkers(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const body = SubmitHalalApplicationCompetencyWorkersDto.parse(req.body);
+    const uniqueIds = [...new Set(body.competencyCertificateIds)];
+    if (uniqueIds.length < 2) {
+      return res.status(400).json({ message: "Select at least two distinct competency certificate holders." });
+    }
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true, certificate: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) {
+      return res.status(403).json({ message: "Only the business owner can confirm Halal competency workers for this application." });
+    }
+    if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK || !app.feePaidAt) {
+      return res.status(400).json({
+        message: "Workers can only be confirmed after payment is complete and before your Halal certificate is issued.",
+      });
+    }
+    if (app.certificate) {
+      return res.status(400).json({ message: "Certificate already issued for this application." });
+    }
+
+    const now = new Date();
+    const certs = await prisma.halalCompetencyCertificate.findMany({
+      where: {
+        id: { in: uniqueIds },
+        status: HalalCompetencyStatus.ISSUED,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        certificateNumber: { not: null },
+      },
+      select: { id: true },
+    });
+    if (certs.length !== uniqueIds.length) {
+      return res.status(400).json({
+        message:
+          "One or more selected records are not active issued Halal competency certificates. Refresh the list and try again.",
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.halalApplicationCompetencyWorker.createMany({
+        data: uniqueIds.map((competencyCertificateId) => ({
+          applicationId: id,
+          competencyCertificateId,
+        })),
+      }),
+      prisma.halalApplication.update({
+        where: { id },
+        data: { status: HalalApplicationStatus.APPROVED },
+      }),
+    ]);
+
+    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
+
+    const result = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: {
+        business: { include: { region: true, zone: true, woreda: true } },
+        inspections: { include: { inspector: true } },
+        certificate: true,
+        competencyWorkerLinks: {
+          include: {
+            competencyCertificate: {
+              select: {
+                id: true,
+                fullName: true,
+                certificateNumber: true,
+                employerName: true,
+                jobTitle: true,
+                expiresAt: true,
+                issuedAt: true,
+                pdfUrl: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    res.json(await attachAgreementTemplateResolvedUrl(result as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to link competency workers" });
   }
 }
 
@@ -1845,7 +2028,7 @@ export async function listCertificates(req: Request, res: Response) {
       perms?.includes("halal.audit") ||
       perms?.includes("halal.committee");
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 20));
     const status = req.query.status as string | undefined;
     const where: any = {};
     if (status) where.status = status;

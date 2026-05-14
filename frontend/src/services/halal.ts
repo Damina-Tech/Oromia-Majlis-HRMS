@@ -16,6 +16,7 @@ export type HalalApplicationStatus =
   | "DRAFT"
   | "SUBMITTED"
   | "REVIEW"
+  | "PENDING_COMPETENCY_LINK"
   | "INSPECTION"
   | "APPROVED"
   | "REJECTED";
@@ -148,8 +149,39 @@ export interface HalalApplication {
   updatedAt: string;
   inspections?: HalalInspection[];
   certificate?: HalalCertificate;
+  /** Linked issued Halal competency certificates (workers) for this certification application. */
+  competencyWorkerLinks?: HalalApplicationCompetencyWorkerLink[];
   /** Present for halal.admin when a certificate exists */
   certificateLifecycle?: HalalCertificateLifecycle;
+}
+
+export interface HalalApplicationCompetencyWorkerLink {
+  id: string;
+  applicationId: string;
+  competencyCertificateId: string;
+  createdAt: string;
+  competencyCertificate: {
+    id: string;
+    fullName: string;
+    certificateNumber: string | null;
+    employerName: string;
+    jobTitle?: string | null;
+    expiresAt?: string | null;
+    issuedAt?: string | null;
+    pdfUrl?: string | null;
+    status: string;
+  };
+}
+
+/** Issued competency certificate row for linking to a business certification application. */
+export interface HalalCompetencyWorkerCandidate {
+  id: string;
+  fullName: string;
+  certificateNumber: string | null;
+  employerName: string;
+  jobTitle?: string | null;
+  expiresAt?: string | null;
+  issuedAt?: string | null;
 }
 
 /** True once a signed agreement is on file; withdrawal/deletion of the application is blocked (server enforces too). */
@@ -170,6 +202,8 @@ export function isHalalApplicationWithdrawLockedByAgreement(
 export function getHalalApplicationStatusBadgeLabel(app: HalalApplication): string {
   const agreementDone = !!app.agreementMajlisApprovedAt;
   switch (app.status) {
+    case "PENDING_COMPETENCY_LINK":
+      return "Competency workers";
     case "REVIEW":
       return "Payment pending";
     case "INSPECTION":
@@ -535,6 +569,10 @@ export const halalApi = {
       api.post<HalalApplication>(`/halal/applications/${id}/payment/manual/approve`).then((r) => r.data),
     approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
+    competencyWorkerCandidates: (id: string) =>
+      api.get<{ items: HalalCompetencyWorkerCandidate[] }>(`/halal/applications/${id}/competency-workers/candidates`).then((r) => r.data),
+    submitCompetencyWorkers: (id: string, competencyCertificateIds: string[]) =>
+      api.post<HalalApplication>(`/halal/applications/${id}/competency-workers`, { competencyCertificateIds }).then((r) => r.data),
   },
   inspections: {
     list: (params?: { page?: number; limit?: number; inspectorId?: string; applicationId?: string; completed?: string }) =>

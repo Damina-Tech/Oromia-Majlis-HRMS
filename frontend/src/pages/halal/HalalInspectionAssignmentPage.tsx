@@ -43,6 +43,7 @@ import { ArrowLeft, UserPlus, ClipboardCheck, Eye, Calendar, Pencil, Trash2 } fr
 import { halalApi, type HalalInspectionExpertRole, getHalalInspectionExpertRoleLabel } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
 
 export default function HalalInspectionAssignmentPage() {
   const navigate = useNavigate();
@@ -59,6 +60,7 @@ export default function HalalInspectionAssignmentPage() {
   const [editingInspectorId, setEditingInspectorId] = useState("");
   const [editingScheduledAt, setEditingScheduledAt] = useState("");
   const [deleteInspectionId, setDeleteInspectionId] = useState<string | null>(null);
+  const [inspectionsPage, setInspectionsPage] = useState(1);
 
   useEffect(() => {
     if (preselectedAppId) {
@@ -88,10 +90,16 @@ export default function HalalInspectionAssignmentPage() {
   });
 
   const { data: inspectionsData, isLoading: loadingInspections } = useQuery({
-    queryKey: ["halal-inspections"],
-    queryFn: () => halalApi.inspections.list({ limit: 100 }),
+    queryKey: ["halal-inspections", inspectionsPage],
+    queryFn: () => halalApi.inspections.list({ limit: HALAL_LIST_PAGE_SIZE, page: inspectionsPage }),
   });
   const inspections = inspectionsData?.items ?? [];
+  const inspectionsTotal = inspectionsData?.total ?? 0;
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(inspectionsTotal / HALAL_LIST_PAGE_SIZE) || 1);
+    if (inspectionsTotal > 0 && inspectionsPage > maxPage) setInspectionsPage(maxPage);
+  }, [inspectionsTotal, inspectionsPage]);
 
   const assignMutation = useMutation({
     mutationFn: (data: {
@@ -107,6 +115,7 @@ export default function HalalInspectionAssignmentPage() {
       );
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
       queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      setInspectionsPage(1);
       setAssignModalOpen(false);
       setApplicationId("");
       setTechnicalInspectorIds([]);
@@ -142,6 +151,7 @@ export default function HalalInspectionAssignmentPage() {
     onSuccess: () => {
       toast.success("Inspection deleted successfully");
       queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      setInspectionsPage(1);
       setDeleteInspectionId(null);
     },
     onError: (e: any) => {
@@ -449,6 +459,12 @@ export default function HalalInspectionAssignmentPage() {
                   </div>
                 ))}
               </div>
+              <HalalListPagination
+                page={inspectionsPage}
+                total={inspectionsTotal}
+                pageSize={HALAL_LIST_PAGE_SIZE}
+                onPageChange={setInspectionsPage}
+              />
             </>
           )}
         </CardContent>

@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, GraduationCap, Eye, CreditCard, Pencil } from "lucide-react";
 import { halalApi, type HalalCompetencyCertificate, type HalalCompetencyStatus } from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
+import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
 
 const STATUS_BADGE: Partial<Record<HalalCompetencyStatus, string>> = {
   DRAFT: "bg-slate-100 text-slate-800 border-slate-200/80 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700",
@@ -42,6 +43,8 @@ function listActionLabel(status: HalalCompetencyStatus, isOwnerContext: boolean)
 export default function HalalCompetencyListPage() {
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
+  const [page, setPage] = useState(1);
+
   const isStaff =
     hasPermission("halal.admin") ||
     hasPermission("halal.supervisor") ||
@@ -49,11 +52,16 @@ export default function HalalCompetencyListPage() {
     hasPermission("halal.review");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["halal-competency-certificates"],
-    queryFn: () => halalApi.competencyCertificates.list({ limit: 50 }),
+    queryKey: ["halal-competency-certificates", page],
+    queryFn: () => halalApi.competencyCertificates.list({ limit: HALAL_LIST_PAGE_SIZE, page }),
   });
 
+  const total = data?.total ?? 0;
   const items = data?.items ?? [];
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(total / HALAL_LIST_PAGE_SIZE) || 1);
+    if (total > 0 && page > maxPage) setPage(maxPage);
+  }, [total, page]);
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
@@ -97,7 +105,8 @@ export default function HalalCompetencyListPage() {
               )}
             </div>
           ) : (
-            <Table>
+            <>
+              <Table>
               <TableHeader>
                 <TableRow className="border-emerald-100 dark:border-emerald-900/50 hover:bg-transparent">
                   <TableHead className="text-emerald-950 dark:text-emerald-100 font-semibold min-w-[140px]">Holder</TableHead>
@@ -182,6 +191,8 @@ export default function HalalCompetencyListPage() {
                 })}
               </TableBody>
             </Table>
+            <HalalListPagination page={page} total={total} pageSize={HALAL_LIST_PAGE_SIZE} onPageChange={setPage} />
+            </>
           )}
         </CardContent>
       </Card>

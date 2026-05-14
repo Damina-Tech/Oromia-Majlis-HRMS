@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
 
 const STATUS_COLORS: Record<HalalCertificateStatus, string> = {
   VALID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
@@ -274,6 +275,7 @@ export default function HalalCertificatesPage() {
   const [renewalCert, setRenewalCert] = useState<HalalCertificate | null>(null);
   const [newExpiry, setNewExpiry] = useState("");
   const [expandedCertIds, setExpandedCertIds] = useState<Record<string, boolean>>({});
+  const [certificatesPage, setCertificatesPage] = useState(1);
 
   const isHalalAdmin = hasPermission("halal.admin");
   const canApproveProductManual =
@@ -289,17 +291,21 @@ export default function HalalCertificatesPage() {
     queryKey: ["halal-certificates", statusFilter],
     queryFn: () =>
       halalApi.certificates.list({
-        limit: 100,
+        limit: 300,
         status: statusFilter !== "ALL" ? statusFilter : undefined,
       }),
   });
 
-  const certificates = data?.items ?? [];
-
   const { data: productCertData } = useQuery({
     queryKey: ["halal-product-certificates"],
-    queryFn: () => halalApi.productCertificates.list({ limit: 100 }),
+    queryFn: () => halalApi.productCertificates.list({ limit: 300 }),
   });
+
+  const certificates = data?.items ?? [];
+
+  useEffect(() => {
+    setCertificatesPage(1);
+  }, [certificateSearch, productLinkFilter, renewalUrgencyFilter, statusFilter]);
 
   const productCertsByHalalId = useMemo(() => {
     const m = new Map<string, HalalProductCertificate[]>();
@@ -334,6 +340,11 @@ export default function HalalCertificatesPage() {
     }
     return list;
   }, [certificates, certificateSearch, productLinkFilter, renewalUrgencyFilter, productCertsByHalalId]);
+
+  const paginatedFilteredCertificates = useMemo(() => {
+    const start = (certificatesPage - 1) * HALAL_LIST_PAGE_SIZE;
+    return filteredCertificates.slice(start, start + HALAL_LIST_PAGE_SIZE);
+  }, [filteredCertificates, certificatesPage]);
 
   const certificateFiltersActive =
     certificateSearch.trim() !== "" ||
@@ -568,7 +579,7 @@ export default function HalalCertificatesPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
                   <span className="inline-flex items-center rounded-full border border-border/80 bg-muted/30 px-2.5 py-1 font-medium tabular-nums">
-                    {filteredCertificates.length} / {certificates.length} shown
+                    {filteredCertificates.length} / {certificates.length} match filters
                   </span>
                   {statusFilter !== "ALL" && (
                     <span className="text-muted-foreground/90">Status uses server-side filtering.</span>
@@ -589,7 +600,7 @@ export default function HalalCertificatesPage() {
                 </div>
               ) : (
                 <div className="space-y-5">
-                  {filteredCertificates.map((c) => {
+                  {paginatedFilteredCertificates.map((c) => {
                     const linkedProducts = productCertsByHalalId.get(c.id) ?? [];
                     const productCount = linkedProducts.length;
                     const isOpen = !!expandedCertIds[c.id];
@@ -746,6 +757,12 @@ export default function HalalCertificatesPage() {
                       </Collapsible>
                     );
                   })}
+                  <HalalListPagination
+                    page={certificatesPage}
+                    total={filteredCertificates.length}
+                    pageSize={HALAL_LIST_PAGE_SIZE}
+                    onPageChange={setCertificatesPage}
+                  />
                 </div>
               )}
             </>

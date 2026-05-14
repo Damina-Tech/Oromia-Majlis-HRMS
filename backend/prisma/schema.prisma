@@ -2337,6 +2337,8 @@ enum HalalApplicationStatus {
   DRAFT
   SUBMITTED
   REVIEW
+  /// Certification fee paid; owner must link at least two issued Halal competency certificates before the business certificate is generated.
+  PENDING_COMPETENCY_LINK
   INSPECTION
   APPROVED
   REJECTED
@@ -2475,10 +2477,25 @@ model HalalApplication {
   updatedAt       DateTime               @updatedAt
   inspections     HalalInspection[]
   certificate     HalalCertificate?
+  /// At least two issued competency certificates linked by the business owner after payment, before certificate issuance.
+  competencyWorkerLinks HalalApplicationCompetencyWorker[]
   auditLogs       HalalAuditLog[]
 
   @@index([businessId])
   @@index([status])
+}
+
+/// Links a certification application to individual Halal competency certificate holders (workers).
+model HalalApplicationCompetencyWorker {
+  id                      String                   @id @default(cuid())
+  applicationId           String
+  application             HalalApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  competencyCertificateId String
+  competencyCertificate   HalalCompetencyCertificate @relation(fields: [competencyCertificateId], references: [id], onDelete: Restrict)
+  createdAt               DateTime                 @default(now())
+
+  @@unique([applicationId, competencyCertificateId])
+  @@index([competencyCertificateId])
 }
 
 model HalalPayment {
@@ -2669,6 +2686,7 @@ model HalalCompetencyCertificate {
   expiresAt         DateTime?
 
   renewals HalalCompetencyRenewal[]
+  applicationLinks HalalApplicationCompetencyWorker[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

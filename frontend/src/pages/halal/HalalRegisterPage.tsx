@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import { ArrowLeft, Building2, Loader2, Plus, Eye, Pencil, Trash2, Search } from
 import { halalApi } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
 
 const BUSINESS_STATUS_COLORS: Record<string, string> = {
   PENDING_APPROVAL: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -46,6 +47,11 @@ export default function HalalRegisterPage() {
   const { hasPermission } = useAuth();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [businessesPage, setBusinessesPage] = useState(1);
+
+  useEffect(() => {
+    setBusinessesPage(1);
+  }, [searchQuery]);
 
   /** Owners cannot edit or delete a business after approval; staff may. */
   const canOwnerMutateBusinessRegistration = (status: string | undefined) => {
@@ -55,9 +61,13 @@ export default function HalalRegisterPage() {
 
   const { data: businessesData, isLoading } = useQuery({
     queryKey: ["halal-businesses", searchQuery],
-    queryFn: () => halalApi.businesses.list({ limit: 100, search: searchQuery || undefined }),
+    queryFn: () => halalApi.businesses.list({ limit: 250, search: searchQuery || undefined }),
   });
   const businesses = businessesData?.items ?? [];
+  const businessesPaged = useMemo(() => {
+    const start = (businessesPage - 1) * HALAL_LIST_PAGE_SIZE;
+    return businesses.slice(start, start + HALAL_LIST_PAGE_SIZE);
+  }, [businesses, businessesPage]);
 
   const deleteMutation = useMutation({
     mutationFn: halalApi.businesses.delete,
@@ -141,7 +151,7 @@ export default function HalalRegisterPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {businesses.map((b) => {
+                    {businessesPaged.map((b) => {
                       const canMutate = canOwnerMutateBusinessRegistration(b.status);
                       return (
                       <TableRow
@@ -209,7 +219,7 @@ export default function HalalRegisterPage() {
                 </Table>
               </div>
               <div className="md:hidden divide-y">
-                {businesses.map((b) => {
+                {businessesPaged.map((b) => {
                   const canMutate = canOwnerMutateBusinessRegistration(b.status);
                   return (
                   <div
@@ -261,6 +271,12 @@ export default function HalalRegisterPage() {
                   );
                 })}
               </div>
+              <HalalListPagination
+                page={businessesPage}
+                total={businesses.length}
+                pageSize={HALAL_LIST_PAGE_SIZE}
+                onPageChange={setBusinessesPage}
+              />
             </>
           )}
         </CardContent>

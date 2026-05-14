@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,11 +28,13 @@ import { ArrowLeft, Plus, FileText, Eye, Trash2, AlertCircle, Search } from "luc
 import { halalApi, type HalalApplication, type HalalApplicationStatus, isHalalApplicationWithdrawLockedByAgreement, getHalalApplicationStatusBadgeLabel } from "@/services/halal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
 
 const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
   SUBMITTED: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   REVIEW: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  PENDING_COMPETENCY_LINK: "bg-cyan-100 text-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
   INSPECTION: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
   APPROVED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
   REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
@@ -45,12 +47,21 @@ export default function HalalApplyPage() {
   const isAdmin = hasPermission("halal.admin") || hasPermission("halal.supervisor");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [applicationsPage, setApplicationsPage] = useState(1);
+
+  useEffect(() => {
+    setApplicationsPage(1);
+  }, [searchQuery]);
 
   const { data: applicationsData } = useQuery({
     queryKey: ["halal-applications", searchQuery],
-    queryFn: () => halalApi.applications.list({ limit: 100, search: searchQuery || undefined }),
+    queryFn: () => halalApi.applications.list({ limit: 250, search: searchQuery || undefined }),
   });
   const applications = applicationsData?.items ?? [];
+  const applicationsPaged = useMemo(() => {
+    const start = (applicationsPage - 1) * HALAL_LIST_PAGE_SIZE;
+    return applications.slice(start, start + HALAL_LIST_PAGE_SIZE);
+  }, [applications, applicationsPage]);
 
   const { data: businessesData } = useQuery({
     queryKey: ["halal-businesses"],
@@ -193,7 +204,7 @@ export default function HalalApplyPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {applications.map((a) => (
+                    {applicationsPaged.map((a) => (
                       <TableRow
                         key={a.id}
                         className="cursor-pointer hover:bg-muted/50"
@@ -234,7 +245,7 @@ export default function HalalApplyPage() {
                 </Table>
               </div>
               <div className="md:hidden divide-y">
-                {applications.map((a) => (
+                {applicationsPaged.map((a) => (
                   <div
                     key={a.id}
                     className="flex items-center justify-between p-4 hover:bg-muted/30 cursor-pointer"
@@ -264,6 +275,12 @@ export default function HalalApplyPage() {
                   </div>
                 ))}
               </div>
+              <HalalListPagination
+                page={applicationsPage}
+                total={applications.length}
+                pageSize={HALAL_LIST_PAGE_SIZE}
+                onPageChange={setApplicationsPage}
+              />
             </>
           )}
         </CardContent>

@@ -133,6 +133,11 @@ export const ManualPaymentDto = z.object({
   bankName: z.string().min(1, "Bank name is required"),
 });
 
+/** After certification fee payment: link at least two issued Halal competency certificates before business certificate issuance. */
+export const SubmitHalalApplicationCompetencyWorkersDto = z.object({
+  competencyCertificateIds: z.array(z.string().min(1)).min(2).max(40),
+});
+
 export const AssignInspectionAssignmentEntryDto = z.object({
   inspectorId: z.string().min(1),
   expertRole: z.enum(["TECHNICAL_EXPERT", "SHARIA_EXPERT"]),
@@ -235,7 +240,7 @@ export const CreateViolationDto = z.object({
 
 export const ListHalalBusinessesQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   category: z.nativeEnum(HalalBusinessCategory).optional(),
   search: z.string().optional(),
   regionId: z.string().optional(),
@@ -244,7 +249,7 @@ export const ListHalalBusinessesQuery = z.object({
 
 export const ListHalalApplicationsQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   status: z.nativeEnum(HalalApplicationStatus).optional(),
   businessId: z.string().optional(),
   search: z.string().optional(),
@@ -252,7 +257,7 @@ export const ListHalalApplicationsQuery = z.object({
 
 export const ListHalalInspectionsQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   inspectorId: z.string().optional(),
   applicationId: z.string().optional(),
   completed: z.enum(["true", "false"]).optional(),
@@ -260,7 +265,7 @@ export const ListHalalInspectionsQuery = z.object({
 
 export const ListHalalViolationsQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   certificateId: z.string().optional(),
 });
 
@@ -274,7 +279,7 @@ export const CreateHalalProductCertificateDto = z.object({
 
 export const ListHalalProductCertificatesQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   businessId: z.string().optional(),
 });
 
@@ -339,6 +344,6 @@ export const RecordHalalCompetencyInterviewDto = z.object({
 
 export const ListHalalCompetencyQuery = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(500).default(20),
   status: z.enum(competencyStatuses).optional(),
 });

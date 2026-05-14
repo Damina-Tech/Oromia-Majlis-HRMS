@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ import {
   User,
   Shield,
   Download,
+  Users,
 } from "lucide-react";
 import {
   halalApi,
@@ -68,6 +69,7 @@ const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   DRAFT: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200",
   SUBMITTED: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200",
   REVIEW: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
+  PENDING_COMPETENCY_LINK: "bg-cyan-100 text-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
   INSPECTION: "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200",
   APPROVED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
   REJECTED: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200",
@@ -86,6 +88,11 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
   REVIEW: {
     title: "Pay certification fee",
     description: "Committee approved your application. Pay 20,000 ETB to generate your Halal certificate.",
+  },
+  PENDING_COMPETENCY_LINK: {
+    title: "Confirm Halal competency workers",
+    description:
+      "Your certification fee is paid. Select at least two people from the national list of issued Halal competency certificate holders who work at your facility. Your business Halal certificate is generated after you confirm.",
   },
   INSPECTION: {
     title: "Committee review",
@@ -108,6 +115,7 @@ type HalalWorkflowDisplayKey =
   | "INSPECTION_QUEUE"
   | "INSPECTION"
   | "REVIEW"
+  | "COMPETENCY_WORKERS"
   | "APPROVED"
   | "REJECTED";
 
@@ -117,6 +125,7 @@ const WORKFLOW_STEPS: { key: HalalWorkflowDisplayKey; label: string; icon: typeo
   { key: "INSPECTION_QUEUE", label: "Inspection", icon: Building2 },
   { key: "INSPECTION", label: "Committee review", icon: AlertCircle },
   { key: "REVIEW", label: "Payment", icon: CreditCard },
+  { key: "COMPETENCY_WORKERS", label: "Competency staff", icon: Users },
   { key: "APPROVED", label: "Certificate", icon: Award },
 ];
 
@@ -132,6 +141,8 @@ function getHalalWorkflowDisplayKey(app: HalalApplication): HalalWorkflowDisplay
       return "INSPECTION";
     case "REVIEW":
       return "REVIEW";
+    case "PENDING_COMPETENCY_LINK":
+      return "COMPETENCY_WORKERS";
     case "APPROVED":
       return "APPROVED";
     default:
@@ -197,6 +208,13 @@ export default function HalalMyApplicationDetailPage() {
     hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.inspector");
   const canApproveManualPayment = hasPermission("halal.admin") || hasPermission("halal.finance");
   const isHalalAdmin = hasPermission("halal.admin");
+  const canViewCommitteeDetails =
+    hasPermission("halal.admin") ||
+    hasPermission("halal.supervisor") ||
+    hasPermission("halal.committee") ||
+    hasPermission("halal.inspector") ||
+    hasPermission("halal.audit") ||
+    hasPermission("halal.finance");
 
   const [paymentMethod, setPaymentMethod] = useState<"chapa" | "manual">("chapa");
   const [manualBank, setManualBank] = useState("");
@@ -275,9 +293,50 @@ export default function HalalMyApplicationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
-      toast.success("Manual payment approved. Certificate is ready.");
+      toast.success("Manual payment approved. The owner must link Halal competency workers before the certificate is issued.");
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve manual payment"),
+  });
+
+  const [competencySearch, setCompetencySearch] = useState("");
+  const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
+
+  const { data: competencyCandidatesRes, isLoading: loadingCompetencyCandidates } = useQuery({
+    queryKey: ["halal-application-competency-candidates", id],
+    queryFn: () => halalApi.applications.competencyWorkerCandidates(id!),
+    enabled: !!id && app?.status === "PENDING_COMPETENCY_LINK",
+  });
+
+  useEffect(() => {
+    if (app?.status !== "PENDING_COMPETENCY_LINK") {
+      setSelectedCompetencyIds([]);
+      setCompetencySearch("");
+    }
+  }, [app?.status]);
+
+  const filteredCompetencyCandidates = useMemo(() => {
+    const items = competencyCandidatesRes?.items ?? [];
+    const q = competencySearch.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (c) =>
+        c.fullName.toLowerCase().includes(q) ||
+        (c.certificateNumber && c.certificateNumber.toLowerCase().includes(q)) ||
+        c.employerName.toLowerCase().includes(q)
+    );
+  }, [competencyCandidatesRes?.items, competencySearch]);
+
+  const submitCompetencyWorkersMutation = useMutation({
+    mutationFn: () => halalApi.applications.submitCompetencyWorkers(id!, selectedCompetencyIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Competency workers saved. Your Halal certificate has been generated.");
+    },
+    onError: (e: any) => {
+      const msg = e.response?.data?.message;
+      toast.error(typeof msg === "string" ? msg : "Failed to confirm workers");
+    },
   });
 
   useEffect(() => {
@@ -456,6 +515,15 @@ export default function HalalMyApplicationDetailPage() {
   const assignInspectorsBlockedByAgreement =
     application.status === "SUBMITTED" && !agreementDone;
   const isRejected = application.status === "REJECTED";
+  const showInteractiveAgreementCard = !isRejected && application.status === "SUBMITTED" && !agreementDone;
+  const showAgreementDocumentsReadonly =
+    application.status !== "DRAFT" &&
+    !showInteractiveAgreementCard &&
+    Boolean(
+      agreementTemplateFullUrl ||
+        (application.agreementOwnerSignedUrl && String(application.agreementOwnerSignedUrl).trim()) ||
+        (application.agreementMajlisSignedUrl && String(application.agreementMajlisSignedUrl).trim())
+    );
   const bizDocs = application.documents ?? application.business?.documents ?? [];
   const ownerIdUrl = getOwnerIdDocumentUrl(bizDocs);
 
@@ -585,7 +653,7 @@ export default function HalalMyApplicationDetailPage() {
       </Card>
 
       {/* Certification agreement: template, owner upload, Majlis countersign (before inspection) */}
-      {!isRejected && application.status === "SUBMITTED" && !agreementDone && (
+      {showInteractiveAgreementCard && (
         <Card className="shadow-sm border-amber-200/70 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/15">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
@@ -734,6 +802,7 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
+      
       {/* Next action hint */}
       <Card
         className={`border-2 ${
@@ -769,7 +838,7 @@ export default function HalalMyApplicationDetailPage() {
               )}
             </>
           )}
-          {application.status === "APPROVED" && isPaid && (
+          {(application.status === "APPROVED" || application.status === "PENDING_COMPETENCY_LINK") && isPaid && (
             <div className="w-full space-y-3">
               <div className="flex items-center gap-2 rounded-lg bg-emerald-100/80 dark:bg-emerald-900/30 px-3 py-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -931,7 +1000,9 @@ export default function HalalMyApplicationDetailPage() {
               Download certificate
             </Button>
           )}
-          {(application.status === "APPROVED" || application.status === "REJECTED") && (
+          {(application.status === "APPROVED" ||
+            application.status === "PENDING_COMPETENCY_LINK" ||
+            application.status === "REJECTED") && (
             <Button variant="outline" onClick={() => navigate("/halal/dashboard")}>
               Back to dashboard
             </Button>
@@ -1246,9 +1317,256 @@ export default function HalalMyApplicationDetailPage() {
           </CardContent>
         </Card>
       )}
+      
+      {/* Agreement files (read-only): visible after the interactive agreement step, for all later statuses */}
+      {showAgreementDocumentsReadonly && (
+        <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <FileText className="h-5 w-5 shrink-0 text-slate-600 dark:text-slate-300" />
+              Certification agreement (documents)
+            </CardTitle>
+            <CardDescription>
+              Blank template, owner-signed copy, and executed Majlis agreement. These links stay available for the rest
+              of this application (inspection, committee review, payment, and completion).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {agreementTemplateFullUrl ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Agreement template</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a href={agreementTemplateFullUrl} target="_blank" rel="noopener noreferrer">
+                      <Eye className="h-4 w-4 mr-2" />
+                      View template
+                    </a>
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a href={agreementTemplateFullUrl} download>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download template
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {application.agreementOwnerSignedUrl ? (
+              <div className="space-y-2 border-t pt-4">
+                <p className="text-sm font-medium text-foreground">Owner-signed agreement</p>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a
+                      href={resolveFileUrl(application.agreementOwnerSignedUrl) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View owner-signed file
+                    </a>
+                  </Button>
+                  {application.agreementOwnerSubmittedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Submitted {new Date(application.agreementOwnerSubmittedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {application.agreementMajlisSignedUrl ? (
+              <div className="space-y-2 border-t pt-4">
+                <p className="text-sm font-medium text-foreground">Executed agreement (Majlis finalized)</p>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <a
+                      href={resolveFileUrl(application.agreementMajlisSignedUrl) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View executed agreement
+                    </a>
+                  </Button>
+                  {application.agreementMajlisApprovedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Finalized {new Date(application.agreementMajlisApprovedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Owner: after payment, pick ≥2 issued competency certificate holders before business certificate is generated */}
+      {application.status === "PENDING_COMPETENCY_LINK" && isApplicationOwner && (
+        <Card className="shadow-sm border-cyan-200/70 dark:border-cyan-900/40 bg-cyan-50/20 dark:bg-cyan-950/15">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-cyan-900 dark:text-cyan-100">
+              <Users className="h-5 w-5 shrink-0" />
+              Halal competency workers
+            </CardTitle>
+            <CardDescription>
+              Your certification fee is paid. Select at least two people from the list of{" "}
+              <strong>issued</strong> Halal competency certificate holders who work at{" "}
+              <strong>{application.business?.name ?? "your business"}</strong>. Names whose employer matches your
+              business appear first. Your business Halal certificate is created after you confirm.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="competency-worker-search">Search list</Label>
+              <Input
+                id="competency-worker-search"
+                placeholder="Name, certificate number, or employer…"
+                value={competencySearch}
+                onChange={(e) => setCompetencySearch(e.target.value)}
+              />
+            </div>
+            {loadingCompetencyCandidates ? (
+              <p className="text-sm text-muted-foreground">Loading competency certificate holders…</p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto rounded-md border border-border">
+                <ul className="divide-y divide-border">
+                  {filteredCompetencyCandidates.length === 0 ? (
+                    <li className="px-3 py-6 text-sm text-muted-foreground text-center">
+                      No matching issued competency certificates. If the list is empty, workers must complete competency
+                      certification (issued status) before they appear here.
+                    </li>
+                  ) : (
+                    filteredCompetencyCandidates.map((c) => {
+                      const checked = selectedCompetencyIds.includes(c.id);
+                      return (
+                        <li key={c.id} className="flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40">
+                          <Checkbox
+                            id={`comp-worker-${c.id}`}
+                            checked={checked}
+                            onCheckedChange={() => {
+                              setSelectedCompetencyIds((prev) =>
+                                prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id]
+                              );
+                            }}
+                            className="mt-0.5"
+                          />
+                          <label htmlFor={`comp-worker-${c.id}`} className="min-w-0 flex-1 cursor-pointer space-y-0.5">
+                            <p className="text-sm font-medium leading-tight">{c.fullName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Cert. {c.certificateNumber ?? "—"} · {c.employerName}
+                              {c.jobTitle ? ` · ${c.jobTitle}` : ""}
+                            </p>
+                            {c.expiresAt && (
+                              <p className="text-xs text-muted-foreground">
+                                Valid until {new Date(c.expiresAt).toLocaleDateString()}
+                              </p>
+                            )}
+                          </label>
+                          {c.certificateNumber ? (
+                            <Button variant="ghost" size="sm" className="shrink-0 h-8 text-xs" asChild>
+                              <a
+                                href={`/verify/halal-competency/${encodeURIComponent(c.certificateNumber)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </Button>
+                          ) : null}
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Selected: <strong>{selectedCompetencyIds.length}</strong> (minimum 2 required)
+            </p>
+            <Button
+              className="bg-cyan-700 hover:bg-cyan-800 text-white"
+              disabled={
+                selectedCompetencyIds.length < 2 || submitCompetencyWorkersMutation.isPending || loadingCompetencyCandidates
+              }
+              onClick={() => submitCompetencyWorkersMutation.mutate()}
+            >
+              {submitCompetencyWorkersMutation.isPending ? "Confirming…" : "Confirm workers and issue certificate"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {application.status === "PENDING_COMPETENCY_LINK" && !isApplicationOwner && (
+        <Card className="shadow-sm border-cyan-200/60 dark:border-cyan-900/40">
+          <CardHeader>
+            <CardTitle className="text-base">Halal competency workers</CardTitle>
+            <CardDescription>
+              Payment is complete. The business owner must select at least two issued Halal competency certificate holders
+              from the national list before the business Halal certificate is generated.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {/* Linked workers (read-only) after confirmation */}
+      {(application.competencyWorkerLinks?.length ?? 0) > 0 && (
+        <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Users className="h-5 w-5 shrink-0 text-slate-600 dark:text-slate-300" />
+              Linked Halal competency staff
+            </CardTitle>
+            <CardDescription>
+              Workers linked to this certification application (issued Halal competency certificates).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {application.competencyWorkerLinks!.map((link) => {
+                const c = link.competencyCertificate;
+                const verifyUrl =
+                  c.certificateNumber != null && String(c.certificateNumber).trim()
+                    ? `/verify/halal-competency/${encodeURIComponent(String(c.certificateNumber).trim())}`
+                    : null;
+                return (
+                  <li
+                    key={link.id}
+                    className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{c.fullName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Certificate {c.certificateNumber ?? "—"} · {c.employerName}
+                        {c.jobTitle ? ` · ${c.jobTitle}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      {verifyUrl ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={verifyUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Verify
+                          </a>
+                        </Button>
+                      ) : null}
+                      {c.pdfUrl ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={resolveFileUrl(c.pdfUrl) ?? "#"} target="_blank" rel="noopener noreferrer">
+                            <Eye className="h-4 w-4 mr-1" />
+                            PDF
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Rejection: business owner sees a generic message (detailed reason is admin-only). Staff see the recorded reason. */}
-      {application.status === "REJECTED" && isApplicationOwner && !isHalalAdmin && (
+      {application.status === "REJECTED" && isApplicationOwner && !canViewCommitteeDetails && (
         <Card className="border-2 border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20">
           <CardHeader>
             <CardTitle className="text-red-700 dark:text-red-300">Application not approved</CardTitle>
@@ -1260,7 +1578,10 @@ export default function HalalMyApplicationDetailPage() {
           </CardContent>
         </Card>
       )}
-      {application.status === "REJECTED" && !isApplicationOwner && application.rejectionReason && (
+      {application.status === "REJECTED" &&
+        !isApplicationOwner &&
+        application.rejectionReason &&
+        !canViewCommitteeDetails && (
         <Card className="border-2 border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20">
           <CardHeader>
             <CardTitle className="text-red-700 dark:text-red-300">Rejection reason</CardTitle>
@@ -1409,9 +1730,9 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
-      {/* Halal admin only: committee notes, meeting minutes, and full rejection rationale */}
-      {isHalalAdmin &&
-        ["REVIEW", "REJECTED", "APPROVED"].includes(application.status) &&
+      {/* Committee decision: visible to privileged Halal staff (not to the business owner unless they also hold staff permissions). */}
+      {canViewCommitteeDetails &&
+        ["INSPECTION", "REVIEW", "PENDING_COMPETENCY_LINK", "REJECTED", "APPROVED"].includes(application.status) &&
         (Boolean(
           (application.committeeNotes && String(application.committeeNotes).trim()) ||
             (application.meetingMinutesUrl && String(application.meetingMinutesUrl).trim()) ||
@@ -1421,11 +1742,11 @@ export default function HalalMyApplicationDetailPage() {
             <CardHeader>
               <CardTitle className="text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
                 <FileText className="h-5 w-5 shrink-0" />
-                Committee decision (admin)
+                Committee decision (staff)
               </CardTitle>
               <CardDescription>
-                Committee notes, meeting minutes, and rejection rationale are visible only to Halal administrators, not
-                to the business owner.
+                Committee notes, meeting minutes, and recorded rejection rationale. Not shown to the business owner on
+                their view unless they also have a Halal staff role.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
@@ -1473,8 +1794,8 @@ export default function HalalMyApplicationDetailPage() {
           <DialogHeader>
             <DialogTitle>Approve application</DialogTitle>
             <DialogDescription>
-              Optional notes and meeting minutes are saved for Halal administrators only; they are not shown to the
-              business owner.
+              Optional notes and meeting minutes are saved for Halal staff review; they are not shown to the business
+              owner on their application view unless they also hold a staff role.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
