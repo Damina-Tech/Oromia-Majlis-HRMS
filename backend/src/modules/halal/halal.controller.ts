@@ -27,6 +27,8 @@ import {
   CreateViolationDto,
   ManualPaymentDto,
   SubmitHalalApplicationCompetencyWorkersDto,
+  PauseHalalApplicationDto,
+  RejectHalalManualPaymentDto,
   ListHalalBusinessesQuery,
   ListHalalApplicationsQuery,
   ListHalalInspectionsQuery,
@@ -148,6 +150,25 @@ function buildCertificateLifecycle(cert: {
       cert.status === HalalCertificateStatus.VALID && withinCycle && annualRenewalsRemaining > 0 && now < cycleEndsAt,
   };
 }
+
+function isHalalApplicationPaused(app: { pausedAt?: Date | null }): boolean {
+  return app.pausedAt != null;
+}
+
+function assertHalalApplicationNotPaused(app: { pausedAt?: Date | null }) {
+  if (isHalalApplicationPaused(app)) {
+    throw new Error(
+      "This application is paused by Majlis. No further actions can be taken until an administrator resumes it."
+    );
+  }
+}
+
+const halalApplicationPausedBySelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+} as const;
 
 async function createAuditLog(
   action: HalalAuditAction,
@@ -870,6 +891,29 @@ async function attachAgreementTemplateResolvedUrl<T extends Record<string, unkno
   return { ...app, agreementTemplateResolvedUrl: null };
 }
 
+/** Latest rejected manual payment receipt (application.paymentReceiptUrl is cleared on reject). */
+async function attachRejectedManualReceiptUrl<T extends Record<string, unknown>>(app: T) {
+  const reason =
+    typeof app.manualPaymentRejectionReason === "string" ? app.manualPaymentRejectionReason.trim() : "";
+  if (!reason || typeof app.id !== "string") {
+    return { ...app, manualPaymentRejectedReceiptUrl: null };
+  }
+  const rejected = await prisma.halalPayment.findFirst({
+    where: {
+      applicationId: app.id,
+      method: HalalPaymentMethod.MANUAL,
+      status: HalalPaymentStatus.REJECTED,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { receiptUrl: true },
+  });
+  return { ...app, manualPaymentRejectedReceiptUrl: rejected?.receiptUrl ?? null };
+}
+
+async function enrichHalalApplicationResponse<T extends Record<string, unknown>>(app: T) {
+  return attachRejectedManualReceiptUrl(await attachAgreementTemplateResolvedUrl(app));
+}
+
 export async function getApplication(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
@@ -902,6 +946,7 @@ export async function getApplication(req: Request, res: Response) {
             },
           },
         },
+        pausedBy: { select: halalApplicationPausedBySelect },
       },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
@@ -937,12 +982,139 @@ export async function getApplication(req: Request, res: Response) {
         certificateLifecycle: buildCertificateLifecycle(app.certificate),
       } as any;
       return res.json(
-        sanitizeHalalApplicationPayload((await attachAgreementTemplateResolvedUrl(withLifecycle)) as any) as any
+        sanitizeHalalApplicationPayload((await enrichHalalApplicationResponse(withLifecycle)) as any) as any
       );
     }
-    res.json(sanitizeHalalApplicationPayload((await attachAgreementTemplateResolvedUrl(app as any)) as any) as any);
+    res.json(sanitizeHalalApplicationPayload((await enrichHalalApplicationResponse(app as any)) as any) as any);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get application" });
+  }
+}
+
+export async function pauseApplication(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    if (!perms?.includes("halal.admin")) {
+      return res.status(403).json({ message: "Only Halal administrators can pause applications" });
+    }
+    const { id } = req.params;
+    const body = PauseHalalApplicationDto.parse(req.body);
+    const app = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.status === HalalApplicationStatus.REJECTED) {
+      return res.status(400).json({ message: "Rejected applications cannot be paused" });
+    }
+    if (isHalalApplicationPaused(app)) {
+      return res.status(400).json({ message: "Application is already paused" });
+    }
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: {
+        pausedAt: new Date(),
+        pausedReason: body.reason,
+        pausedById: userId,
+      },
+      include: {
+        business: { include: { region: true, zone: true, woreda: true } },
+        inspections: { include: { inspector: true } },
+        certificate: true,
+        competencyWorkerLinks: {
+          include: {
+            competencyCertificate: {
+              select: {
+                id: true,
+                fullName: true,
+                certificateNumber: true,
+                employerName: true,
+                jobTitle: true,
+                expiresAt: true,
+                issuedAt: true,
+                pdfUrl: true,
+                status: true,
+              },
+            },
+          },
+        },
+        pausedBy: { select: halalApplicationPausedBySelect },
+      },
+    });
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_REVIEWED,
+      userId,
+      "HalalApplication",
+      id,
+      id,
+      { pausedAt: null },
+      { pausedAt: updated.pausedAt, pausedReason: body.reason, action: "PAUSED" },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await attachAgreementTemplateResolvedUrl(updated as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to pause application" });
+  }
+}
+
+export async function resumeApplication(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    if (!perms?.includes("halal.admin")) {
+      return res.status(403).json({ message: "Only Halal administrators can resume applications" });
+    }
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (!isHalalApplicationPaused(app)) {
+      return res.status(400).json({ message: "Application is not paused" });
+    }
+    const previousReason = app.pausedReason;
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: {
+        pausedAt: null,
+        pausedReason: null,
+        pausedById: null,
+      },
+      include: {
+        business: { include: { region: true, zone: true, woreda: true } },
+        inspections: { include: { inspector: true } },
+        certificate: true,
+        competencyWorkerLinks: {
+          include: {
+            competencyCertificate: {
+              select: {
+                id: true,
+                fullName: true,
+                certificateNumber: true,
+                employerName: true,
+                jobTitle: true,
+                expiresAt: true,
+                issuedAt: true,
+                pdfUrl: true,
+                status: true,
+              },
+            },
+          },
+        },
+        pausedBy: { select: halalApplicationPausedBySelect },
+      },
+    });
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_REVIEWED,
+      userId,
+      "HalalApplication",
+      id,
+      id,
+      { pausedAt: app.pausedAt, pausedReason: previousReason, action: "PAUSED" },
+      { pausedAt: null, action: "RESUMED" },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await attachAgreementTemplateResolvedUrl(updated as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to resume application" });
   }
 }
 
@@ -950,6 +1122,9 @@ export async function updateApplication(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const data = UpdateHalalApplicationDto.parse(req.body);
+    const existing = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(existing);
     const app = await prisma.halalApplication.update({
       where: { id },
       data,
@@ -992,6 +1167,7 @@ export async function deleteApplication(req: Request, res: Response) {
     }
 
     if (!isAdmin) {
+      assertHalalApplicationNotPaused(app);
       // Owner: can withdraw before payment is confirmed.
       const withdrawableWhileUnpaid: HalalApplicationStatus[] = [
         HalalApplicationStatus.SUBMITTED,
@@ -1024,6 +1200,7 @@ export async function confirmPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.REVIEW) {
       return res.status(400).json({ message: "Payment can only be confirmed after committee approval" });
     }
@@ -1053,6 +1230,7 @@ export async function initChapaPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId && !isAdmin) return res.status(403).json({ message: "Access denied" });
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.REVIEW) {
       return res.status(400).json({ message: "Payment can only be initiated after committee approval" });
     }
@@ -1107,6 +1285,14 @@ export async function initChapaPayment(req: Request, res: Response) {
           : "Failed to initialize Chapa payment";
       return res.status(400).json({ message: errMsg });
     }
+    await prisma.halalPayment.updateMany({
+      where: {
+        applicationId: id,
+        method: HalalPaymentMethod.MANUAL,
+        status: HalalPaymentStatus.PENDING,
+      },
+      data: { status: HalalPaymentStatus.REJECTED },
+    });
     await prisma.halalPayment.create({
       data: {
         applicationId: id,
@@ -1119,7 +1305,14 @@ export async function initChapaPayment(req: Request, res: Response) {
     });
     await prisma.halalApplication.update({
       where: { id },
-      data: { chapaTxRef: txRef },
+      data: {
+        chapaTxRef: txRef,
+        paymentMethod: null,
+        paymentBankName: null,
+        paymentReceiptUrl: null,
+        manualPaymentRejectionReason: null,
+        manualPaymentRejectedAt: null,
+      },
     });
     res.json({ checkoutUrl: data.data.checkout_url, txRef });
   } catch (e: any) {
@@ -1141,6 +1334,9 @@ export async function chapaCallback(req: Request, res: Response) {
     });
     if (!app || app.chapaTxRef !== trx_ref) {
       return res.status(404).send("Application not found");
+    }
+    if (isHalalApplicationPaused(app)) {
+      return res.status(400).send("Application paused");
     }
     if (app.feePaidAt) {
       return res.status(200).send("OK"); // Already processed
@@ -1209,6 +1405,7 @@ export async function confirmManualPayment(req: Request, res: Response) {
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
     if (app.business.userId !== userId) return res.status(403).json({ message: "Access denied" });
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.REVIEW) {
       return res.status(400).json({ message: "Payment can only be submitted after committee approval" });
     }
@@ -1231,6 +1428,8 @@ export async function confirmManualPayment(req: Request, res: Response) {
         paymentMethod: "MANUAL",
         paymentBankName: body.bankName,
         paymentReceiptUrl: receiptUrl,
+        manualPaymentRejectionReason: null,
+        manualPaymentRejectedAt: null,
       },
       include: { business: true },
     });
@@ -1257,6 +1456,7 @@ export async function approveManualPayment(req: Request, res: Response) {
     const { id } = req.params;
     const app = await prisma.halalApplication.findUnique({ where: { id } });
     if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.REVIEW) {
       return res.status(400).json({ message: "Manual payment can only be approved in the payment stage" });
     }
@@ -1295,6 +1495,68 @@ export async function approveManualPayment(req: Request, res: Response) {
     res.json(updated);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to approve manual payment" });
+  }
+}
+
+export async function rejectManualPayment(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    const { id } = req.params;
+    const body = RejectHalalManualPaymentDto.parse(req.body);
+    const app = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
+    if (app.status !== HalalApplicationStatus.REVIEW) {
+      return res.status(400).json({ message: "Manual payment can only be rejected in the payment stage" });
+    }
+    if (app.feePaidAt) return res.status(400).json({ message: "Payment already confirmed" });
+    if (app.paymentMethod !== "MANUAL" || !app.paymentReceiptUrl) {
+      return res.status(400).json({ message: "No manual payment receipt is awaiting review for this application" });
+    }
+
+    const pending = await prisma.halalPayment.findFirst({
+      where: {
+        applicationId: id,
+        method: HalalPaymentMethod.MANUAL,
+        status: HalalPaymentStatus.PENDING,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (pending) {
+      await prisma.halalPayment.update({
+        where: { id: pending.id },
+        data: {
+          status: HalalPaymentStatus.REJECTED,
+          processedById: actorId,
+        },
+      });
+    }
+
+    const updated = await prisma.halalApplication.update({
+      where: { id },
+      data: {
+        paymentMethod: null,
+        paymentBankName: null,
+        paymentReceiptUrl: null,
+        manualPaymentRejectionReason: body.reason,
+        manualPaymentRejectedAt: new Date(),
+      },
+      include: { business: true },
+    });
+    await createAuditLog(
+      HalalAuditAction.APPLICATION_REVIEWED,
+      actorId,
+      "HalalApplication",
+      id,
+      id,
+      app,
+      { ...updated, manualPaymentRejected: true, rejectionReason: body.reason },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await enrichHalalApplicationResponse(updated as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to reject manual payment" });
   }
 }
 
@@ -1372,6 +1634,7 @@ export async function submitApplicationCompetencyWorkers(req: Request, res: Resp
     if (app.business.userId !== userId) {
       return res.status(403).json({ message: "Only the business owner can confirm Halal competency workers for this application." });
     }
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK || !app.feePaidAt) {
       return res.status(400).json({
         message: "Workers can only be confirmed after payment is complete and before your Halal certificate is issued.",
@@ -1450,6 +1713,7 @@ export async function submitApplication(req: Request, res: Response) {
     const { id } = req.params;
     const old = await prisma.halalApplication.findUnique({ where: { id } });
     if (!old) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(old);
     if (old.status !== HalalApplicationStatus.DRAFT) {
       return res.status(400).json({ message: "Only draft applications can be submitted" });
     }
@@ -1483,6 +1747,7 @@ export async function uploadApplicationAgreementOwner(req: Request, res: Respons
     if (app.business.userId !== userId) {
       return res.status(403).json({ message: "Only the business owner can upload the signed agreement" });
     }
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.SUBMITTED) {
       return res.status(400).json({ message: "Agreement upload is only allowed for submitted applications." });
     }
@@ -1529,6 +1794,7 @@ export async function uploadApplicationAgreementMajlis(req: Request, res: Respon
       include: { business: true },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
     if (app.status !== HalalApplicationStatus.SUBMITTED) {
       return res.status(400).json({ message: "Agreement can only be finalized while the application is in the agreement stage." });
     }
@@ -1582,6 +1848,7 @@ export async function approveApplication(req: Request, res: Response) {
     const body = ApproveApplicationDto.parse(req.body);
     const old = await prisma.halalApplication.findUnique({ where: { id }, include: { inspections: true } });
     if (!old) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(old);
     if (old.status !== HalalApplicationStatus.INSPECTION) {
       return res.status(400).json({ message: "Application must be in Committee Review to approve/reject" });
     }
@@ -1724,6 +1991,7 @@ export async function assignInspection(req: Request, res: Response) {
       include: { inspections: true },
     });
     if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
     if (
       app.status !== HalalApplicationStatus.SUBMITTED &&
       app.status !== HalalApplicationStatus.INSPECTION
@@ -1876,7 +2144,10 @@ export async function updateInspection(req: Request, res: Response) {
     const body = typeof req.body === "object" && req.body !== null ? req.body : {};
     const data = UpdateInspectionAssignmentDto.parse(body);
 
-    const old = await prisma.halalInspection.findUnique({ where: { id } });
+    const old = await prisma.halalInspection.findUnique({
+      where: { id },
+      include: { application: { select: { pausedAt: true } } },
+    });
     if (!old) return res.status(404).json({ message: "Inspection not found" });
     if (!canManageAll && old.inspectorId !== userId) {
       return res.status(403).json({ message: "Access denied" });
@@ -1884,6 +2155,7 @@ export async function updateInspection(req: Request, res: Response) {
     if (old.completedAt) {
       return res.status(400).json({ message: "Completed inspections cannot be edited" });
     }
+    assertHalalApplicationNotPaused(old.application);
 
     if (data.inspectorId && data.inspectorId !== old.inspectorId) {
       const eligibleInspector = await prisma.user.findFirst({
@@ -1956,7 +2228,10 @@ export async function deleteInspection(req: Request, res: Response) {
       perms?.includes("halal.supervisor") ||
       perms?.includes("halal.committee");
     const { id } = req.params;
-    const old = await prisma.halalInspection.findUnique({ where: { id } });
+    const old = await prisma.halalInspection.findUnique({
+      where: { id },
+      include: { application: { select: { pausedAt: true } } },
+    });
     if (!old) return res.status(404).json({ message: "Inspection not found" });
     if (!canManageAll && old.inspectorId !== userId) {
       return res.status(403).json({ message: "Access denied" });
@@ -1964,6 +2239,7 @@ export async function deleteInspection(req: Request, res: Response) {
     if (old.completedAt) {
       return res.status(400).json({ message: "Completed inspections cannot be deleted" });
     }
+    assertHalalApplicationNotPaused(old.application);
 
     await prisma.halalInspection.delete({ where: { id } });
     await createAuditLog(
@@ -1989,9 +2265,13 @@ export async function completeInspection(req: Request, res: Response) {
     const { id } = req.params;
     const body = typeof req.body === "object" && req.body !== null ? req.body : {};
     const data = CompleteInspectionDto.parse(body);
-    const old = await prisma.halalInspection.findUnique({ where: { id } });
+    const old = await prisma.halalInspection.findUnique({
+      where: { id },
+      include: { application: { select: { pausedAt: true } } },
+    });
     if (!old) return res.status(404).json({ message: "Inspection not found" });
     if (old.inspectorId !== userId) return res.status(403).json({ message: "Only assigned inspector can complete" });
+    assertHalalApplicationNotPaused(old.application);
     const ins = await prisma.halalInspection.update({
       where: { id },
       data: {

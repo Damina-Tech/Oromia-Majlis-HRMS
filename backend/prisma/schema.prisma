@@ -72,6 +72,7 @@ model User {
   halalInspectionsPerformed        HalalInspection[]      @relation("HalalInspector")
   halalApplicationsReviewed        HalalApplication[]      @relation("HalalReviewer")
   halalApplicationsApproved        HalalApplication[]      @relation("HalalApprover")
+  halalApplicationsPaused          HalalApplication[]      @relation("HalalApplicationPausedBy")
   halalAuditLogs                   HalalAuditLog[]
   halalPaymentsProcessed           HalalPayment[]          @relation("HalalPaymentProcessedBy")
   halalProductManualPaymentsApproved HalalProductCertificate[] @relation("HalalProductPaymentApprovedBy")
@@ -2446,6 +2447,9 @@ model HalalApplication {
   paymentMethod   String?                // CHAPA | MANUAL
   paymentBankName String?                // For manual: bank name
   paymentReceiptUrl String?              // For manual: receipt file URL
+  /// Shown to the owner when finance rejects a manual payment receipt (cleared on re-upload or Chapa).
+  manualPaymentRejectionReason String?
+  manualPaymentRejectedAt        DateTime?
   chapaTxRef      String?                // Chapa transaction reference
   chapaRefId      String?                // Chapa internal reference ID
   payments        HalalPayment[]
@@ -2473,6 +2477,11 @@ model HalalApplication {
   /// Majlis-uploaded fully executed agreement (both parties); set together with approval timestamp.
   agreementMajlisSignedUrl        String?
   agreementMajlisApprovedAt     DateTime?
+  /// When set, the application is paused; workflow actions are blocked until resumed.
+  pausedAt        DateTime?
+  pausedReason    String?
+  pausedById      String?
+  pausedBy        User?                  @relation("HalalApplicationPausedBy", fields: [pausedById], references: [id])
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   inspections     HalalInspection[]

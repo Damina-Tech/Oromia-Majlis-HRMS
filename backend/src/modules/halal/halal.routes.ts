@@ -23,8 +23,11 @@ import {
   chapaCallback,
   confirmManualPayment,
   approveManualPayment,
+  rejectManualPayment,
   listApplicationCompetencyWorkerCandidates,
   submitApplicationCompetencyWorkers,
+  pauseApplication,
+  resumeApplication,
   approveApplication,
   assignInspection,
   listInspections,
@@ -166,6 +169,8 @@ router.post(
   hasAnyPermission("halal.business"),
   submitApplicationCompetencyWorkers
 );
+router.post("/applications/:id/pause", requireAuth, hasPermission("halal.admin"), pauseApplication);
+router.post("/applications/:id/resume", requireAuth, hasPermission("halal.admin"), resumeApplication);
 router.get("/applications/:id", requireAuth, hasAnyPermission(...HALAL_MODULE_ACCESS), getApplication);
 router.patch("/applications/:id", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), updateApplication);
 router.delete("/applications/:id", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), deleteApplication);
@@ -199,6 +204,12 @@ router.post(
   requireAuth,
   hasAnyPermission("halal.admin", "halal.finance"),
   approveManualPayment
+);
+router.post(
+  "/applications/:id/payment/manual/reject",
+  requireAuth,
+  hasAnyPermission("halal.admin", "halal.finance"),
+  rejectManualPayment
 );
 
 // Admin: approve (halal.admin or similar)

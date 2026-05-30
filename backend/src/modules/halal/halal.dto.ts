@@ -138,6 +138,18 @@ export const SubmitHalalApplicationCompetencyWorkersDto = z.object({
   competencyCertificateIds: z.array(z.string().min(1)).min(2).max(40),
 });
 
+export const PauseHalalApplicationDto = z.object({
+  reason: z.string().trim().min(10, "Please provide a reason (at least 10 characters)").max(4000),
+});
+
+export const RejectHalalManualPaymentDto = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(10, "Please explain why the receipt is rejected (at least 10 characters)")
+    .max(2000),
+});
+
 export const AssignInspectionAssignmentEntryDto = z.object({
   inspectorId: z.string().min(1),
   expertRole: z.enum(["TECHNICAL_EXPERT", "SHARIA_EXPERT"]),

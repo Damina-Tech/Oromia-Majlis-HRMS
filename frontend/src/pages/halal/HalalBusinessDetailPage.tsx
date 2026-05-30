@@ -81,7 +81,6 @@ export default function HalalBusinessDetailPage() {
   const [detailsConfirmed, setDetailsConfirmed] = useState(false);
 
   const ADMIN_QUESTIONS = [
-    { key: "supervisorReviewed", label: "Supervisor review is completed and recorded." },
     { key: "complianceChecked", label: "I checked compliance, policy, and submitted records." },
     { key: "approvalDecision", label: "I approve this business for Halal application access." },
   ] as const;

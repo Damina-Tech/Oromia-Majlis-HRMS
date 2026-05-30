@@ -124,6 +124,11 @@ export interface HalalApplication {
   paymentMethod?: string;
   paymentBankName?: string | null;
   paymentReceiptUrl?: string | null;
+  /** Set when finance rejects a manual receipt; cleared when owner re-uploads or pays via Chapa. */
+  manualPaymentRejectionReason?: string | null;
+  manualPaymentRejectedAt?: string | null;
+  /** Rejected receipt file URL (from payment record; not cleared when owner may re-upload). */
+  manualPaymentRejectedReceiptUrl?: string | null;
   productList?: { name: string; description?: string }[];
   ingredients?: { name: string; source?: string; halalStatus?: string }[];
   supplierInfo?: { name: string; certification?: string }[];
@@ -145,6 +150,11 @@ export interface HalalApplication {
   agreementOwnerSubmittedAt?: string | null;
   agreementMajlisSignedUrl?: string | null;
   agreementMajlisApprovedAt?: string | null;
+  /** When set, workflow is frozen until an administrator resumes the application. */
+  pausedAt?: string | null;
+  /** Shown to the business owner while paused. */
+  pausedReason?: string | null;
+  pausedBy?: { id: string; firstName: string; lastName: string; email?: string } | null;
   createdAt: string;
   updatedAt: string;
   inspections?: HalalInspection[];
@@ -200,6 +210,7 @@ export function isHalalApplicationWithdrawLockedByAgreement(
  * (same rules as raw `status` + agreement milestones).
  */
 export function getHalalApplicationStatusBadgeLabel(app: HalalApplication): string {
+  if (app.pausedAt) return "Paused";
   const agreementDone = !!app.agreementMajlisApprovedAt;
   switch (app.status) {
     case "PENDING_COMPETENCY_LINK":
@@ -567,12 +578,17 @@ export const halalApi = {
     },
     approveManualPayment: (id: string) =>
       api.post<HalalApplication>(`/halal/applications/${id}/payment/manual/approve`).then((r) => r.data),
+    rejectManualPayment: (id: string, reason: string) =>
+      api.post<HalalApplication>(`/halal/applications/${id}/payment/manual/reject`, { reason }).then((r) => r.data),
     approve: (id: string, data: { approved: boolean; notes?: string; rejectionReason?: string; meetingMinutesUrl?: string }) =>
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
     competencyWorkerCandidates: (id: string) =>
       api.get<{ items: HalalCompetencyWorkerCandidate[] }>(`/halal/applications/${id}/competency-workers/candidates`).then((r) => r.data),
     submitCompetencyWorkers: (id: string, competencyCertificateIds: string[]) =>
       api.post<HalalApplication>(`/halal/applications/${id}/competency-workers`, { competencyCertificateIds }).then((r) => r.data),
+    pause: (id: string, reason: string) =>
+      api.post<HalalApplication>(`/halal/applications/${id}/pause`, { reason }).then((r) => r.data),
+    resume: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/resume`).then((r) => r.data),
   },
   inspections: {
     list: (params?: { page?: number; limit?: number; inspectorId?: string; applicationId?: string; completed?: string }) =>

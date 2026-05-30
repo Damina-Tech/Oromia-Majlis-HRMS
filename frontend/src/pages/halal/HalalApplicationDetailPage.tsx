@@ -46,6 +46,8 @@ import {
   Shield,
   Download,
   Users,
+  Pause,
+  PlayCircle,
 } from "lucide-react";
 import {
   halalApi,
@@ -123,7 +125,7 @@ const WORKFLOW_STEPS: { key: HalalWorkflowDisplayKey; label: string; icon: typeo
   { key: "DRAFT", label: "Application", icon: FileText },
   { key: "AGREEMENT", label: "Agreement", icon: Shield },
   { key: "INSPECTION_QUEUE", label: "Inspection", icon: Building2 },
-  { key: "INSPECTION", label: "Committee review", icon: AlertCircle },
+  { key: "INSPECTION", label: "HRC", icon: AlertCircle },
   { key: "REVIEW", label: "Payment", icon: CreditCard },
   { key: "COMPETENCY_WORKERS", label: "Competency staff", icon: Users },
   { key: "APPROVED", label: "Certificate", icon: Award },
@@ -298,6 +300,21 @@ export default function HalalMyApplicationDetailPage() {
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve manual payment"),
   });
 
+  const [rejectManualPaymentOpen, setRejectManualPaymentOpen] = useState(false);
+  const [rejectManualPaymentReason, setRejectManualPaymentReason] = useState("");
+
+  const rejectManualPaymentMutation = useMutation({
+    mutationFn: (reason: string) => halalApi.applications.rejectManualPayment(id!, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Receipt rejected. The owner can upload a new receipt or pay with Chapa.");
+      setRejectManualPaymentOpen(false);
+      setRejectManualPaymentReason("");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to reject receipt"),
+  });
+
   const [competencySearch, setCompetencySearch] = useState("");
   const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
 
@@ -369,6 +386,30 @@ export default function HalalMyApplicationDetailPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [meetingMinutesFile, setMeetingMinutesFile] = useState<File | null>(null);
   const [isUploadingMeetingMinutes, setIsUploadingMeetingMinutes] = useState(false);
+  const [pauseOpen, setPauseOpen] = useState(false);
+  const [pauseReason, setPauseReason] = useState("");
+
+  const pauseApplicationMutation = useMutation({
+    mutationFn: (reason: string) => halalApi.applications.pause(id!, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Application paused");
+      setPauseOpen(false);
+      setPauseReason("");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to pause application"),
+  });
+
+  const resumeApplicationMutation = useMutation({
+    mutationFn: () => halalApi.applications.resume(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Application resumed");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to resume application"),
+  });
 
   const { data: inspectorsForAssign, isLoading: loadingInspectorsForAssign } = useQuery({
     queryKey: ["halal-inspectors"],
@@ -433,8 +474,23 @@ export default function HalalMyApplicationDetailPage() {
   const agreementTemplateFullUrl = agreementTemplateRaw ? resolveFileUrl(agreementTemplateRaw) : undefined;
   const feeAmount = HALAL_CERTIFICATION_FEE;
   const isPaid = !!application.feePaidAt;
+  const manualReceiptUrl = application.paymentReceiptUrl?.trim() ?? "";
+  const manualReceiptFullUrl = manualReceiptUrl ? resolveFileUrl(manualReceiptUrl) : undefined;
+  const hasPendingManualPayment =
+    application.status === "REVIEW" &&
+    !isPaid &&
+    application.paymentMethod === "MANUAL" &&
+    Boolean(manualReceiptUrl);
+  const manualPaymentRejectionNotice = application.manualPaymentRejectionReason?.trim() ?? "";
+  const rejectedManualReceiptUrl = application.manualPaymentRejectedReceiptUrl?.trim() ?? "";
+  const rejectedManualReceiptFullUrl = rejectedManualReceiptUrl
+    ? resolveFileUrl(rejectedManualReceiptUrl)
+    : undefined;
+  const showManualPaymentRejection =
+    application.status === "REVIEW" && !isPaid && !hasPendingManualPayment && Boolean(manualPaymentRejectionNotice);
   const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
   const effectiveStatus = application.status;
+  const isPaused = !!application.pausedAt;
   const agreementDone = !!application.agreementMajlisApprovedAt;
   const withdrawLockedByAgreement = isHalalApplicationWithdrawLockedByAgreement(application);
   const isApplicationOwner = !!user?.id && application.business?.userId === user.id;
@@ -502,8 +558,16 @@ export default function HalalMyApplicationDetailPage() {
     return NEXT_ACTION_HINTS[application.status];
   })();
   // When inspection is completed, show awaiting-admin message
-  const hint =
-    application.status === "INSPECTION" && hasCompletedInspection
+  const hint = isPaused
+    ? {
+        title: "Application paused",
+        description: isApplicationOwner
+          ? application.pausedReason?.trim() ||
+            "Majlis has paused this application. You cannot take further steps until it is resumed. Contact the certification office if you have questions."
+          : application.pausedReason?.trim() ||
+            "This application is paused. Resume it when the issue is resolved to allow the workflow to continue.",
+      }
+    : application.status === "INSPECTION" && hasCompletedInspection
       ? {
           title: "Ready for committee review",
           description:
@@ -529,11 +593,20 @@ export default function HalalMyApplicationDetailPage() {
 
   const biz = application.business;
   const canApprove =
-    canCommitteeApprove &&
-    application.status === "INSPECTION" &&
-    hasCompletedInspection;
-  const canReject = canCommitteeReject && ["SUBMITTED", "INSPECTION"].includes(application.status);
+    !isPaused && canCommitteeApprove && application.status === "INSPECTION" && hasCompletedInspection;
+  const canReject =
+    !isPaused && canCommitteeReject && ["SUBMITTED", "INSPECTION"].includes(application.status);
+  const canPauseApplication =
+    isHalalAdmin && !isPaused && application.status !== "REJECTED";
+  const canResumeApplication = isHalalAdmin && isPaused;
   const isApproved = application.status === "APPROVED";
+  /** After the first report is in, committee review starts — hide other inspectors' pending assignments. */
+  const inCommitteeReviewAfterFirstInspection =
+    hasCompletedInspection &&
+    ["INSPECTION", "REVIEW", "PENDING_COMPETENCY_LINK", "APPROVED"].includes(application.status);
+  const visibleInspections = inCommitteeReviewAfterFirstInspection
+    ? (application.inspections ?? []).filter((i) => i.completedAt != null)
+    : (application.inspections ?? []);
 
   const handleApproveWithMeetingMinutes = async () => {
     try {
@@ -578,11 +651,79 @@ export default function HalalMyApplicationDetailPage() {
               {application.business?.name ?? application.businessId}
             </p>
           </div>
-          <Badge className={`text-sm font-medium px-3 py-1 ${STATUS_COLORS[effectiveStatus]}`}>
-            {getHalalApplicationStatusBadgeLabel(application)}
-          </Badge>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <Badge
+              className={`text-sm font-medium px-3 py-1 ${
+                isPaused
+                  ? "bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-200"
+                  : STATUS_COLORS[effectiveStatus]
+              }`}
+            >
+              {getHalalApplicationStatusBadgeLabel(application)}
+            </Badge>
+            {isHalalAdmin && (canPauseApplication || canResumeApplication) && (
+              <div className="flex flex-wrap gap-2 justify-end">
+                {canPauseApplication && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-orange-300 text-orange-800 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-200"
+                    onClick={() => {
+                      setPauseReason("");
+                      setPauseOpen(true);
+                    }}
+                  >
+                    <Pause className="h-4 w-4 mr-1" />
+                    Pause
+                  </Button>
+                )}
+                {canResumeApplication && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={resumeApplicationMutation.isPending}
+                    onClick={() => resumeApplicationMutation.mutate()}
+                  >
+                    <PlayCircle className="h-4 w-4 mr-1" />
+                    {resumeApplicationMutation.isPending ? "Resuming…" : "Resume"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {isPaused && (
+        <Card className="border-2 border-orange-300/70 dark:border-orange-800/60 bg-orange-50/40 dark:bg-orange-950/25 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-orange-900 dark:text-orange-100">
+              <Pause className="h-5 w-5 shrink-0" />
+              Application paused
+            </CardTitle>
+            <CardDescription className="text-orange-900/80 dark:text-orange-200/80">
+              {isApplicationOwner
+                ? "Your certification application is on hold. The reason below was provided by Majlis."
+                : "Workflow actions are disabled until an administrator resumes this application."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">Reason:
+            {application.pausedReason?.trim() ? (
+              <p className="whitespace-pre-wrap text-orange-950 dark:text-orange-100">{application.pausedReason.trim()}</p>
+            ) : (
+              <p className="text-muted-foreground">No reason was recorded.</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Paused {application.pausedAt ? new Date(application.pausedAt).toLocaleString() : "—"}
+              {application.pausedBy
+                ? ` · ${application.pausedBy.firstName} ${application.pausedBy.lastName}`
+                : ""}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Workflow progress - visual stepper */}
       <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30 overflow-hidden">
@@ -653,7 +794,7 @@ export default function HalalMyApplicationDetailPage() {
       </Card>
 
       {/* Certification agreement: template, owner upload, Majlis countersign (before inspection) */}
-      {showInteractiveAgreementCard && (
+      {showInteractiveAgreementCard && !isPaused && (
         <Card className="shadow-sm border-amber-200/70 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/15">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
@@ -806,9 +947,11 @@ export default function HalalMyApplicationDetailPage() {
       {/* Next action hint */}
       <Card
         className={`border-2 ${
-          isRejected
-            ? "border-red-200/60 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20"
-            : "border-blue-200/60 dark:border-blue-900/50 bg-blue-50/30 dark:bg-blue-950/20"
+          isPaused
+            ? "border-orange-200/60 dark:border-orange-900/50 bg-orange-50/20 dark:bg-orange-950/15"
+            : isRejected
+              ? "border-red-200/60 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/20"
+              : "border-blue-200/60 dark:border-blue-900/50 bg-blue-50/30 dark:bg-blue-950/20"
         }`}
       >
         <CardHeader>
@@ -819,7 +962,7 @@ export default function HalalMyApplicationDetailPage() {
           <CardDescription>{hint.description}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          {application.status === "DRAFT" && (
+          {application.status === "DRAFT" && !isPaused && (
             <>
               <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
                 <Send className="h-4 w-4 mr-2" />
@@ -862,9 +1005,9 @@ export default function HalalMyApplicationDetailPage() {
                   </p>
                 </div>
               </div>
-              {(application as any).paymentReceiptUrl && (
+              {application.paymentReceiptUrl && (
                 <a
-                  href={resolveFileUrl((application as any).paymentReceiptUrl) ?? "#"}
+                  href={resolveFileUrl(application.paymentReceiptUrl) ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-blue-500 hover:underline flex items-center gap-1"
@@ -874,8 +1017,126 @@ export default function HalalMyApplicationDetailPage() {
               )}
             </div>
           )}
-          {application.status === "REVIEW" && !isPaid && (
+          {application.status === "REVIEW" && !isPaid && hasPendingManualPayment && (
+            <div className="w-full space-y-4 rounded-lg border border-amber-200/70 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/25 p-4">
+              <div className="flex items-start gap-3">
+                <Landmark className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300 mt-0.5" />
+                <div className="space-y-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                    Manual payment receipt submitted
+                  </p>
+                  <p className="text-sm text-amber-900/80 dark:text-amber-200/80">
+                    {isApplicationOwner
+                      ? "Your bank transfer receipt is on file. Majlis will verify it before your application can proceed."
+                      : "Review the uploaded receipt below. Approve the payment once the transfer is verified."}
+                  </p>
+                </div>
+              </div>
+              <dl className="grid gap-1.5 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-muted-foreground">Certification fee</dt>
+                  <dd className="font-medium">{feeAmount} ETB</dd>
+                </div>
+                {application.paymentBankName ? (
+                  <div>
+                    <dt className="text-muted-foreground">Bank</dt>
+                    <dd className="font-medium">{application.paymentBankName}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {manualReceiptFullUrl ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <a href={manualReceiptFullUrl} target="_blank" rel="noopener noreferrer">
+                        <Eye className="h-4 w-4 mr-2" />
+                        View receipt
+                      </a>
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <a href={manualReceiptFullUrl} download>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download receipt
+                      </a>
+                    </Button>
+                  </>
+                ) : null}
+                {canApproveManualPayment && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => approveManualPaymentMutation.mutate()}
+                      disabled={isPaused || approveManualPaymentMutation.isPending}
+                    >
+                      {approveManualPaymentMutation.isPending ? "Approving…" : "Approve manual payment"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300"
+                      disabled={isPaused || rejectManualPaymentMutation.isPending}
+                      onClick={() => {
+                        setRejectManualPaymentReason("");
+                        setRejectManualPaymentOpen(true);
+                      }}
+                    >
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Reject receipt
+                    </Button>
+                  </>
+                )}
+              </div>
+              {isPaused && hasPendingManualPayment && (
+                <p className="text-xs text-orange-800 dark:text-orange-200">
+                  This application is paused. Payment approval is available after an administrator resumes it.
+                </p>
+              )}
+              {!canApproveManualPayment && !isApplicationOwner && (
+                <p className="text-xs text-muted-foreground">
+                  Halal finance staff will verify and approve this receipt.
+                </p>
+              )}
+            </div>
+          )}
+          {application.status === "REVIEW" && !isPaid && !isPaused && !hasPendingManualPayment && (
             <>
+              {showManualPaymentRejection && (
+                <div className="w-full space-y-2 rounded-lg border border-red-200/70 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/25 p-4 mb-4">
+                  <p className="text-sm font-semibold text-red-900 dark:text-red-100 flex items-center gap-2">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    Manual payment receipt not accepted
+                  </p>
+                  <p className="text-sm text-red-900/85 dark:text-red-200/85 whitespace-pre-wrap">
+                    {manualPaymentRejectionNotice}
+                  </p>
+                  {application.manualPaymentRejectedAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Rejected {new Date(application.manualPaymentRejectedAt).toLocaleString()}
+                      {rejectedManualReceiptFullUrl ? (
+                        <>
+                          {" · "}
+                          <a
+                            href={rejectedManualReceiptFullUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-500 hover:underline"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            View receipt
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  )}
+                  {isApplicationOwner && (
+                    <p className="text-sm text-red-900/80 dark:text-red-200/80">
+                      Upload a corrected bank transfer receipt below, or pay online with Chapa.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="w-full space-y-4">
                 <p className="text-sm text-muted-foreground">
                   Fee: {feeAmount} ETB. Choose your payment method:
@@ -968,19 +1229,6 @@ export default function HalalMyApplicationDetailPage() {
                         </>
                       )}
                     </Button>
-                    {canApproveManualPayment &&
-                      application.paymentMethod === "MANUAL" &&
-                      (application as any).paymentReceiptUrl &&
-                      !isPaid && (
-                        <Button
-                          variant="outline"
-                          className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                          onClick={() => approveManualPaymentMutation.mutate()}
-                          disabled={approveManualPaymentMutation.isPending}
-                        >
-                          {approveManualPaymentMutation.isPending ? "Approving..." : "Approve manual payment"}
-                        </Button>
-                      )}
                   </TabsContent>
                 </Tabs>
               </div>
@@ -1135,51 +1383,34 @@ export default function HalalMyApplicationDetailPage() {
       )} */}
 
       {/* Inspections - read-only for owner; staff sees Complete button + result when completed */}
-      {application.inspections &&
-        application.inspections.length > 0 &&
-        !hideInspectionsUntilOwnerAgreement && (
+      {visibleInspections.length > 0 && !hideInspectionsUntilOwnerAgreement && (
         <Card className="shadow-sm border-slate-200/60 dark:border-slate-800/50">
           <CardHeader>
             <CardTitle>Inspections</CardTitle>
             <CardDescription>
-              {canCompleteInspection ? "Scheduled and completed inspections" : "Assigned inspections"}
+              {inCommitteeReviewAfterFirstInspection
+                ? "Submitted inspection reports for Halal Review Committee"
+                : canCompleteInspection
+                  ? "Scheduled and completed inspections"
+                  : "Assigned inspections"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
-              {application.inspections.map((ins) => {
+              {visibleInspections.map((ins) => {
                 const data = ins.checklistData as Record<string, unknown> | undefined;
-                const overallPassed = data?.overallPassed as boolean | undefined;
-                const legacyObservations = (data?.observations as string) || "";
-                const recommendations = data?.recommendations as string | undefined;
-                const additionalNotes = (data?.additionalNotes as string) || "";
+                const recommendations =
+                  typeof data?.recommendations === "string" ? data.recommendations.trim() : "";
                 const ncUrlRaw = data?.nonConformityReportUrl as string | undefined;
                 const ncName = (data?.nonConformityReportFileName as string) || "Non-conformity report";
                 const evUrlRaw = data?.evidenceReportUrl as string | undefined;
                 const evName = (data?.evidenceReportFileName as string) || "Evidence report";
                 const ncUrl = ncUrlRaw ? resolveFileUrl(ncUrlRaw) : undefined;
                 const evUrl = evUrlRaw ? resolveFileUrl(evUrlRaw) : undefined;
-                const hasNewUploads = Boolean(ncUrlRaw || evUrlRaw);
-                const reportUrlRaw = data?.inspectionReportUrl as string | undefined;
-                const reportFileName = (data?.inspectionReportFileName as string) || "Inspection report";
-                const reportUrl = reportUrlRaw ? resolveFileUrl(reportUrlRaw) : undefined;
-                const checklistKeys = [
-                  "premisesClean",
-                  "equipmentHalalCompliant",
-                  "storageProper",
-                  "ingredientTraceability",
-                  "noProhibitedSubstances",
-                  "personnelTrained",
-                ];
-                const checklistMet = checklistKeys.filter((k) => data?.[k] === true).length;
-                const hasLegacyResult =
-                  overallPassed !== undefined ||
-                  checklistKeys.some((k) => data?.[k] === true) ||
-                  Boolean(legacyObservations) ||
-                  Boolean(reportUrlRaw);
+                const hasReports = Boolean(ncUrlRaw || evUrlRaw);
+                const inspectionNotes = ins.notes?.trim() || "";
                 const hasResult = Boolean(
-                  ins.completedAt &&
-                    (data || hasNewUploads || hasLegacyResult || recommendations || additionalNotes || ins.notes)
+                  ins.completedAt && (hasReports || recommendations || inspectionNotes)
                 );
 
                 return (
@@ -1200,15 +1431,24 @@ export default function HalalMyApplicationDetailPage() {
                             Scheduled: {new Date(ins.scheduledAt).toLocaleString()}
                           </p>
                         )}
+                        {ins.completedAt && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Submitted: {new Date(ins.completedAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge
                           variant={ins.completedAt ? "default" : "secondary"}
-                          className={ins.completedAt ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : ""}
+                          className={
+                            ins.completedAt
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+                              : ""
+                          }
                         >
                           {ins.completedAt ? "Completed" : canCompleteInspection ? "Pending" : "Scheduled"}
                         </Badge>
-                        {!ins.completedAt && canCompleteInspection && (
+                        {!ins.completedAt && canCompleteInspection && !isPaused && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1222,7 +1462,7 @@ export default function HalalMyApplicationDetailPage() {
                     </div>
                     {hasResult && (
                       <div className="border-t bg-muted/20 px-3 py-2.5 space-y-2">
-                        {hasNewUploads && (
+                        {hasReports && (
                           <div className="space-y-1.5">
                             <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">
                               Submitted reports
@@ -1251,63 +1491,22 @@ export default function HalalMyApplicationDetailPage() {
                             </div>
                           </div>
                         )}
-                        {!hasNewUploads && hasLegacyResult && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Result</span>
-                            <Badge
-                              className={
-                                overallPassed === true
-                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border-0"
-                                  : overallPassed === false
-                                    ? "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-0"
-                                    : "bg-muted text-muted-foreground border-0"
-                              }
-                            >
-                              {overallPassed === true ? "Passed" : overallPassed === false ? "Failed" : "—"}
-                            </Badge>
-                            {typeof checklistMet === "number" && checklistKeys.length > 0 && (
-                              <span className="text-xs font-medium text-foreground/70">
-                                Checklist: {checklistMet}/{checklistKeys.length} items met
-                              </span>
-                            )}
-                            {reportUrl && (
-                              <a
-                                href={reportUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:underline"
-                              >
-                                Attachment: {reportFileName}
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        {!hasNewUploads && legacyObservations && (
-                          <div>
-                            <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
-                              Observations
-                            </p>
-                            <p className="text-sm text-foreground/90 line-clamp-4">{legacyObservations}</p>
-                          </div>
-                        )}
-                        {recommendations && (
+                        {recommendations ? (
                           <div>
                             <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
                               Recommendations
                             </p>
-                            <p className="text-sm text-foreground/90 line-clamp-4">{recommendations}</p>
+                            <p className="text-sm text-foreground/90 whitespace-pre-wrap">{recommendations}</p>
                           </div>
-                        )}
-                        {(additionalNotes || ins.notes) && (
+                        ) : null}
+                        {inspectionNotes ? (
                           <div>
                             <p className="text-xs font-bold text-foreground/80 uppercase tracking-wide mb-1">
-                              Additional note
+                              Additional notes
                             </p>
-                            <p className="text-sm text-foreground/90 line-clamp-4">
-                              {additionalNotes || ins.notes}
-                            </p>
+                            <p className="text-sm text-foreground/90 whitespace-pre-wrap">{inspectionNotes}</p>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </li>
@@ -1400,7 +1599,7 @@ export default function HalalMyApplicationDetailPage() {
       )}
 
       {/* Owner: after payment, pick ≥2 issued competency certificate holders before business certificate is generated */}
-      {application.status === "PENDING_COMPETENCY_LINK" && isApplicationOwner && (
+      {application.status === "PENDING_COMPETENCY_LINK" && isApplicationOwner && !isPaused && (
         <Card className="shadow-sm border-cyan-200/70 dark:border-cyan-900/40 bg-cyan-50/20 dark:bg-cyan-950/15">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-cyan-900 dark:text-cyan-100">
@@ -1679,7 +1878,7 @@ export default function HalalMyApplicationDetailPage() {
       )}
 
       {/* Staff-only: Committee actions (Approve, Reject, Assign inspectors) */}
-          {canCommitteeReview && (
+          {canCommitteeReview && !isPaused && (
         <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30">
           <CardHeader>
             <CardTitle className="text-blue-800 dark:text-blue-200">Committee actions</CardTitle>
@@ -1742,11 +1941,10 @@ export default function HalalMyApplicationDetailPage() {
             <CardHeader>
               <CardTitle className="text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
                 <FileText className="h-5 w-5 shrink-0" />
-                Committee decision (staff)
+                Halal Review Committee decision
               </CardTitle>
               <CardDescription>
-                Committee notes, meeting minutes, and recorded rejection rationale. Not shown to the business owner on
-                their view unless they also have a Halal staff role.
+                Halal Review Committee notes, meeting minutes, and recorded rejection rationale. 
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
@@ -1839,6 +2037,83 @@ export default function HalalMyApplicationDetailPage() {
       </Dialog>
 
       {/* Reject dialog */}
+      <Dialog
+        open={rejectManualPaymentOpen}
+        onOpenChange={(o) => !rejectManualPaymentMutation.isPending && setRejectManualPaymentOpen(o)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject manual payment receipt</DialogTitle>
+            <DialogDescription>
+              The uploaded receipt will be removed from this application. The business owner will see your reason and
+              can submit a new receipt or pay with Chapa instead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="reject-manual-payment-reason">Reason for rejection</Label>
+            <Textarea
+              id="reject-manual-payment-reason"
+              rows={4}
+              value={rejectManualPaymentReason}
+              onChange={(e) => setRejectManualPaymentReason(e.target.value)}
+              placeholder="Explain what was wrong with the receipt and what the owner should do…"
+            />
+            <p className="text-xs text-muted-foreground">Minimum 10 characters. This message is shown to the owner.</p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRejectManualPaymentOpen(false)}
+              disabled={rejectManualPaymentMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={rejectManualPaymentMutation.isPending || rejectManualPaymentReason.trim().length < 10}
+              onClick={() => rejectManualPaymentMutation.mutate(rejectManualPaymentReason.trim())}
+            >
+              {rejectManualPaymentMutation.isPending ? "Rejecting…" : "Reject receipt"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pauseOpen} onOpenChange={(o) => !pauseApplicationMutation.isPending && setPauseOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pause application</DialogTitle>
+            <DialogDescription>
+              The business owner will see this reason on their application page. Workflow actions are blocked until you
+              resume the application.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="pause-reason">Reason for pause</Label>
+            <Textarea
+              id="pause-reason"
+              rows={4}
+              value={pauseReason}
+              onChange={(e) => setPauseReason(e.target.value)}
+              placeholder="Explain why this application is paused and what the owner should do…"
+            />
+            <p className="text-xs text-muted-foreground">Minimum 10 characters.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPauseOpen(false)} disabled={pauseApplicationMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              disabled={pauseApplicationMutation.isPending || pauseReason.trim().length < 10}
+              onClick={() => pauseApplicationMutation.mutate(pauseReason.trim())}
+            >
+              {pauseApplicationMutation.isPending ? "Pausing…" : "Pause application"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
           <DialogHeader>
