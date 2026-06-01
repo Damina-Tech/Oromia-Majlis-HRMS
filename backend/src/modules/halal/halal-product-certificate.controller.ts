@@ -365,15 +365,54 @@ export async function approveProductManualPayment(req: Request, res: Response) {
 export async function downloadProductCertificate(req: Request, res: Response) {
   try {
     const { id } = req.params;
+    const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
     const row = await prisma.halalProductCertificate.findUnique({
       where: { id },
-      include: { business: true },
+      include: { business: true, halalCertificate: true },
     });
     if (!row) return res.status(404).json({ message: "Not found" });
     const { ok } = canAccessProductCert(req, row.business.userId);
     if (!ok) return res.status(403).json({ message: "Access denied" });
-    if (row.status !== HalalProductCertificateStatus.ISSUED || !row.pdfUrl) {
+    if (row.status !== HalalProductCertificateStatus.ISSUED || !row.certificateNumber) {
       return res.status(404).json({ message: "Certificate PDF not available" });
+    }
+
+    const { renderProductHalalCertificatePdfBuffer } = await import("./halal-certificate-render.service.js");
+    let templatePdf: Buffer | null = null;
+    try {
+      templatePdf = await renderProductHalalCertificatePdfBuffer({
+        certificateNumber: row.certificateNumber,
+        businessName: row.business.name,
+        parentCertificateId: row.halalCertificate.certificateId,
+        productName: row.productName,
+        productAmount: row.productAmount,
+        destination: row.destination,
+        notes: row.notes,
+        issuedAt: row.issuedAt ?? new Date(),
+      });
+    } catch (renderErr: any) {
+      console.error("Halal product certificate template render failed:", renderErr);
+      return res.status(500).json({
+        message:
+          renderErr?.message ||
+          "Active product certificate template could not be rendered. Check Documents → Halal certificate templates.",
+      });
+    }
+
+    if (templatePdf) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="halal-product-${row.certificateNumber}.pdf"`
+      );
+      return res.send(templatePdf);
+    }
+
+    if (!row.pdfUrl) {
+      return res.status(404).json({
+        message:
+          "No active Halal product certificate template found. Configure one under Documents → Halal certificates.",
+      });
     }
     const pathModule = (await import("path")).default;
     const fs = await import("fs");
@@ -383,7 +422,7 @@ export async function downloadProductCertificate(req: Request, res: Response) {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="halal-product-${row.certificateNumber ?? id}.pdf"`
+      `${disposition}; filename="halal-product-${row.certificateNumber}.pdf"`
     );
     res.sendFile(pathModule.resolve(fullPath));
   } catch (e: any) {

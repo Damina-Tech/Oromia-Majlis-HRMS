@@ -11,6 +11,7 @@ import apiRoutes from "./routes/index.js";
 import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/announcements/scheduler.js";
 import { processMembershipExpiryReminders } from "./modules/membership/membership-reminder.scheduler.js";
 import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
+import { uploadsRoot } from "./lib/uploads-path.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,9 +78,9 @@ app.use(cookieParser());
 app.use(morgan("combined"));
 
 // Serve static files from uploads directory
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-app.use("/uploads/tasks", express.static(path.join(__dirname, "../uploads/tasks")));
-app.use("/uploads/expenses", express.static(path.join(__dirname, "../uploads/expenses")));
+app.use("/uploads", express.static(uploadsRoot));
+app.use("/uploads/tasks", express.static(path.join(uploadsRoot, "tasks")));
+app.use("/uploads/expenses", express.static(path.join(uploadsRoot, "expenses")));
 
 // Health check endpoint
 app.get("/health", (req, res) => {

@@ -1,6 +1,30 @@
 import api from "./api";
 
 // Types
+export type DocumentTemplateEngine = "HTML_MERGE" | "PDF_CERTIFICATE";
+export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT";
+
+export interface CertificateLayoutField {
+  key: string;
+  label: string;
+  type: "text" | "date" | "qrcode";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize?: number;
+  fontWeight?: "normal" | "bold";
+  align?: "left" | "center" | "right";
+  color?: string;
+}
+
+export interface CertificateLayoutConfig {
+  version: 1;
+  pageWidth: number;
+  pageHeight: number;
+  fields: CertificateLayoutField[];
+}
+
 export interface DocumentTemplate {
   id: string;
   code: string;
@@ -14,6 +38,9 @@ export interface DocumentTemplate {
   language: "EN" | "AM" | "OR";
   tags: string[];
   active: boolean;
+  templateEngine?: DocumentTemplateEngine;
+  certificateType?: HalalCertificateTemplateType | null;
+  layoutConfig?: CertificateLayoutConfig | null;
   /** Server path to uploaded blank agreement (PDF/DOC), e.g. /uploads/document-template-sources/... */
   sourceFileUrl?: string | null;
   mergeFields?: any;
@@ -78,11 +105,14 @@ export interface CreateTemplateData {
   name: string;
   category: DocumentTemplate["category"];
   description?: string;
-  content: string;
+  content?: string;
   contentPlain?: string;
   language?: DocumentTemplate["language"];
   tags?: string[];
   sourceFileUrl?: string;
+  templateEngine?: DocumentTemplateEngine;
+  certificateType?: HalalCertificateTemplateType;
+  layoutConfig?: CertificateLayoutConfig;
 }
 
 export interface UpdateTemplateData {
@@ -96,6 +126,9 @@ export interface UpdateTemplateData {
   tags?: string[];
   active?: boolean;
   sourceFileUrl?: string | null;
+  templateEngine?: DocumentTemplateEngine;
+  certificateType?: HalalCertificateTemplateType | null;
+  layoutConfig?: CertificateLayoutConfig | null;
 }
 
 export interface GenerateDocumentData {
@@ -117,6 +150,23 @@ export interface PreviewDocumentData {
 
 // API Functions
 
+export const getCertificateFieldCatalog = async (certificateType: HalalCertificateTemplateType) => {
+  const response = await api.get(`/documents/certificates/field-catalog/${certificateType}`);
+  return response.data as {
+    certificateType: HalalCertificateTemplateType;
+    fields: Array<{ key: string; label: string; type: "text" | "date" | "qrcode" }>;
+  };
+};
+
+export const previewCertificatePdf = async (templateId: string): Promise<Blob> => {
+  const response = await api.post(
+    "/documents/certificates/preview",
+    { templateId },
+    { responseType: "blob" }
+  );
+  return response.data as Blob;
+};
+
 export const listTemplates = async (params?: {
   page?: number;
   pageSize?: number;
@@ -127,6 +177,8 @@ export const listTemplates = async (params?: {
   language?: string;
   tags?: string;
   code?: string;
+  templateEngine?: DocumentTemplateEngine;
+  certificateType?: HalalCertificateTemplateType;
 }) => {
   const response = await api.get("/documents/templates", { params });
   return response.data;

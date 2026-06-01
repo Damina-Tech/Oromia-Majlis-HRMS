@@ -70,6 +70,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveFileUrl } from "@/config/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import HalalCertificatePdfPreviewDialog, {
+  type HalalCertificatePdfPreviewState,
+} from "@/components/halal/HalalCertificatePdfPreviewDialog";
 
 const STATUS_COLORS: Record<HalalApplicationStatus, string> = {
   DRAFT: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200",
@@ -224,6 +227,26 @@ export default function HalalMyApplicationDetailPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<"chapa" | "manual">("chapa");
   const [manualBank, setManualBank] = useState("");
+  const [certPdfPreview, setCertPdfPreview] = useState<HalalCertificatePdfPreviewState | null>(null);
+
+  const closeCertPdfPreview = () => {
+    if (certPdfPreview?.url) URL.revokeObjectURL(certPdfPreview.url);
+    setCertPdfPreview(null);
+  };
+
+  const openApplicationCertPreview = (certId: string, title: string) => {
+    setCertPdfPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { title, url: null, loading: true };
+    });
+    void halalApi.certificates
+      .loadPdfPreviewUrl(certId)
+      .then((url) => setCertPdfPreview({ title, url, loading: false }))
+      .catch((err: Error) => {
+        setCertPdfPreview(null);
+        toast.error(err.message ?? "Could not load certificate");
+      });
+  };
   const [manualReceipt, setManualReceipt] = useState<File | null>(null);
   const ownerAgreementFileRef = useRef<HTMLInputElement>(null);
   const majlisAgreementFileRef = useRef<HTMLInputElement>(null);
@@ -2386,7 +2409,10 @@ export default function HalalMyApplicationDetailPage() {
             <Button
               variant="outline"
               onClick={() =>
-                halalApi.certificates.openInNewTab(application.certificate!.id)
+                openApplicationCertPreview(
+                  application.certificate!.id,
+                  application.certificate!.certificateId
+                )
               }
             >
               View certificate
@@ -2989,6 +3015,8 @@ export default function HalalMyApplicationDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <HalalCertificatePdfPreviewDialog preview={certPdfPreview} onClose={closeCertPdfPreview} />
     </div>
   );
 }

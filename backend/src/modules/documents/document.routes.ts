@@ -26,6 +26,10 @@ import {
 } from "./document-request.controller.js";
 import { hasPermission } from "../../middleware/auth.js";
 import { uploadDocumentTemplateSourceFile } from "../../lib/upload.js";
+import {
+  getCertificateFieldCatalogHandler,
+  previewCertificatePdf,
+} from "./certificate.controller.js";
 
 const router = Router();
 
@@ -66,6 +70,18 @@ router.delete("/requests/:id", deleteDocumentRequest);
 
 // Merge fields
 router.get("/merge-fields", getMergeFields);
+
+// Certificate designer (Halal business / product PDF templates)
+router.get(
+  "/certificates/field-catalog/:certificateType",
+  hasPermission("documents.view"),
+  getCertificateFieldCatalogHandler
+);
+router.post(
+  "/certificates/preview",
+  hasPermission("documents.view"),
+  previewCertificatePdf
+);
 
 export default router;
 

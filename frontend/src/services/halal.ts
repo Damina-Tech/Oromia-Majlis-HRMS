@@ -590,6 +590,54 @@ export interface HalalReportsOverview {
   };
 }
 
+async function throwHalalPdfError(e: unknown, fallback: string): Promise<never> {
+  const ax = e as { response?: { data?: unknown }; message?: string };
+  if (ax.response?.data instanceof Blob) {
+    try {
+      const text = await ax.response.data.text();
+      const parsed = JSON.parse(text) as { message?: string };
+      throw new Error(parsed.message ?? fallback);
+    } catch (inner) {
+      if (inner instanceof Error && inner.message !== fallback) throw inner;
+      throw new Error(fallback);
+    }
+  }
+  const data = ax.response?.data;
+  const msg =
+    (typeof data === "object" &&
+      data !== null &&
+      "message" in data &&
+      typeof (data as { message?: string }).message === "string" &&
+      (data as { message: string }).message) ||
+    (e instanceof Error ? e.message : undefined) ||
+    fallback;
+  throw new Error(msg);
+}
+
+async function fetchHalalCertificatePdfBlob(path: string): Promise<Blob> {
+  const { data } = await api.get(path, {
+    responseType: "blob",
+    params: { disposition: "inline" },
+  });
+  const isJson = data.type.includes("json") || (data.size < 512 && data.type !== "application/pdf");
+  if (isJson) {
+    const text = await data.text();
+    try {
+      const parsed = JSON.parse(text) as { message?: string };
+      throw new Error(parsed.message ?? "Could not load certificate PDF");
+    } catch (e) {
+      if (e instanceof Error && e.message !== "Could not load certificate PDF") throw e;
+      throw new Error(text || "Could not load certificate PDF");
+    }
+  }
+  return new Blob([data], { type: "application/pdf" });
+}
+
+/** Returns an object URL for in-app PDF preview (caller must revoke when done). */
+async function createPdfObjectUrl(blob: Blob): Promise<string> {
+  return URL.createObjectURL(blob);
+}
+
 export const halalApi = {
   businesses: {
     list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string; status?: HalalBusinessStatus; employerDirectory?: boolean }) =>
@@ -717,23 +765,36 @@ export const halalApi = {
         }>(`/halal/certificates/${id}/lifecycle`)
         .then((r) => r.data),
     downloadUrl: (id: string) => `${API_URL}/halal/certificates/${id}/download`,
-    download: async (id: string, certificateId: string) => {
-      const { data } = await api.get(`/halal/certificates/${id}/download`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `halal-certificate-${certificateId}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+    /** Fetch PDF (document template when active, else stored file). */
+    fetchPdfBlob: async (id: string) => {
+      try {
+        return await fetchHalalCertificatePdfBlob(`/halal/certificates/${id}/download`);
+      } catch (e: unknown) {
+        await throwHalalPdfError(e, "Could not load certificate");
+      }
     },
-    /** Load certificate PDF and open in a new tab (no verify page). */
-    openInNewTab: async (id: string) => {
-      const { data } = await api.get(`/halal/certificates/${id}/download`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    loadPdfPreviewUrl: async (id: string) => {
+      const blob = await halalApi.certificates.fetchPdfBlob(id);
+      return createPdfObjectUrl(blob);
+    },
+    download: async (id: string, certificateId: string) => {
+      try {
+        const { data } = await api.get(`/halal/certificates/${id}/download`, {
+          responseType: "blob",
+          params: { disposition: "attachment" },
+        });
+        const blob = new Blob([data], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `halal-certificate-${certificateId}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (e: unknown) {
+        await throwHalalPdfError(e, "Could not download certificate");
+      }
     },
   },
   inspectors: {
@@ -781,23 +842,34 @@ export const halalApi = {
     },
     approveManualPayment: (id: string) =>
       api.post<HalalProductCertificate>(`/halal/product-certificates/${id}/payment/manual/approve`).then((r) => r.data),
-    download: async (id: string, certificateNumber: string) => {
-      const { data } = await api.get(`/halal/product-certificates/${id}/download`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `halal-product-${certificateNumber}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+    fetchPdfBlob: async (id: string) => {
+      try {
+        return await fetchHalalCertificatePdfBlob(`/halal/product-certificates/${id}/download`);
+      } catch (e: unknown) {
+        await throwHalalPdfError(e, "Could not load certificate");
+      }
     },
-    /** Open product certificate PDF in a new tab when issued; otherwise no-op (use detail page). */
-    openPdfInNewTab: async (id: string) => {
-      const { data } = await api.get(`/halal/product-certificates/${id}/download`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    loadPdfPreviewUrl: async (id: string) => {
+      const blob = await halalApi.productCertificates.fetchPdfBlob(id);
+      return createPdfObjectUrl(blob);
+    },
+    download: async (id: string, certificateNumber: string) => {
+      try {
+        const { data } = await api.get(`/halal/product-certificates/${id}/download`, {
+          responseType: "blob",
+          params: { disposition: "attachment" },
+        });
+        const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `halal-product-${certificateNumber}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (e: unknown) {
+        await throwHalalPdfError(e, "Could not download certificate");
+      }
     },
   },
   competencyCertificates: {

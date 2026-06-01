@@ -84,6 +84,14 @@ export async function listTemplates(req: Request, res: Response) {
       where.code = query.code.trim();
     }
 
+    if (query.templateEngine) {
+      where.templateEngine = query.templateEngine;
+    }
+
+    if (query.certificateType) {
+      where.certificateType = query.certificateType;
+    }
+
     const { skip, take } = paginate(query.page, query.pageSize);
 
     const orderBy: Prisma.DocumentTemplateOrderByWithRelationInput = {};
@@ -198,12 +206,26 @@ export async function createTemplate(req: Request, res: Response) {
       return res.status(409).json({ message: "Template code already exists" });
     }
 
-    // Extract merge fields from content
-    const mergeFields = extractMergeFields(data.content);
+    const isPdfCertificate = data.templateEngine === "PDF_CERTIFICATE";
+    const content = data.content?.trim() || (isPdfCertificate ? "<!-- PDF certificate template -->" : "");
+    const mergeFields = !isPdfCertificate ? extractMergeFields(content) : [];
 
     const template = await prisma.documentTemplate.create({
       data: {
-        ...data,
+        code: data.code,
+        name: data.name,
+        category: data.category,
+        description: data.description,
+        content,
+        contentPlain: data.contentPlain,
+        language: data.language,
+        tags: data.tags,
+        sourceFileUrl: data.sourceFileUrl,
+        templateEngine: data.templateEngine ?? "HTML_MERGE",
+        certificateType: data.certificateType ?? null,
+        layoutConfig: data.layoutConfig
+          ? (data.layoutConfig as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         createdBy: currentUserId,
         mergeFields: mergeFields.length > 0 ? ({ fields: mergeFields } as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
@@ -260,6 +282,25 @@ export async function updateTemplate(req: Request, res: Response) {
       return res.status(404).json({ message: "Template not found" });
     }
 
+    const nextStatus = data.status ?? existing.status;
+    const engine = data.templateEngine ?? existing.templateEngine;
+    if (nextStatus === "ACTIVE" && engine === "PDF_CERTIFICATE") {
+      const sourceUrl = (data.sourceFileUrl !== undefined ? data.sourceFileUrl : existing.sourceFileUrl)?.trim();
+      if (!sourceUrl) {
+        return res.status(400).json({
+          message: "Upload a PDF or image background before activating this certificate template.",
+        });
+      }
+      const layout =
+        data.layoutConfig !== undefined ? data.layoutConfig : (existing.layoutConfig as object | null);
+      const fields = layout && typeof layout === "object" && "fields" in layout ? (layout as { fields?: unknown[] }).fields : null;
+      if (!fields?.length) {
+        return res.status(400).json({
+          message: "Save field positions in the certificate designer before activating.",
+        });
+      }
+    }
+
     // Extract merge fields if content is updated
     let mergeFields = existing.mergeFields;
     if (data.content) {
@@ -267,16 +308,54 @@ export async function updateTemplate(req: Request, res: Response) {
       mergeFields = fields.length > 0 ? { fields } : null;
     }
 
-    const bumpVersion = !!(data.content || data.sourceFileUrl !== undefined);
+    const bumpVersion = !!(
+      data.content ||
+      data.sourceFileUrl !== undefined ||
+      data.layoutConfig !== undefined
+    );
+
+    const certificateType =
+      data.certificateType === null ? null : (data.certificateType ?? existing.certificateType);
+
+    if (nextStatus === "ACTIVE" && engine === "PDF_CERTIFICATE" && certificateType) {
+      await prisma.documentTemplate.updateMany({
+        where: {
+          certificateType,
+          templateEngine: "PDF_CERTIFICATE",
+          status: "ACTIVE",
+          id: { not: id },
+        },
+        data: { status: "ARCHIVED", active: false },
+      });
+    }
+
+    const updatePayload: Prisma.DocumentTemplateUncheckedUpdateInput = {
+      name: data.name,
+      category: data.category,
+      description: data.description,
+      content: data.content,
+      contentPlain: data.contentPlain,
+      status: data.status,
+      language: data.language,
+      tags: data.tags,
+      active: data.active,
+      sourceFileUrl: data.sourceFileUrl === null ? null : data.sourceFileUrl,
+      templateEngine: data.templateEngine,
+      certificateType: data.certificateType === null ? null : data.certificateType,
+      updatedBy: currentUserId,
+      version: bumpVersion ? existing.version + 1 : existing.version,
+      mergeFields: mergeFields ? (mergeFields as Prisma.InputJsonValue) : Prisma.JsonNull,
+      layoutConfig:
+        data.layoutConfig === undefined
+          ? undefined
+          : data.layoutConfig
+            ? (data.layoutConfig as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+    };
 
     const template = await prisma.documentTemplate.update({
       where: { id },
-      data: {
-        ...data,
-        updatedBy: currentUserId,
-        version: bumpVersion ? existing.version + 1 : existing.version,
-        mergeFields: mergeFields ? (mergeFields as Prisma.InputJsonValue) : Prisma.JsonNull,
-      },
+      data: updatePayload,
       include: {
         updatedByUser: {
           select: {

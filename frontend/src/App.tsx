@@ -33,6 +33,7 @@ import AssetManagementPage from "./pages/assets/AssetManagementPage";
 import AssetDashboardPage from "./pages/assets/AssetDashboardPage";
 import AssetReportsPage from "./pages/assets/AssetReportsPage";
 import DocumentTemplatesPage from "./pages/documents/DocumentTemplatesPage";
+import CertificateTemplatesPage from "./pages/documents/CertificateTemplatesPage";
 import DocumentGenerationPage from "./pages/documents/DocumentGenerationPage";
 import DocumentSettingsPage from "./pages/documents/DocumentSettingsPage";
 import DocumentRequestsPage from "./pages/documents/DocumentRequestsPage";
@@ -441,6 +442,10 @@ function AppRoutes() {
           <Route
             path="documents/templates"
             element={<DocumentTemplatesPage />}
+          />
+          <Route
+            path="documents/certificate-templates"
+            element={<CertificateTemplatesPage />}
           />
           <Route
             path="documents/generate"

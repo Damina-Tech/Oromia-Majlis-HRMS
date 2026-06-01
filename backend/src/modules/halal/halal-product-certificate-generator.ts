@@ -3,6 +3,9 @@ import QRCode from "qrcode";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { HalalCertificateTemplateType } from "@prisma/client";
+import { halalProductCertificateData } from "../documents/certificate-field-catalog.js";
+import { renderCertificateToFile } from "../documents/certificate-template.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,10 +20,7 @@ function getVerifyUrl(certificateNumber: string): string {
   return `${base}/verify/halal-product/${certificateNumber}`;
 }
 
-/**
- * Product-specific Halal certificate PDF (distinct layout from the main business certificate).
- */
-export async function generateHalalProductCertificatePDF(params: {
+async function generateHalalProductCertificatePDFLegacy(params: {
   certificateNumber: string;
   businessName: string;
   parentCertificateId: string;
@@ -29,6 +29,10 @@ export async function generateHalalProductCertificatePDF(params: {
   destination: string;
   notes?: string | null;
   issuedAt: Date;
+  verifyUrl: string;
+  qrBuffer: Buffer;
+  filePath: string;
+  safeFile: string;
 }): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
   const {
     certificateNumber,
@@ -39,11 +43,11 @@ export async function generateHalalProductCertificatePDF(params: {
     destination,
     notes,
     issuedAt,
+    verifyUrl,
+    qrBuffer,
+    filePath,
+    safeFile,
   } = params;
-  const verifyUrl = getVerifyUrl(certificateNumber);
-  const qrBuffer = await QRCode.toBuffer(verifyUrl, { width: 140, margin: 2 });
-  const safeFile = `HAL-P-${certificateNumber.replace(/[^A-Za-z0-9._-]/g, "_")}-${Date.now()}.pdf`;
-  const filePath = path.join(productCertsDir, safeFile);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -119,5 +123,80 @@ export async function generateHalalProductCertificatePDF(params: {
       });
     });
     stream.on("error", reject);
+  });
+}
+
+/**
+ * Product-specific Halal certificate PDF (template-driven when configured in documents module).
+ */
+export async function generateHalalProductCertificatePDF(params: {
+  certificateNumber: string;
+  businessName: string;
+  parentCertificateId: string;
+  productName: string;
+  productAmount: string;
+  destination: string;
+  notes?: string | null;
+  issuedAt: Date;
+}): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
+  const {
+    certificateNumber,
+    businessName,
+    parentCertificateId,
+    productName,
+    productAmount,
+    destination,
+    notes,
+    issuedAt,
+  } = params;
+  const verifyUrl = getVerifyUrl(certificateNumber);
+  const safeFile = `HAL-P-${certificateNumber.replace(/[^A-Za-z0-9._-]/g, "_")}-${Date.now()}.pdf`;
+  const filePath = path.join(productCertsDir, safeFile);
+
+  const templateCode = process.env.HALAL_PRODUCT_CERT_TEMPLATE_CODE?.trim();
+  const data = halalProductCertificateData({
+    certificateNumber,
+    businessName,
+    parentCertificateId,
+    productName,
+    productAmount,
+    destination,
+    notes,
+    issuedAt,
+    verifyUrl,
+  });
+
+  try {
+    const rendered = await renderCertificateToFile({
+      templateCode: templateCode || undefined,
+      certificateType: templateCode ? undefined : HalalCertificateTemplateType.HALAL_PRODUCT,
+      data,
+      outputFilePath: filePath,
+    });
+    if (rendered) {
+      return {
+        pdfPath: filePath,
+        pdfUrl: `/uploads/halal/product-certificates/${safeFile}`,
+        qrDataUrl: verifyUrl,
+      };
+    }
+  } catch (err) {
+    console.warn("Halal product certificate template render failed, using legacy layout:", err);
+  }
+
+  const qrBuffer = await QRCode.toBuffer(verifyUrl, { width: 140, margin: 2 });
+  return generateHalalProductCertificatePDFLegacy({
+    certificateNumber,
+    businessName,
+    parentCertificateId,
+    productName,
+    productAmount,
+    destination,
+    notes,
+    issuedAt,
+    verifyUrl,
+    qrBuffer,
+    filePath,
+    safeFile,
   });
 }

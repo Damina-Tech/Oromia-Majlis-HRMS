@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CertificateLayoutConfigSchema } from "./certificate-layout.types.js";
 
 // Document Category Enum
 export const DocumentCategoryEnum = z.enum([
@@ -17,20 +18,46 @@ export const DocumentLanguageEnum = z.enum(["EN", "AM", "OR"]);
 // Document Template Status Enum
 export const DocumentTemplateStatusEnum = z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]);
 
+export const DocumentTemplateEngineEnum = z.enum(["HTML_MERGE", "PDF_CERTIFICATE"]);
+
+export const HalalCertificateTemplateTypeEnum = z.enum(["HALAL_BUSINESS", "HALAL_PRODUCT"]);
+
 // Create Document Template DTO
-export const CreateDocumentTemplateDto = z.object({
-  code: z.string().min(1).max(100),
-  name: z.string().min(1).max(200),
-  category: DocumentCategoryEnum,
-  description: z.string().optional(),
-  content: z.string().min(1),
-  contentPlain: z.string().optional(),
-  language: DocumentLanguageEnum.optional().default("EN"),
-  tags: z.array(z.string()).optional().default([]),
-  mergeFields: z.record(z.string(), z.any()).optional(),
-  /** Uploaded blank agreement PDF/DOC path (see POST /documents/templates/source-upload) */
-  sourceFileUrl: z.string().min(1).max(500).optional(),
-});
+export const CreateDocumentTemplateDto = z
+  .object({
+    code: z.string().min(1).max(100),
+    name: z.string().min(1).max(200),
+    category: DocumentCategoryEnum,
+    description: z.string().optional(),
+    content: z.string().optional(),
+    contentPlain: z.string().optional(),
+    language: DocumentLanguageEnum.optional().default("EN"),
+    tags: z.array(z.string()).optional().default([]),
+    mergeFields: z.record(z.string(), z.any()).optional(),
+    templateEngine: DocumentTemplateEngineEnum.optional().default("HTML_MERGE"),
+    certificateType: HalalCertificateTemplateTypeEnum.optional(),
+    layoutConfig: CertificateLayoutConfigSchema.optional(),
+    /** Uploaded blank agreement PDF/DOC path (see POST /documents/templates/source-upload) */
+    sourceFileUrl: z.string().min(1).max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.templateEngine === "PDF_CERTIFICATE") {
+      if (!data.certificateType) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "certificateType is required for PDF certificate templates",
+          path: ["certificateType"],
+        });
+      }
+      // sourceFileUrl may be added after create (upload → designer → activate)
+    } else if (!data.content?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "content is required for HTML templates",
+        path: ["content"],
+      });
+    }
+  });
 
 export type CreateDocumentTemplateDto = z.infer<typeof CreateDocumentTemplateDto>;
 
@@ -47,6 +74,9 @@ export const UpdateDocumentTemplateDto = z.object({
   active: z.boolean().optional(),
   mergeFields: z.record(z.string(), z.any()).optional(),
   sourceFileUrl: z.string().min(1).max(500).optional().nullable(),
+  templateEngine: DocumentTemplateEngineEnum.optional(),
+  certificateType: HalalCertificateTemplateTypeEnum.optional().nullable(),
+  layoutConfig: CertificateLayoutConfigSchema.optional().nullable(),
 });
 
 export type UpdateDocumentTemplateDto = z.infer<typeof UpdateDocumentTemplateDto>;
@@ -62,6 +92,8 @@ export const ListTemplatesQuery = z.object({
   language: DocumentLanguageEnum.optional(),
   tags: z.string().optional(), // Comma-separated tags
   code: z.string().optional(),
+  templateEngine: DocumentTemplateEngineEnum.optional(),
+  certificateType: HalalCertificateTemplateTypeEnum.optional(),
   sortBy: z.enum(["name", "category", "createdAt", "updatedAt"]).optional().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
 });

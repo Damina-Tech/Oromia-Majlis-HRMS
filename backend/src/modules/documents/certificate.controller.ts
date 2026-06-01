@@ -1,0 +1,72 @@
+import { Request, Response } from "express";
+import { HalalCertificateTemplateType, PrismaClient } from "@prisma/client";
+import { z } from "zod";
+
+const prisma = new PrismaClient();
+import {
+  getCertificateFieldCatalog,
+  buildSampleCertificateData,
+} from "./certificate-field-catalog.js";
+import { CertificateLayoutConfigSchema } from "./certificate-layout.types.js";
+import { generateCertificatePdfBuffer } from "./certificate-pdf-generator.js";
+import { parseLayoutConfig } from "./certificate-layout.types.js";
+
+const PreviewCertificateDto = z.object({
+  templateId: z.string().min(1),
+  data: z.record(z.string(), z.string()).optional(),
+});
+
+/**
+ * GET /documents/certificates/field-catalog/:certificateType
+ */
+export async function getCertificateFieldCatalogHandler(req: Request, res: Response) {
+  try {
+    const type = req.params.certificateType as HalalCertificateTemplateType;
+    if (!["HALAL_BUSINESS", "HALAL_PRODUCT"].includes(type)) {
+      return res.status(400).json({ message: "Invalid certificate type" });
+    }
+    const fields = getCertificateFieldCatalog(type);
+    return res.json({ certificateType: type, fields });
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message || "Failed to load field catalog" });
+  }
+}
+
+/**
+ * POST /documents/certificates/preview — returns application/pdf
+ */
+export async function previewCertificatePdf(req: Request, res: Response) {
+  try {
+    const body = PreviewCertificateDto.parse(req.body);
+    const template = await prisma.documentTemplate.findUnique({ where: { id: body.templateId } });
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template.sourceFileUrl?.trim()) {
+      return res.status(400).json({ message: "Upload a PDF or image template first" });
+    }
+    const layout = parseLayoutConfig(template.layoutConfig);
+    if (!layout?.fields?.length) {
+      return res.status(400).json({ message: "Open the certificate designer and place at least one field" });
+    }
+
+    const data =
+      body.data ??
+      (template.certificateType
+        ? buildSampleCertificateData(template.certificateType)
+        : {});
+
+    const buffer = await generateCertificatePdfBuffer({
+      sourceFileUrl: template.sourceFileUrl,
+      layoutConfig: template.layoutConfig,
+      data,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="certificate-preview.pdf"`);
+    return res.send(buffer);
+  } catch (e: any) {
+    console.error("Certificate preview error:", e);
+    return res.status(400).json({ message: e.message || "Failed to generate preview" });
+  }
+}
+
+export { CertificateLayoutConfigSchema };

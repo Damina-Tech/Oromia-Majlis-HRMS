@@ -48,6 +48,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { HalalListPagination, HALAL_LIST_PAGE_SIZE } from "@/components/halal/HalalListPagination";
+import HalalCertificatePdfPreviewDialog, {
+  type HalalCertificatePdfPreviewState,
+} from "@/components/halal/HalalCertificatePdfPreviewDialog";
 
 const STATUS_COLORS: Record<HalalCertificateStatus, string> = {
   VALID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
@@ -150,11 +153,13 @@ function ProductCertificateNestedRow({
   userId,
   canApproveProductManual,
   navigate,
+  onViewPdf,
 }: {
   p: HalalProductCertificate;
   userId: string | undefined;
   canApproveProductManual: boolean;
   navigate: ReturnType<typeof useNavigate>;
+  onViewPdf: (id: string, title: string) => void;
 }) {
   const ownerUserId = p.business?.userId;
   const canApproveThisRow =
@@ -166,7 +171,7 @@ function ProductCertificateNestedRow({
     Boolean(ownerUserId) &&
     ownerUserId !== userId;
   const statusBadge = productCertStatusPresentation(p);
-  const canViewPdf = p.status === "ISSUED" && !!p.pdfUrl && !!p.certificateNumber;
+  const canViewPdf = p.status === "ISSUED" && !!p.certificateNumber;
   return (
     <li className="flex flex-col sm:flex-row sm:items-stretch gap-3">
       <button
@@ -202,10 +207,7 @@ function ProductCertificateNestedRow({
           onClick={(e) => {
             e.stopPropagation();
             if (canViewPdf) {
-              halalApi.productCertificates.openPdfInNewTab(p.id).catch(() => {
-                toast.error("Could not open PDF");
-                navigate(`/halal/product-certificates/${p.id}`);
-              });
+              onViewPdf(p.id, p.productName);
             } else {
               navigate(`/halal/product-certificates/${p.id}`);
             }
@@ -276,6 +278,43 @@ export default function HalalCertificatesPage() {
   const [newExpiry, setNewExpiry] = useState("");
   const [expandedCertIds, setExpandedCertIds] = useState<Record<string, boolean>>({});
   const [certificatesPage, setCertificatesPage] = useState(1);
+  const [pdfPreview, setPdfPreview] = useState<HalalCertificatePdfPreviewState | null>(null);
+
+  const closePdfPreview = () => {
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview(null);
+  };
+
+  const openBusinessCertPreview = (c: HalalCertificate) => {
+    const title = c.application?.business?.name
+      ? `${c.application.business.name} — ${c.certificateId}`
+      : c.certificateId;
+    setPdfPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { title, url: null, loading: true };
+    });
+    void halalApi.certificates
+      .loadPdfPreviewUrl(c.id)
+      .then((url) => setPdfPreview({ title, url, loading: false }))
+      .catch((err: Error) => {
+        setPdfPreview(null);
+        toast.error(err.message ?? "Could not load certificate");
+      });
+  };
+
+  const openProductCertPreview = (id: string, productName: string) => {
+    setPdfPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { title: productName, url: null, loading: true };
+    });
+    void halalApi.productCertificates
+      .loadPdfPreviewUrl(id)
+      .then((url) => setPdfPreview({ title: productName, url, loading: false }))
+      .catch((err: Error) => {
+        setPdfPreview(null);
+        toast.error(err.message ?? "Could not load certificate");
+      });
+  };
 
   const isHalalAdmin = hasPermission("halal.admin");
   const canApproveProductManual =
@@ -667,27 +706,30 @@ export default function HalalCertificatesPage() {
                               </button>
                             </CollapsibleTrigger>
                             <div className="flex flex-wrap items-center gap-2 shrink-0 p-4 sm:p-5 lg:border-l border-t lg:border-t-0 border-slate-200/70 dark:border-slate-800/60 bg-slate-50/80 dark:bg-slate-900/50 lg:min-w-[200px] lg:justify-end">
-                              {c.pdfUrl && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-9 border-emerald-300 bg-white/80 dark:bg-slate-950/40 dark:border-emerald-700"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    halalApi.certificates.download(c.id, c.certificateId);
-                                  }}
-                                >
-                                  <Download className="h-4 w-4 mr-2" />
-                                  Download
-                                </Button>
-                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-9 border-emerald-300 bg-white/80 dark:bg-slate-950/40 dark:border-emerald-700"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  void halalApi.certificates
+                                    .download(c.id, c.certificateId)
+                                    .catch((err: Error) =>
+                                      toast.error(err.message ?? "Could not download certificate")
+                                    );
+                                }}
+                              >
+                                <Download className="h-4 w-4 mr-2" />
+                                Download
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="h-9 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                                title={`View certificate for ${c.application?.business?.name ?? "business"}`}
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  halalApi.certificates.openInNewTab(c.id);
+                                  openBusinessCertPreview(c);
                                 }}
                               >
                                 <ExternalLink className="h-4 w-4 mr-2" />
@@ -747,6 +789,7 @@ export default function HalalCertificatesPage() {
                                       userId={user?.id}
                                       canApproveProductManual={canApproveProductManual}
                                       navigate={navigate}
+                                      onViewPdf={openProductCertPreview}
                                     />
                                   ))}
                                 </ul>
@@ -824,6 +867,8 @@ export default function HalalCertificatesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <HalalCertificatePdfPreviewDialog preview={pdfPreview} onClose={closePdfPreview} />
     </div>
   );
 }

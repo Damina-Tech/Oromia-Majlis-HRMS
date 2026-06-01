@@ -1831,6 +1831,7 @@ export async function listApplicationCompetencyWorkerCandidates(req: Request, re
             id: true,
             fullName: true,
             certificateNumber: true,
+            status: true,
             employerName: true,
             jobTitle: true,
             expiresAt: true,
@@ -2932,6 +2933,7 @@ export async function downloadCertificate(req: Request, res: Response) {
       perms?.includes("halal.audit") ||
       perms?.includes("halal.committee");
     const { id } = req.params;
+    const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
     const cert = await prisma.halalCertificate.findFirst({
       where: { OR: [{ id }, { certificateId: id }] },
       include: { application: { include: { business: true } } },
@@ -2940,14 +2942,53 @@ export async function downloadCertificate(req: Request, res: Response) {
     if (!canViewAll && cert.application.business.userId !== userId) {
       return res.status(403).json({ message: "Access denied" });
     }
-    if (!cert.pdfUrl) return res.status(404).json({ message: "PDF not generated yet" });
+
+    const { renderBusinessHalalCertificatePdfBuffer } = await import("./halal-certificate-render.service.js");
+    let templatePdf: Buffer | null = null;
+    try {
+      templatePdf = await renderBusinessHalalCertificatePdfBuffer({
+        certificateId: cert.certificateId,
+        issuedAt: cert.issuedAt,
+        expiresAt: cert.expiresAt,
+        qrCode: cert.qrCode,
+        businessName: cert.application.business.name,
+        category: cert.application.business.category,
+      });
+    } catch (renderErr: any) {
+      console.error("Halal business certificate template render failed:", renderErr);
+      return res.status(500).json({
+        message:
+          renderErr?.message ||
+          "Active certificate template could not be rendered. Check the background file and designer layout under Documents → Halal certificate templates.",
+      });
+    }
+
+    if (templatePdf) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="halal-certificate-${cert.certificateId}.pdf"`
+      );
+      res.setHeader("X-Halal-Certificate-Source", "document-template");
+      return res.send(templatePdf);
+    }
+
+    if (!cert.pdfUrl) {
+      return res.status(404).json({
+        message:
+          "No active Halal business certificate template found. Under Documents → Halal certificates, upload a background, save field layout in the designer, and click Activate.",
+      });
+    }
     const pathModule = (await import("path")).default;
     const fs = await import("fs");
     const relPath = cert.pdfUrl.startsWith("/") ? cert.pdfUrl.slice(1) : cert.pdfUrl;
     const fullPath = pathModule.join(process.cwd(), relPath);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ message: "PDF file not found" });
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="halal-certificate-${cert.certificateId}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="halal-certificate-${cert.certificateId}.pdf"`
+    );
     res.sendFile(pathModule.resolve(fullPath));
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Download failed" });

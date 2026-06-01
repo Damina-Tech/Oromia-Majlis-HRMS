@@ -241,7 +241,10 @@ const documentTemplateSourceStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, documentTemplateSourceDir),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
+    const rawBase = path.basename(file.originalname, ext);
+    const base =
+      rawBase.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 120) ||
+      "template";
     cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
   },
 });

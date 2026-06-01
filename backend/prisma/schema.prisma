@@ -981,6 +981,10 @@ model DocumentTemplate {
   mergeFields        Json?
   /// Optional uploaded blank agreement (PDF/DOC path under /uploads/...) for Halal and similar workflows
   sourceFileUrl      String?
+  templateEngine     DocumentTemplateEngine      @default(HTML_MERGE)
+  certificateType    HalalCertificateTemplateType?
+  /// Fabric designer output: field positions (x, y, width, height, label, type) in PDF points (top-left origin)
+  layoutConfig       Json?
   createdBy          String
   updatedBy          String?
   createdAt          DateTime                     @default(now())
@@ -1769,6 +1773,18 @@ enum DocumentTemplateStatus {
   DRAFT
   ACTIVE
   ARCHIVED
+}
+
+/// HTML merge templates vs PDF/image overlay certificate designer
+enum DocumentTemplateEngine {
+  HTML_MERGE
+  PDF_CERTIFICATE
+}
+
+/// Halal certificate types using PDF overlay templates in the documents module
+enum HalalCertificateTemplateType {
+  HALAL_BUSINESS
+  HALAL_PRODUCT
 }
 
 enum AnnouncementType {
