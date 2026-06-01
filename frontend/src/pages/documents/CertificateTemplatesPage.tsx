@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Award, Loader2, Pencil, Plus, Upload } from "lucide-react";
+import { Award, Loader2, Pencil, Plus, Settings, Upload } from "lucide-react";
 import { toast } from "sonner";
 import {
   createTemplate,
@@ -176,10 +177,26 @@ export default function CertificateTemplatesPage() {
         </Button>
       </div>
 
+      <div className="rounded-lg border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-amber-950 dark:text-amber-100">
+          Upload <strong>signature</strong> and <strong>seal</strong> images once under Document Settings, then place
+          those fields in the designer below.
+        </p>
+        <Button variant="outline" size="sm" className="shrink-0" asChild>
+          <Link to="/documents/settings">
+            <Settings className="h-3.5 w-3.5 mr-1.5" />
+            Document settings
+          </Link>
+        </Button>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Templates</CardTitle>
-          <CardDescription>Upload background PDF or image, place fields in the designer, then activate.</CardDescription>
+          <CardDescription>
+            Upload background PDF or image, place fields in the designer (including consignment, weights, shipping, dates,
+            and authorization fields for product certificates), then activate.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (

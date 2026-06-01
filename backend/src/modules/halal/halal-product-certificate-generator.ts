@@ -4,8 +4,11 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { HalalCertificateTemplateType } from "@prisma/client";
-import { halalProductCertificateData } from "../documents/certificate-field-catalog.js";
 import { renderCertificateToFile } from "../documents/certificate-template.service.js";
+import {
+  halalProductCertificatePdfData,
+  type HalalProductCertificatePdfSource,
+} from "./halal-product-certificate-pdf-data.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,20 +23,16 @@ function getVerifyUrl(certificateNumber: string): string {
   return `${base}/verify/halal-product/${certificateNumber}`;
 }
 
-async function generateHalalProductCertificatePDFLegacy(params: {
-  certificateNumber: string;
-  businessName: string;
-  parentCertificateId: string;
-  productName: string;
-  productAmount: string;
-  destination: string;
-  notes?: string | null;
-  issuedAt: Date;
-  verifyUrl: string;
-  qrBuffer: Buffer;
-  filePath: string;
-  safeFile: string;
-}): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
+async function generateHalalProductCertificatePDFLegacy(
+  row: HalalProductCertificatePdfSource,
+  params: {
+    verifyUrl: string;
+    qrBuffer: Buffer;
+    filePath: string;
+    safeFile: string;
+  }
+): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
+  const { verifyUrl, qrBuffer, filePath, safeFile } = params;
   const {
     certificateNumber,
     businessName,
@@ -42,12 +41,22 @@ async function generateHalalProductCertificatePDFLegacy(params: {
     productAmount,
     destination,
     notes,
+    consignmentPcs,
+    netWeightKg,
+    grossWeightKg,
+    shipping,
+    voyageFlightNo,
+    loadingPort,
+    slaughteringDate,
+    productionDate,
+    expiryDate,
+    healthCertificateNo,
+    slaughteringCertificate,
+    authorizedRepresentative,
     issuedAt,
-    verifyUrl,
-    qrBuffer,
-    filePath,
-    safeFile,
-  } = params;
+  } = row;
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -85,8 +94,22 @@ async function generateHalalProductCertificatePDFLegacy(params: {
     row("Business:", businessName);
     row("Parent Halal certificate:", parentCertificateId);
     row("Product:", productName);
-    row("Amount / quantity:", productAmount);
+    row("Consignment (PCS):", consignmentPcs);
+    row("Net weight:", `${netWeightKg} kg`);
+    row("Gross weight:", `${grossWeightKg} kg`);
+    row("Shipping:", shipping);
+    row("Voyage / flight no.:", voyageFlightNo);
+    row("Loading port:", loadingPort);
     row("Destination:", destination);
+    row("Slaughtering date:", fmt(slaughteringDate));
+    row("Production date:", fmt(productionDate));
+    row("Expiry date:", fmt(expiryDate));
+    row("Health certificate no.:", healthCertificateNo);
+    row("Slaughtering certificate:", slaughteringCertificate);
+    row("Authorized representative:", authorizedRepresentative);
+    if (productAmount?.trim()) {
+      row("Amount / quantity:", productAmount);
+    }
     if (notes?.trim()) {
       row("Notes:", notes.trim());
     }
@@ -129,42 +152,16 @@ async function generateHalalProductCertificatePDFLegacy(params: {
 /**
  * Product-specific Halal certificate PDF (template-driven when configured in documents module).
  */
-export async function generateHalalProductCertificatePDF(params: {
-  certificateNumber: string;
-  businessName: string;
-  parentCertificateId: string;
-  productName: string;
-  productAmount: string;
-  destination: string;
-  notes?: string | null;
-  issuedAt: Date;
-}): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
-  const {
-    certificateNumber,
-    businessName,
-    parentCertificateId,
-    productName,
-    productAmount,
-    destination,
-    notes,
-    issuedAt,
-  } = params;
+export async function generateHalalProductCertificatePDF(
+  row: HalalProductCertificatePdfSource
+): Promise<{ pdfPath: string; pdfUrl: string; qrDataUrl: string }> {
+  const { certificateNumber, issuedAt } = row;
   const verifyUrl = getVerifyUrl(certificateNumber);
   const safeFile = `HAL-P-${certificateNumber.replace(/[^A-Za-z0-9._-]/g, "_")}-${Date.now()}.pdf`;
   const filePath = path.join(productCertsDir, safeFile);
 
   const templateCode = process.env.HALAL_PRODUCT_CERT_TEMPLATE_CODE?.trim();
-  const data = halalProductCertificateData({
-    certificateNumber,
-    businessName,
-    parentCertificateId,
-    productName,
-    productAmount,
-    destination,
-    notes,
-    issuedAt,
-    verifyUrl,
-  });
+  const data = await halalProductCertificatePdfData(row, verifyUrl);
 
   try {
     const rendered = await renderCertificateToFile({
@@ -185,15 +182,7 @@ export async function generateHalalProductCertificatePDF(params: {
   }
 
   const qrBuffer = await QRCode.toBuffer(verifyUrl, { width: 140, margin: 2 });
-  return generateHalalProductCertificatePDFLegacy({
-    certificateNumber,
-    businessName,
-    parentCertificateId,
-    productName,
-    productAmount,
-    destination,
-    notes,
-    issuedAt,
+  return generateHalalProductCertificatePDFLegacy(row, {
     verifyUrl,
     qrBuffer,
     filePath,

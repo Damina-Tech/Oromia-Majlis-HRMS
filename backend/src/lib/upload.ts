@@ -254,3 +254,30 @@ export const uploadDocumentTemplateSourceFile = multer({
   fileFilter: halalFileFilter,
 });
 
+// Shared signature & seal images for certificate PDFs (DocumentSettings)
+const certificateAssetsDir = path.join(__dirname, "../../uploads/document-certificate-assets");
+if (!fs.existsSync(certificateAssetsDir)) {
+  fs.mkdirSync(certificateAssetsDir, { recursive: true });
+}
+const certificateAssetStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, certificateAssetsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const rawBase = path.basename(file.originalname, ext);
+    const base =
+      rawBase.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 80) ||
+      "asset";
+    cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+export const uploadCertificateAssetFile = multer({
+  storage: certificateAssetStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp/;
+    const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+    if (allowed.test(ext) || /image\//.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Signature and seal must be PNG, JPEG, or WebP images"));
+  },
+});
+

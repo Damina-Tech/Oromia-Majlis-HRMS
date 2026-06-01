@@ -7,7 +7,7 @@ export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT";
 export interface CertificateLayoutField {
   key: string;
   label: string;
-  type: "text" | "date" | "qrcode";
+  type: "text" | "date" | "qrcode" | "image";
   x: number;
   y: number;
   width: number;
@@ -154,7 +154,7 @@ export const getCertificateFieldCatalog = async (certificateType: HalalCertifica
   const response = await api.get(`/documents/certificates/field-catalog/${certificateType}`);
   return response.data as {
     certificateType: HalalCertificateTemplateType;
-    fields: Array<{ key: string; label: string; type: "text" | "date" | "qrcode" }>;
+    fields: Array<{ key: string; label: string; type: "text" | "date" | "qrcode" | "image" }>;
   };
 };
 
@@ -198,6 +198,14 @@ export const uploadTemplateSourceFile = async (file: File): Promise<{ url: strin
   const formData = new FormData();
   formData.append("file", file);
   const response = await api.post<{ url: string }>("/documents/templates/source-upload", formData);
+  return response.data;
+};
+
+/** Upload signature or seal PNG/JPEG used on all certificate PDFs (saved to document settings). */
+export const uploadCertificateAsset = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post<{ url: string }>("/documents/certificate-assets/upload", formData);
   return response.data;
 };
 

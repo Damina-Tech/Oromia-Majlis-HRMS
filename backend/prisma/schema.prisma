@@ -2655,7 +2655,22 @@ model HalalProductCertificate {
   business            HalalBusiness                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
   productName         String
   productAmount       String
+  consignmentPcs      String
+  netWeightKg         String
+  grossWeightKg       String
+  shipping            String
+  voyageFlightNo      String
+  loadingPort         String                        @default("Addis Ababa Airport")
   destination         String
+  slaughteringDate    DateTime
+  productionDate      DateTime
+  expiryDate          DateTime
+  healthCertificateNo String
+  slaughteringCertificate String
+  authorizedRepresentative String
+  /// Legacy text slots; PDF signature/seal images come from DocumentSettings
+  signature           String?
+  seal                String?
   notes               String?
   status              HalalProductCertificateStatus @default(PAYMENT_PENDING)
   feeAmount           Decimal                       @default(3500) @db.Decimal(12, 2)

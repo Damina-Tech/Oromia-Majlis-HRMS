@@ -473,6 +473,25 @@ export interface HalalCompetencyCertificate {
   pendingRenewalId?: string | null;
 }
 
+export interface HalalProductCertificateCreateInput {
+  halalCertificateId: string;
+  productName: string;
+  consignmentPcs: string;
+  netWeightKg: string;
+  grossWeightKg: string;
+  shipping: string;
+  voyageFlightNo: string;
+  loadingPort: string;
+  destination: string;
+  slaughteringDate: string;
+  productionDate: string;
+  expiryDate: string;
+  healthCertificateNo: string;
+  slaughteringCertificate: string;
+  authorizedRepresentative: string;
+  notes?: string;
+}
+
 export interface HalalProductCertificate {
   id: string;
   certificateNumber: string | null;
@@ -482,7 +501,23 @@ export interface HalalProductCertificate {
   business?: { id: string; name: string; contactName?: string; contactEmail?: string; userId?: string };
   productName: string;
   productAmount: string;
+  consignmentPcs: string;
+  netWeightKg: string;
+  grossWeightKg: string;
+  shipping: string;
+  voyageFlightNo: string;
+  loadingPort: string;
   destination: string;
+  slaughteringDate: string;
+  productionDate: string;
+  expiryDate: string;
+  healthCertificateNo: string;
+  slaughteringCertificate: string;
+  authorizedRepresentative: string;
+  /** @deprecated PDF uses DocumentSettings images */
+  signature?: string | null;
+  /** @deprecated PDF uses DocumentSettings stamp image */
+  seal?: string | null;
   notes?: string | null;
   status: HalalProductCertificateStatus;
   feeAmount: number | string;
@@ -823,13 +858,8 @@ export const halalApi = {
     list: (params?: { page?: number; limit?: number; businessId?: string }) =>
       api.get<PaginatedResponse<HalalProductCertificate>>("/halal/product-certificates", { params }).then((r) => r.data),
     get: (id: string) => api.get<HalalProductCertificate>(`/halal/product-certificates/${id}`).then((r) => r.data),
-    create: (data: {
-      halalCertificateId: string;
-      productName: string;
-      productAmount: string;
-      destination: string;
-      notes?: string;
-    }) => api.post<HalalProductCertificate>("/halal/product-certificates", data).then((r) => r.data),
+    create: (data: HalalProductCertificateCreateInput) =>
+      api.post<HalalProductCertificate>("/halal/product-certificates", data).then((r) => r.data),
     initChapaPayment: (id: string) =>
       api.post<{ checkoutUrl: string; txRef: string }>(`/halal/product-certificates/${id}/payment/chapa-init`).then((r) => r.data),
     confirmManualPayment: (id: string, data: { bankName: string; receipt: File }) => {

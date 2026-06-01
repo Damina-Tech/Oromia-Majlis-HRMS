@@ -50,9 +50,32 @@ async function drawField(
   fontBold: PDFFont
 ): Promise<void> {
   const trimmed = value?.trim() ?? "";
-  if (!trimmed && field.type !== "qrcode") return;
+  if (!trimmed && field.type !== "qrcode" && field.type !== "image") return;
 
   const pageWidth = page.getWidth();
+
+  if (field.type === "image") {
+    const imgPath = resolveUploadPath(trimmed);
+    const bytes = fs.readFileSync(imgPath);
+    const ext = path.extname(imgPath).toLowerCase();
+    const embedded =
+      ext === ".png"
+        ? await pdfDoc.embedPng(bytes)
+        : ext === ".jpg" || ext === ".jpeg"
+          ? await pdfDoc.embedJpg(bytes)
+          : null;
+    if (!embedded) {
+      throw new Error(`Unsupported image for certificate field ${field.key}: ${trimmed}`);
+    }
+    const y = pdfYFromTop(pageHeight, field);
+    page.drawImage(embedded, {
+      x: field.x,
+      y,
+      width: field.width,
+      height: field.height,
+    });
+    return;
+  }
 
   if (field.type === "qrcode") {
     const qrBuffer = await QRCode.toBuffer(trimmed, {
@@ -171,12 +194,24 @@ export async function generateCertificatePdfBuffer(params: {
   sourceFileUrl: string;
   layoutConfig: unknown;
   data: Record<string, string>;
+  /** When true, merge signature/seal from active DocumentSettings into data */
+  applyBranding?: boolean;
 }): Promise<Buffer> {
+  let data = params.data;
+  if (params.applyBranding !== false) {
+    const { getCertificateBrandingAssets, mergeCertificateBrandingIntoData } = await import(
+      "./certificate-branding.service.js"
+    );
+    const branding = await getCertificateBrandingAssets();
+    data = mergeCertificateBrandingIntoData(data, branding);
+  }
   const tmpDir = path.join(uploadsRoot, "temp");
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   const tmpPath = path.join(tmpDir, `cert-preview-${Date.now()}.pdf`);
   await generateCertificatePdfFromLayout({
-    ...params,
+    sourceFileUrl: params.sourceFileUrl,
+    layoutConfig: params.layoutConfig,
+    data,
     outputFilePath: tmpPath,
   });
   const buf = fs.readFileSync(tmpPath);

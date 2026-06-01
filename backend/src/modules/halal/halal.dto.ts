@@ -303,11 +303,27 @@ export const ListHalalViolationsQuery = z.object({
   certificateId: z.string().optional(),
 });
 
+const halalProductDateField = z
+  .string()
+  .min(1, "Date is required")
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Invalid date");
+
 export const CreateHalalProductCertificateDto = z.object({
   halalCertificateId: z.string().min(1),
-  productName: z.string().min(1),
-  productAmount: z.string().min(1),
-  destination: z.string().min(1),
+  productName: z.string().min(1, "Product name is required"),
+  consignmentPcs: z.string().min(1, "Consignment details (PCS) are required"),
+  netWeightKg: z.string().min(1, "Net weight is required"),
+  grossWeightKg: z.string().min(1, "Gross weight is required"),
+  shipping: z.string().min(1, "Shipping is required"),
+  voyageFlightNo: z.string().min(1, "Voyage / flight number is required"),
+  loadingPort: z.string().min(1, "Loading port is required").default("Addis Ababa Airport"),
+  destination: z.string().min(1, "Destination is required"),
+  slaughteringDate: halalProductDateField,
+  productionDate: halalProductDateField,
+  expiryDate: halalProductDateField,
+  healthCertificateNo: z.string().min(1, "Health certificate number is required"),
+  slaughteringCertificate: z.string().min(1, "Slaughtering certificate is required"),
+  authorizedRepresentative: z.string().min(1, "Authorized representative is required"),
   notes: z.string().optional(),
 });
 

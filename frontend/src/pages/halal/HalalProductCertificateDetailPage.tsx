@@ -18,9 +18,7 @@ import {
   ExternalLink,
   FileText,
   Landmark,
-  MapPin,
   Package,
-  Scale,
   Upload,
   Wallet,
 } from "lucide-react";
@@ -306,35 +304,43 @@ export default function HalalProductCertificateDetailPage() {
           <CardTitle className="text-base">Shipment details</CardTitle>
           <CardDescription>Product and logistics information</CardDescription>
         </CardHeader>
-        <CardContent className="pt-4 grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2 flex items-start gap-2 text-sm">
-            <span className="text-muted-foreground shrink-0 w-28 flex items-center gap-1.5">
-              <FileText className="h-3.5 w-3.5" />
-              Parent certificate
-            </span>
-            <span className="font-mono font-medium">{pc.halalCertificate?.certificateId ?? "—"}</span>
-          </div>
-          <div className="flex items-start gap-2 text-sm sm:col-span-2">
-            <span className="text-muted-foreground shrink-0 w-28 flex items-center gap-1.5">
-              <Package className="h-3.5 w-3.5" />
-              Product
-            </span>
-            <span className="font-medium">{pc.productName}</span>
-          </div>
-          <div className="flex items-start gap-2 text-sm">
-            <span className="text-muted-foreground shrink-0 w-28 flex items-center gap-1.5">
-              <Scale className="h-3.5 w-3.5" />
-              Amount
-            </span>
-            <span>{pc.productAmount}</span>
-          </div>
-          <div className="flex items-start gap-2 text-sm">
-            <span className="text-muted-foreground shrink-0 w-28 flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" />
-              Destination
-            </span>
-            <span>{pc.destination}</span>
-          </div>
+        <CardContent className="pt-4 grid gap-3 sm:grid-cols-2">
+          {[
+            { label: "Parent certificate", value: pc.halalCertificate?.certificateId ?? "—", mono: true, span: 2 },
+            { label: "Product", value: pc.productName, span: 2 },
+            { label: "Consignment (PCS)", value: pc.consignmentPcs ?? "—" },
+            { label: "Net weight", value: pc.netWeightKg ? `${pc.netWeightKg} kg` : "—" },
+            { label: "Gross weight", value: pc.grossWeightKg ? `${pc.grossWeightKg} kg` : "—" },
+            { label: "Shipping", value: pc.shipping ?? "—" },
+            { label: "Voyage / flight no.", value: pc.voyageFlightNo ?? "—" },
+            { label: "Loading port", value: pc.loadingPort ?? "—" },
+            { label: "Destination", value: pc.destination },
+            {
+              label: "Slaughtering date",
+              value: pc.slaughteringDate
+                ? new Date(pc.slaughteringDate).toLocaleDateString()
+                : "—",
+            },
+            {
+              label: "Production date",
+              value: pc.productionDate ? new Date(pc.productionDate).toLocaleDateString() : "—",
+            },
+            {
+              label: "Expiry date",
+              value: pc.expiryDate ? new Date(pc.expiryDate).toLocaleDateString() : "—",
+            },
+            { label: "Health certificate no.", value: pc.healthCertificateNo ?? "—" },
+            { label: "Slaughtering certificate", value: pc.slaughteringCertificate ?? "—", span: 2 },
+            { label: "Authorized representative", value: pc.authorizedRepresentative ?? "—", span: 2 },
+          ].map((row) => (
+            <div
+              key={row.label}
+              className={`flex items-start gap-2 text-sm ${row.span === 2 ? "sm:col-span-2" : ""}`}
+            >
+              <span className="text-muted-foreground shrink-0 w-36 text-xs sm:text-sm">{row.label}</span>
+              <span className={row.mono ? "font-mono font-medium" : ""}>{row.value}</span>
+            </div>
+          ))}
           {pc.notes && (
             <div className="sm:col-span-2 text-sm rounded-lg border border-dashed border-muted-foreground/25 bg-muted/20 px-3 py-2">
               <span className="text-muted-foreground text-xs uppercase tracking-wide">Notes</span>

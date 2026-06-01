@@ -40,10 +40,10 @@ const CANVAS_H = PDF_PAGE_HEIGHT * DISPLAY_SCALE;
 type FabricFieldObject = fabric.Object & {
   fieldKey?: string;
   fieldLabel?: string;
-  fieldType?: "text" | "date" | "qrcode";
+  fieldType?: "text" | "date" | "qrcode" | "image";
 };
 
-type CatalogField = { key: string; label: string; type: "text" | "date" | "qrcode" };
+type CatalogField = { key: string; label: string; type: "text" | "date" | "qrcode" | "image" };
 
 function createFieldObject(
   field: CatalogField,
@@ -58,8 +58,13 @@ function createFieldObject(
   const rect = new fabric.Rect({
     width: w,
     height: h,
-    fill: field.type === "qrcode" ? "rgba(13, 148, 136, 0.12)" : "rgba(255, 255, 255, 0.85)",
-    stroke: field.type === "qrcode" ? "#0d9488" : "#0369a1",
+    fill:
+      field.type === "qrcode"
+        ? "rgba(13, 148, 136, 0.12)"
+        : field.type === "image"
+          ? "rgba(234, 179, 8, 0.15)"
+          : "rgba(255, 255, 255, 0.85)",
+    stroke: field.type === "qrcode" ? "#0d9488" : field.type === "image" ? "#ca8a04" : "#0369a1",
     strokeWidth: 1.5,
     rx: 2,
     ry: 2,

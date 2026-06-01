@@ -196,7 +196,9 @@ function ProductCertificateNestedRow({
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {p.productAmount} · {p.destination}
+          {p.consignmentPcs ?? p.productAmount} · {p.netWeightKg ? `${p.netWeightKg} kg net` : ""}
+          {p.netWeightKg && p.destination ? " · " : ""}
+          {p.destination}
         </p>
       </button>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">

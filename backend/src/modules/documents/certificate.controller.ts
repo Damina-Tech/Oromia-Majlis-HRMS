@@ -51,7 +51,7 @@ export async function previewCertificatePdf(req: Request, res: Response) {
     const data =
       body.data ??
       (template.certificateType
-        ? buildSampleCertificateData(template.certificateType)
+        ? await buildSampleCertificateData(template.certificateType)
         : {});
 
     const buffer = await generateCertificatePdfBuffer({

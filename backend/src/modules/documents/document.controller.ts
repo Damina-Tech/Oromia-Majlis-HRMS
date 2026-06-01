@@ -40,6 +40,19 @@ export async function uploadTemplateSourceFile(req: Request, res: Response) {
   }
 }
 
+/** Upload signature or seal image used on all certificate PDFs (stored in DocumentSettings). */
+export async function uploadCertificateAsset(req: Request, res: Response) {
+  try {
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const url = `/uploads/document-certificate-assets/${file.filename}`;
+    return res.status(200).json({ url });
+  } catch (error: any) {
+    console.error("Upload certificate asset error:", error);
+    return res.status(500).json({ message: error.message || "Upload failed" });
+  }
+}
+
 /**
  * List document templates
  */

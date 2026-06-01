@@ -3,13 +3,13 @@ export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT";
 export type CertificateCatalogField = {
   key: string;
   label: string;
-  type: "text" | "date" | "qrcode";
+  type: "text" | "date" | "qrcode" | "image";
 };
 
 export type CertificateLayoutField = {
   key: string;
   label: string;
-  type: "text" | "date" | "qrcode";
+  type: "text" | "date" | "qrcode" | "image";
   x: number;
   y: number;
   width: number;
@@ -34,4 +34,5 @@ export const DEFAULT_FIELD_SIZE: Record<string, { width: number; height: number;
   text: { width: 220, height: 28, fontSize: 12 },
   date: { width: 140, height: 24, fontSize: 11 },
   qrcode: { width: 80, height: 80 },
+  image: { width: 120, height: 48 },
 };

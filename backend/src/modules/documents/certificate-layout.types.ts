@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CertificateFieldTypeEnum = z.enum(["text", "date", "qrcode"]);
+export const CertificateFieldTypeEnum = z.enum(["text", "date", "qrcode", "image"]);
 export type CertificateFieldType = z.infer<typeof CertificateFieldTypeEnum>;
 
 export const CertificateLayoutFieldSchema = z.object({

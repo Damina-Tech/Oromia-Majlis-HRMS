@@ -11,6 +11,7 @@ import {
   downloadDocument,
   getMergeFields,
   uploadTemplateSourceFile,
+  uploadCertificateAsset,
 } from "./document.controller.js";
 import {
   getDocumentSettings,
@@ -25,7 +26,7 @@ import {
   deleteDocumentRequest,
 } from "./document-request.controller.js";
 import { hasPermission } from "../../middleware/auth.js";
-import { uploadDocumentTemplateSourceFile } from "../../lib/upload.js";
+import { uploadCertificateAssetFile, uploadDocumentTemplateSourceFile } from "../../lib/upload.js";
 import {
   getCertificateFieldCatalogHandler,
   previewCertificatePdf,
@@ -39,6 +40,13 @@ router.post(
   hasPermission("documents.manage"),
   uploadDocumentTemplateSourceFile.single("file"),
   uploadTemplateSourceFile
+);
+
+router.post(
+  "/certificate-assets/upload",
+  hasPermission("documents.manage"),
+  uploadCertificateAssetFile.single("file"),
+  uploadCertificateAsset
 );
 
 // Template routes

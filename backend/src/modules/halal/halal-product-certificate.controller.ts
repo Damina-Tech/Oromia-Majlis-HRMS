@@ -60,16 +60,12 @@ async function finalizeProductCertificateIssuance(
   const issuedAt = new Date();
   let pdfUrl: string | null = null;
   try {
-    const { pdfUrl: url } = await generateHalalProductCertificatePDF({
-      certificateNumber: certNum,
-      businessName: pc.business.name,
-      parentCertificateId: pc.halalCertificate.certificateId,
-      productName: pc.productName,
-      productAmount: pc.productAmount,
-      destination: pc.destination,
-      notes: pc.notes,
-      issuedAt,
-    });
+    const { halalProductCertificatePdfSourceFromRow } = await import(
+      "./halal-product-certificate-pdf-data.js"
+    );
+    const { pdfUrl: url } = await generateHalalProductCertificatePDF(
+      halalProductCertificatePdfSourceFromRow(pc, certNum, issuedAt)
+    );
     pdfUrl = url;
   } catch (err) {
     console.error("Halal product certificate PDF generation failed:", err);
@@ -124,13 +120,36 @@ export async function createProductCertificate(req: Request, res: Response) {
       return res.status(400).json({ message: "The business Halal certificate has expired" });
     }
 
+    const slaughteringDate = new Date(body.slaughteringDate);
+    const productionDate = new Date(body.productionDate);
+    const expiryDate = new Date(body.expiryDate);
+    if (
+      [slaughteringDate, productionDate, expiryDate].some((d) => Number.isNaN(d.getTime()))
+    ) {
+      return res.status(400).json({ message: "One or more dates are invalid" });
+    }
+
     const row = await prisma.halalProductCertificate.create({
       data: {
         halalCertificateId: parent.id,
         businessId: parent.businessId,
-        productName: body.productName,
-        productAmount: body.productAmount,
-        destination: body.destination,
+        productName: body.productName.trim(),
+        productAmount: `${body.netWeightKg.trim()} kg net / ${body.grossWeightKg.trim()} kg gross`,
+        consignmentPcs: body.consignmentPcs.trim(),
+        netWeightKg: body.netWeightKg.trim(),
+        grossWeightKg: body.grossWeightKg.trim(),
+        shipping: body.shipping.trim(),
+        voyageFlightNo: body.voyageFlightNo.trim(),
+        loadingPort: body.loadingPort.trim() || "Addis Ababa Airport",
+        destination: body.destination.trim(),
+        slaughteringDate,
+        productionDate,
+        expiryDate,
+        healthCertificateNo: body.healthCertificateNo.trim(),
+        slaughteringCertificate: body.slaughteringCertificate.trim(),
+        authorizedRepresentative: body.authorizedRepresentative.trim(),
+        signature: "",
+        seal: "",
         notes: body.notes?.trim() || null,
         feeAmount: new Prisma.Decimal(HALAL_PRODUCT_CERTIFICATE_FEE),
         status: HalalProductCertificateStatus.PAYMENT_PENDING,
@@ -380,16 +399,16 @@ export async function downloadProductCertificate(req: Request, res: Response) {
     const { renderProductHalalCertificatePdfBuffer } = await import("./halal-certificate-render.service.js");
     let templatePdf: Buffer | null = null;
     try {
-      templatePdf = await renderProductHalalCertificatePdfBuffer({
-        certificateNumber: row.certificateNumber,
-        businessName: row.business.name,
-        parentCertificateId: row.halalCertificate.certificateId,
-        productName: row.productName,
-        productAmount: row.productAmount,
-        destination: row.destination,
-        notes: row.notes,
-        issuedAt: row.issuedAt ?? new Date(),
-      });
+      const { halalProductCertificatePdfSourceFromRow } = await import(
+        "./halal-product-certificate-pdf-data.js"
+      );
+      templatePdf = await renderProductHalalCertificatePdfBuffer(
+        halalProductCertificatePdfSourceFromRow(
+          row,
+          row.certificateNumber,
+          row.issuedAt ?? new Date()
+        )
+      );
     } catch (renderErr: any) {
       console.error("Halal product certificate template render failed:", renderErr);
       return res.status(500).json({

@@ -1,8 +1,9 @@
 import { HalalCertificateTemplateType } from "@prisma/client";
+import { halalBusinessCertificateData } from "../documents/certificate-field-catalog.js";
 import {
-  halalBusinessCertificateData,
-  halalProductCertificateData,
-} from "../documents/certificate-field-catalog.js";
+  halalProductCertificatePdfData,
+  type HalalProductCertificatePdfSource,
+} from "./halal-product-certificate-pdf-data.js";
 import { generateCertificatePdfBuffer } from "../documents/certificate-pdf-generator.js";
 import {
   getActiveCertificateTemplateByCode,
@@ -75,28 +76,11 @@ export async function renderBusinessHalalCertificatePdfBuffer(cert: {
   });
 }
 
-export async function renderProductHalalCertificatePdfBuffer(row: {
-  certificateNumber: string;
-  businessName: string;
-  parentCertificateId: string;
-  productName: string;
-  productAmount: string;
-  destination: string;
-  notes: string | null;
-  issuedAt: Date;
-}): Promise<Buffer | null> {
+export async function renderProductHalalCertificatePdfBuffer(
+  row: HalalProductCertificatePdfSource
+): Promise<Buffer | null> {
   const verifyUrl = productVerifyUrl(row.certificateNumber);
-  const data = halalProductCertificateData({
-    certificateNumber: row.certificateNumber,
-    businessName: row.businessName,
-    parentCertificateId: row.parentCertificateId,
-    productName: row.productName,
-    productAmount: row.productAmount,
-    destination: row.destination,
-    notes: row.notes,
-    issuedAt: row.issuedAt,
-    verifyUrl,
-  });
+  const data = await halalProductCertificatePdfData(row, verifyUrl);
 
   return renderWithTemplate({
     templateCode: process.env.HALAL_PRODUCT_CERT_TEMPLATE_CODE,
