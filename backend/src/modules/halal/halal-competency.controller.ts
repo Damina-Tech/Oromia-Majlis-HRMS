@@ -9,12 +9,12 @@ import {
   RecordHalalCompetencyInterviewDto,
   ListHalalCompetencyQuery,
   ManualPaymentDto,
+  HALAL_COMPETENCY_FEE,
 } from "./halal.dto.js";
 import { paginate } from "../../lib/paginate.js";
 
 const prisma = new PrismaClient();
 
-export const HALAL_COMPETENCY_FEE = 1000;
 const RENEWAL_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 function getUserId(req: Request): string {
@@ -55,6 +55,23 @@ async function generateCompetencyCertificateNumber(): Promise<string> {
     where: { certificateNumber: { startsWith: `HAL-COMP-${year}-` } },
   });
   return `HAL-COMP-${year}-${(count + 1).toString().padStart(5, "0")}`;
+}
+
+async function finalizeCompetencyIssuanceWithBusinessAutoLink(
+  id: string,
+  paymentMethod: string,
+  extra: { chapaRefId?: string | null; manualApprovedById?: string | null },
+  ip?: string,
+  userAgent?: string
+) {
+  const row = await finalizeCompetencyIssuance(id, paymentMethod, extra);
+  try {
+    const { tryAutoFinalizeBusinessApplicationFromWorkerPayments } = await import("./halal.controller.js");
+    await tryAutoFinalizeBusinessApplicationFromWorkerPayments(id, ip, userAgent);
+  } catch (err) {
+    console.error("Auto business Halal certificate after worker competency payment failed:", err);
+  }
+  return row;
 }
 
 async function finalizeCompetencyIssuance(
@@ -539,7 +556,7 @@ export async function competencyChapaCallback(req: Request, res: Response) {
     if (verifyData.status !== "success" || verifyData.data?.status !== "success") {
       return res.status(400).send("Verification failed");
     }
-    await finalizeCompetencyIssuance(id, "CHAPA", { chapaRefId: ref_id || null });
+    await finalizeCompetencyIssuanceWithBusinessAutoLink(id, "CHAPA", { chapaRefId: ref_id || null }, req.ip, req.get("user-agent"));
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
@@ -587,7 +604,7 @@ export async function approveCompetencyManualPayment(req: Request, res: Response
     if (row.paymentMethod !== "MANUAL" || !row.paymentReceiptUrl) {
       return res.status(400).json({ message: "No manual receipt on file" });
     }
-    await finalizeCompetencyIssuance(id, "MANUAL", { manualApprovedById: actorId });
+    await finalizeCompetencyIssuanceWithBusinessAutoLink(id, "MANUAL", { manualApprovedById: actorId }, req.ip, req.get("user-agent"));
     const full = await prisma.halalCompetencyCertificate.findUnique({
       where: { id },
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },

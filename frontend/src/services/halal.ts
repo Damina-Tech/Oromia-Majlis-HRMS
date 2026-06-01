@@ -161,8 +161,81 @@ export interface HalalApplication {
   certificate?: HalalCertificate;
   /** Linked issued Halal competency certificates (workers) for this certification application. */
   competencyWorkerLinks?: HalalApplicationCompetencyWorkerLink[];
+  /** Owner-submitted worker registrations awaiting admin review (external competency certificates). */
+  competencyWorkerProposals?: HalalApplicationCompetencyWorkerProposal[];
   /** Present for halal.admin when a certificate exists */
   certificateLifecycle?: HalalCertificateLifecycle;
+}
+
+export type HalalCompetencyWorkerProposalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface HalalApplicationCompetencyWorkerProposal {
+  id: string;
+  applicationId: string;
+  fullName: string;
+  dateOfBirth?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  jobTitle?: string | null;
+  employerName: string;
+  uploadedCertificateUrl: string;
+  status: HalalCompetencyWorkerProposalStatus;
+  rejectionReason?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: { id: string; firstName: string; lastName: string; email?: string } | null;
+  competencyCertificate?: {
+    id: string;
+    fullName: string;
+    certificateNumber?: string | null;
+    status: string;
+    employerName: string;
+    jobTitle?: string | null;
+    pdfUrl?: string | null;
+    externalCertificateUrl?: string | null;
+    businessRegisteredWorker?: boolean;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HalalApplicationCompetencyWorkerProposalInput {
+  fullName: string;
+  dateOfBirth: string;
+  phone: string;
+  email: string;
+  jobTitle?: string;
+  uploadedCertificateUrl: string;
+}
+
+export interface HalalBusinessWorkerCompetencyProgress {
+  businessName: string;
+  applications: Array<{
+    id: string;
+    fullName: string;
+    status: HalalCompetencyStatus;
+    certificateNumber: string | null;
+    employerName: string;
+    jobTitle?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    updatedAt: string;
+    issuedAt?: string | null;
+    expiresAt?: string | null;
+    businessRegisteredWorker?: boolean;
+  }>;
+  registrations: Array<{
+    id: string;
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    jobTitle?: string | null;
+    status: HalalCompetencyWorkerProposalStatus;
+    rejectionReason?: string | null;
+    reviewedAt?: string | null;
+    createdAt: string;
+    uploadedCertificateUrl: string;
+    competencyCertificate?: { id: string; status: string; certificateNumber?: string | null } | null;
+  }>;
 }
 
 export interface HalalApplicationCompetencyWorkerLink {
@@ -192,6 +265,7 @@ export interface HalalCompetencyWorkerCandidate {
   jobTitle?: string | null;
   expiresAt?: string | null;
   issuedAt?: string | null;
+  businessRegisteredWorker?: boolean;
 }
 
 /** True once a signed agreement is on file; withdrawal/deletion of the application is blocked (server enforces too). */
@@ -370,6 +444,8 @@ export interface HalalCompetencyCertificate {
   jobTitle?: string | null;
   religiousAnswers: HalalCompetencyReligiousAnswers;
   supportLetterUrl?: string | null;
+  businessRegisteredWorker?: boolean;
+  externalCertificateUrl?: string | null;
   status: HalalCompetencyStatus;
   theoreticalScheduledAt?: string | null;
   theoreticalNotes?: string | null;
@@ -516,8 +592,15 @@ export interface HalalReportsOverview {
 
 export const halalApi = {
   businesses: {
-    list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string; status?: HalalBusinessStatus }) =>
+    list: (params?: { page?: number; limit?: number; category?: HalalBusinessCategory; search?: string; regionId?: string; status?: HalalBusinessStatus; employerDirectory?: boolean }) =>
       api.get<PaginatedResponse<HalalBusiness>>("/halal/businesses", { params }).then((r) => r.data),
+    /** Approved Halal businesses for competency applicant employer selection. */
+    listEmployerDirectory: () =>
+      api
+        .get<PaginatedResponse<HalalBusiness>>("/halal/businesses", {
+          params: { employerDirectory: true, status: "APPROVED", limit: 500, page: 1 },
+        })
+        .then((r) => r.data),
     get: (id: string) => api.get<HalalBusiness>(`/halal/businesses/${id}`).then((r) => r.data),
     create: (data: Partial<HalalBusiness>) => api.post<HalalBusiness>("/halal/businesses", data).then((r) => r.data),
     update: (id: string, data: Partial<HalalBusiness>) => api.patch<HalalBusiness>(`/halal/businesses/${id}`, data).then((r) => r.data),
@@ -584,8 +667,24 @@ export const halalApi = {
       api.post<HalalApplication>(`/halal/applications/${id}/approve`, data).then((r) => r.data),
     competencyWorkerCandidates: (id: string) =>
       api.get<{ items: HalalCompetencyWorkerCandidate[] }>(`/halal/applications/${id}/competency-workers/candidates`).then((r) => r.data),
+    businessWorkerCompetencyProgress: (id: string) =>
+      api.get<HalalBusinessWorkerCompetencyProgress>(`/halal/applications/${id}/competency-workers/progress`).then((r) => r.data),
     submitCompetencyWorkers: (id: string, competencyCertificateIds: string[]) =>
       api.post<HalalApplication>(`/halal/applications/${id}/competency-workers`, { competencyCertificateIds }).then((r) => r.data),
+    submitCompetencyWorkerProposals: (id: string, workers: HalalApplicationCompetencyWorkerProposalInput[]) =>
+      api
+        .post<HalalApplication>(`/halal/applications/${id}/competency-workers/proposals`, { workers })
+        .then((r) => r.data),
+    approveCompetencyWorkerProposal: (id: string, proposalId: string) =>
+      api
+        .post<HalalApplication>(`/halal/applications/${id}/competency-workers/proposals/${proposalId}/approve`)
+        .then((r) => r.data),
+    rejectCompetencyWorkerProposal: (id: string, proposalId: string, reason: string) =>
+      api
+        .post<HalalApplication>(`/halal/applications/${id}/competency-workers/proposals/${proposalId}/reject`, { reason })
+        .then((r) => r.data),
+    finalizeCompetencyWorkersFromProposals: (id: string) =>
+      api.post<HalalApplication>(`/halal/applications/${id}/competency-workers/finalize-from-proposals`).then((r) => r.data),
     pause: (id: string, reason: string) =>
       api.post<HalalApplication>(`/halal/applications/${id}/pause`, { reason }).then((r) => r.data),
     resume: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/resume`).then((r) => r.data),

@@ -1,8 +1,19 @@
-import React from "react";
+import React, { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { halalApi } from "@/services/halal";
 import type { HalalCompetencyReligiousAnswers } from "@/services/halal";
+
+const EMPLOYER_OTHER_VALUE = "__other__";
 
 /** Labels for read-only detail views and consistent copy */
 export const COMPETENCY_REGISTRATION_LABELS = {
@@ -172,6 +183,21 @@ export function CompetencyApplicantFormFields({
   /** Optional file upload block (new application page or draft) */
   supportLetterSlot?: React.ReactNode;
 }) {
+  const { data: employerDirectory, isLoading: loadingEmployers } = useQuery({
+    queryKey: ["halal-employer-directory"],
+    queryFn: () => halalApi.businesses.listEmployerDirectory(),
+  });
+  const approvedBusinesses = employerDirectory?.items ?? [];
+
+  const employerSelectValue = useMemo(() => {
+    const name = form.employerName.trim();
+    if (!name) return "";
+    const match = approvedBusinesses.find((b) => b.name.trim().toLowerCase() === name.toLowerCase());
+    return match?.id ?? EMPLOYER_OTHER_VALUE;
+  }, [form.employerName, approvedBusinesses]);
+
+  const showOtherEmployerField = employerSelectValue === EMPLOYER_OTHER_VALUE;
+
   return (
     <>
       <Card>
@@ -221,13 +247,49 @@ export function CompetencyApplicantFormFields({
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="comp-employer">Current employer / organization</Label>
-            <Input
-              id="comp-employer"
-              value={form.employerName}
-              onChange={(e) => setForm((s) => ({ ...s, employerName: e.target.value }))}
-              required
-            />
+            <Select
+              value={employerSelectValue}
+              onValueChange={(value) => {
+                if (value === EMPLOYER_OTHER_VALUE) {
+                  setForm((s) => ({ ...s, employerName: "" }));
+                  return;
+                }
+                const business = approvedBusinesses.find((b) => b.id === value);
+                setForm((s) => ({ ...s, employerName: business?.name ?? "" }));
+              }}
+              disabled={loadingEmployers}
+            >
+              <SelectTrigger id="comp-employer">
+                <SelectValue
+                  placeholder={loadingEmployers ? "Loading businesses…" : "Select registered Halal business"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {approvedBusinesses.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value={EMPLOYER_OTHER_VALUE}>Other (not listed)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Choose a registered Halal business if your employer is on the list. Otherwise select Other and enter the name
+              below.
+            </p>
           </div>
+          {showOtherEmployerField && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="comp-employer-other">Employer / organization name</Label>
+              <Input
+                id="comp-employer-other"
+                value={form.employerName}
+                onChange={(e) => setForm((s) => ({ ...s, employerName: e.target.value }))}
+                placeholder="Enter employer or organization name"
+                required
+              />
+            </div>
+          )}
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="comp-job">Job title (optional)</Label>
             <Input

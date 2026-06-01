@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
 
 export default function HalalCompetencyNewPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [form, setForm] = useState<CompetencyApplicantFormValues>(emptyCompetencyApplicantForm);
   const [letterFile, setLetterFile] = useState<File | null>(null);
@@ -28,6 +29,12 @@ export default function HalalCompetencyNewPage() {
     if (!user) return;
     setForm((prev) => applyRegistrationPrefill(prev, user));
   }, [user?.id, user?.email, user?.firstName, user?.lastName]);
+
+  useEffect(() => {
+    const employer = searchParams.get("employer")?.trim();
+    if (!employer) return;
+    setForm((prev) => (prev.employerName.trim() ? prev : { ...prev, employerName: employer }));
+  }, [searchParams]);
 
   const createMutation = useMutation({
     mutationFn: async () => {

@@ -165,6 +165,9 @@ export default function HalalCompetencyDetailPage() {
     if (searchParams.get("payment") === "chapa" && id) {
       queryClient.invalidateQueries({ queryKey: ["halal-competency-certificate", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-competency-certificates"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-application"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["halal-application-worker-competency-progress"] });
       toast.success("Payment received");
       setSearchParams({}, { replace: true });
     }
@@ -175,6 +178,12 @@ export default function HalalCompetencyDetailPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, id, queryClient, setSearchParams]);
+
+  const invalidateLinkedBusinessApplications = () => {
+    queryClient.invalidateQueries({ queryKey: ["halal-application"] });
+    queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+    queryClient.invalidateQueries({ queryKey: ["halal-application-worker-competency-progress"] });
+  };
 
   const patchMutation = useMutation({
     mutationFn: () => {
@@ -297,6 +306,7 @@ export default function HalalCompetencyDetailPage() {
       halalApi.competencyCertificates.confirmManualPayment(id!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-competency-certificate", id] });
+      invalidateLinkedBusinessApplications();
       toast.success("Receipt submitted. Awaiting approval.");
       setManualBank("");
       setManualReceipt(null);
@@ -309,7 +319,12 @@ export default function HalalCompetencyDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-competency-certificate", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-competency-certificates"] });
-      toast.success("Payment approved. Certificate issued.");
+      invalidateLinkedBusinessApplications();
+      toast.success(
+        row?.businessRegisteredWorker
+          ? "Payment approved. Worker certificate issued. Business Halal certificate will update when all workers are paid."
+          : "Payment approved. Certificate issued."
+      );
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed"),
   });
@@ -409,7 +424,9 @@ export default function HalalCompetencyDetailPage() {
   const ownerTechnicalBlock =
     !!c.technicalScheduledAt || typeof c.technicalPassed === "boolean";
   const showOwnerInterviewSummary =
-    (isOwner || hasPermission("halal.admin")) && (ownerTheoreticalBlock || ownerTechnicalBlock);
+    !c.businessRegisteredWorker &&
+    (isOwner || hasPermission("halal.admin")) &&
+    (ownerTheoreticalBlock || ownerTechnicalBlock);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5 pb-16">
@@ -448,6 +465,23 @@ export default function HalalCompetencyDetailPage() {
           </div>
         </div>
       </div>
+
+      {c.businessRegisteredWorker && (
+        <Card className={`${workflowCardClass} border-cyan-200/55 dark:border-cyan-900/45`}>
+          <CardHeader className="pb-2 border-b border-cyan-100/80 dark:border-cyan-900/40 bg-cyan-50/40 dark:bg-cyan-950/20">
+            <CardTitle className="text-base text-cyan-950 dark:text-cyan-100">Business-registered worker</CardTitle>
+            <CardDescription className="text-cyan-900/80 dark:text-cyan-200/80">
+              This worker was registered on a Halal business certification application for{" "}
+              <strong>{c.employerName}</strong>. Interviews were waived based on the uploaded external certificate.
+              {isOwner && c.status === "PAYMENT_PENDING" && !isPaid
+                ? ` Pay ${fee.toLocaleString()} ETB below to issue this worker's platform certificate and link them to the business. When every approved worker on that application is paid, the business Halal certificate is generated automatically.`
+                : isOwner && c.status === "ISSUED"
+                  ? " Payment complete — this worker counts toward the business certification once all approved workers on that application are paid."
+                  : null}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <Card className={`${workflowCardClass} overflow-hidden`}>
         <CardHeader className="pb-2 border-b border-teal-100/80 dark:border-teal-900/40 bg-teal-50/50 dark:bg-teal-950/30">

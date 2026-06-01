@@ -138,6 +138,23 @@ export const SubmitHalalApplicationCompetencyWorkersDto = z.object({
   competencyCertificateIds: z.array(z.string().min(1)).min(2).max(40),
 });
 
+export const HalalApplicationCompetencyWorkerProposalEntryDto = z.object({
+  fullName: z.string().trim().min(2).max(200),
+  dateOfBirth: z.string().trim().min(1),
+  phone: z.string().trim().min(5).max(40),
+  email: z.string().trim().email().max(200),
+  jobTitle: z.string().trim().max(200).optional(),
+  uploadedCertificateUrl: z.string().trim().min(1).max(500),
+});
+
+export const SubmitHalalApplicationCompetencyWorkerProposalsDto = z.object({
+  workers: z.array(HalalApplicationCompetencyWorkerProposalEntryDto).min(1).max(20),
+});
+
+export const RejectHalalApplicationCompetencyWorkerProposalDto = z.object({
+  reason: z.string().trim().min(10, "Please provide a reason (at least 10 characters)").max(2000),
+});
+
 export const PauseHalalApplicationDto = z.object({
   reason: z.string().trim().min(10, "Please provide a reason (at least 10 characters)").max(4000),
 });
@@ -257,6 +274,11 @@ export const ListHalalBusinessesQuery = z.object({
   search: z.string().optional(),
   regionId: z.string().optional(),
   status: z.nativeEnum(HalalBusinessStatus).optional(),
+  /** When true, returns approved Halal businesses for competency employer selection (not limited to owner). */
+  employerDirectory: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 export const ListHalalApplicationsQuery = z.object({
@@ -353,6 +375,8 @@ export const RecordHalalCompetencyInterviewDto = z.object({
   passed: z.boolean(),
   notes: z.string().max(4000).optional(),
 });
+
+export const HALAL_COMPETENCY_FEE = 1000;
 
 export const ListHalalCompetencyQuery = z.object({
   page: z.coerce.number().min(1).default(1),

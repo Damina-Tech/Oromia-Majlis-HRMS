@@ -25,7 +25,12 @@ import {
   approveManualPayment,
   rejectManualPayment,
   listApplicationCompetencyWorkerCandidates,
+  listApplicationBusinessCompetencyProgress,
   submitApplicationCompetencyWorkers,
+  submitApplicationCompetencyWorkerProposals,
+  approveCompetencyWorkerProposal,
+  rejectCompetencyWorkerProposal,
+  finalizeApplicationCompetencyWorkersFromProposals,
   pauseApplication,
   resumeApplication,
   approveApplication,
@@ -163,11 +168,41 @@ router.get(
   hasAnyPermission(...HALAL_MODULE_ACCESS),
   listApplicationCompetencyWorkerCandidates
 );
+router.get(
+  "/applications/:id/competency-workers/progress",
+  requireAuth,
+  hasAnyPermission(...HALAL_MODULE_ACCESS),
+  listApplicationBusinessCompetencyProgress
+);
 router.post(
   "/applications/:id/competency-workers",
   requireAuth,
   hasAnyPermission("halal.business"),
   submitApplicationCompetencyWorkers
+);
+router.post(
+  "/applications/:id/competency-workers/proposals",
+  requireAuth,
+  hasAnyPermission("halal.business"),
+  submitApplicationCompetencyWorkerProposals
+);
+router.post(
+  "/applications/:id/competency-workers/proposals/:proposalId/approve",
+  requireAuth,
+  hasAnyPermission("halal.admin", "halal.supervisor"),
+  approveCompetencyWorkerProposal
+);
+router.post(
+  "/applications/:id/competency-workers/proposals/:proposalId/reject",
+  requireAuth,
+  hasAnyPermission("halal.admin", "halal.supervisor"),
+  rejectCompetencyWorkerProposal
+);
+router.post(
+  "/applications/:id/competency-workers/finalize-from-proposals",
+  requireAuth,
+  hasAnyPermission("halal.business"),
+  finalizeApplicationCompetencyWorkersFromProposals
 );
 router.post("/applications/:id/pause", requireAuth, hasPermission("halal.admin"), pauseApplication);
 router.post("/applications/:id/resume", requireAuth, hasPermission("halal.admin"), resumeApplication);

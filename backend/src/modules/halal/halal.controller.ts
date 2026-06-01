@@ -27,12 +27,15 @@ import {
   CreateViolationDto,
   ManualPaymentDto,
   SubmitHalalApplicationCompetencyWorkersDto,
+  SubmitHalalApplicationCompetencyWorkerProposalsDto,
+  RejectHalalApplicationCompetencyWorkerProposalDto,
   PauseHalalApplicationDto,
   RejectHalalManualPaymentDto,
   ListHalalBusinessesQuery,
   ListHalalApplicationsQuery,
   ListHalalInspectionsQuery,
   ListHalalViolationsQuery,
+  HALAL_COMPETENCY_FEE,
 } from "./halal.dto.js";
 import { paginate } from "../../lib/paginate.js";
 import fetch from "node-fetch";
@@ -426,7 +429,19 @@ export async function listBusinesses(req: Request, res: Response) {
       perms?.includes("halal.committee");
     const q = ListHalalBusinessesQuery.parse(req.query);
     const where: any = {};
-    if (!isPrivileged) where.userId = userId;
+    const canUseEmployerDirectory =
+      q.employerDirectory === true &&
+      (isPrivileged ||
+        perms?.includes("halal.competency") ||
+        perms?.includes("halal.business") ||
+        perms?.includes("halal.review") ||
+        perms?.includes("halal.finance") ||
+        perms?.includes("halal.audit"));
+    if (canUseEmployerDirectory) {
+      where.status = HalalBusinessStatus.APPROVED;
+    } else if (!isPrivileged) {
+      where.userId = userId;
+    }
     if (q.category) where.category = q.category;
     if (q.regionId) where.regionId = q.regionId;
     if (q.status) where.status = q.status;
@@ -942,6 +957,25 @@ export async function getApplication(req: Request, res: Response) {
                 issuedAt: true,
                 pdfUrl: true,
                 status: true,
+              },
+            },
+          },
+        },
+        competencyWorkerProposals: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            reviewedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+            competencyCertificate: {
+              select: {
+                id: true,
+                fullName: true,
+                certificateNumber: true,
+                status: true,
+                employerName: true,
+                jobTitle: true,
+                pdfUrl: true,
+                externalCertificateUrl: true,
+                businessRegisteredWorker: true,
               },
             },
           },
@@ -1560,6 +1594,190 @@ export async function rejectManualPayment(req: Request, res: Response) {
   }
 }
 
+function parseCompetencyWorkerDateOfBirth(isoDate: string): Date {
+  const raw = isoDate.trim();
+  const d = new Date(raw.includes("T") ? raw : `${raw}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) throw new Error("Invalid date of birth");
+  return d;
+}
+
+async function assertCompetencyCertificateIdsLinkable(applicationId: string, uniqueIds: string[]): Promise<void> {
+  const now = new Date();
+  const pendingCount = await prisma.halalApplicationCompetencyWorkerProposal.count({
+    where: { applicationId, status: "PENDING" },
+  });
+  if (pendingCount > 0) {
+    throw new Error(
+      "Worker registrations are still awaiting admin review. Resolve pending reviews before issuing the business certificate."
+    );
+  }
+
+  const approvedProposalCertIds = (
+    await prisma.halalApplicationCompetencyWorkerProposal.findMany({
+      where: { applicationId, status: "APPROVED", competencyCertificateId: { not: null } },
+      select: { competencyCertificateId: true },
+    })
+  )
+    .map((p) => p.competencyCertificateId!)
+    .filter(Boolean);
+
+  const certs = await prisma.halalCompetencyCertificate.findMany({
+    where: { id: { in: uniqueIds } },
+    select: {
+      id: true,
+      status: true,
+      expiresAt: true,
+      certificateNumber: true,
+      businessRegisteredWorker: true,
+    },
+  });
+  if (certs.length !== uniqueIds.length) {
+    throw new Error("One or more selected competency records were not found.");
+  }
+
+  for (const cert of certs) {
+    const isApprovedBusinessWorker =
+      cert.businessRegisteredWorker &&
+      cert.status === HalalCompetencyStatus.ISSUED &&
+      cert.certificateNumber &&
+      approvedProposalCertIds.includes(cert.id);
+    const isIssuedPlatform =
+      cert.status === HalalCompetencyStatus.ISSUED &&
+      cert.certificateNumber &&
+      (!cert.expiresAt || cert.expiresAt > now);
+    if (!isApprovedBusinessWorker && !isIssuedPlatform) {
+      throw new Error(
+        "Each worker must be an active issued Halal competency certificate holder, or an admin-approved worker registration for this application."
+      );
+    }
+  }
+}
+
+async function linkCompetencyWorkersAndIssueBusinessCertificate(
+  applicationId: string,
+  uniqueIds: string[],
+  actorId: string,
+  ip?: string,
+  userAgent?: string
+) {
+  await prisma.$transaction([
+    prisma.halalApplicationCompetencyWorker.createMany({
+      data: uniqueIds.map((competencyCertificateId) => ({
+        applicationId,
+        competencyCertificateId,
+      })),
+    }),
+    prisma.halalApplication.update({
+      where: { id: applicationId },
+      data: { status: HalalApplicationStatus.APPROVED },
+    }),
+  ]);
+
+  await generateCertificateForApplication(applicationId, actorId, ip, userAgent);
+
+  return prisma.halalApplication.findUnique({
+    where: { id: applicationId },
+    include: {
+      business: { include: { region: true, zone: true, woreda: true } },
+      inspections: { include: { inspector: true } },
+      certificate: true,
+      competencyWorkerLinks: {
+        include: {
+          competencyCertificate: {
+            select: {
+              id: true,
+              fullName: true,
+              certificateNumber: true,
+              employerName: true,
+              jobTitle: true,
+              expiresAt: true,
+              issuedAt: true,
+              pdfUrl: true,
+              status: true,
+              businessRegisteredWorker: true,
+              externalCertificateUrl: true,
+            },
+          },
+        },
+      },
+      competencyWorkerProposals: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          reviewedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+          competencyCertificate: {
+            select: {
+              id: true,
+              fullName: true,
+              certificateNumber: true,
+              status: true,
+              employerName: true,
+              jobTitle: true,
+              pdfUrl: true,
+              externalCertificateUrl: true,
+              businessRegisteredWorker: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+/** After a business-registered worker pays competency fee, link workers and issue business Halal cert when all approved workers are issued. */
+export async function tryAutoFinalizeBusinessApplicationFromWorkerPayments(
+  competencyCertificateId: string,
+  ip?: string,
+  userAgent?: string
+): Promise<{ finalized: boolean; applicationId?: string }> {
+  const proposal = await prisma.halalApplicationCompetencyWorkerProposal.findFirst({
+    where: { competencyCertificateId, status: "APPROVED" },
+    include: {
+      application: { include: { business: true, certificate: true } },
+    },
+  });
+  if (!proposal?.application) return { finalized: false };
+
+  const app = proposal.application;
+  if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK) return { finalized: false };
+  if (!app.feePaidAt || app.certificate || app.pausedAt) return { finalized: false };
+
+  const pendingReviews = await prisma.halalApplicationCompetencyWorkerProposal.count({
+    where: { applicationId: app.id, status: "PENDING" },
+  });
+  if (pendingReviews > 0) return { finalized: false };
+
+  const existingLinks = await prisma.halalApplicationCompetencyWorker.count({
+    where: { applicationId: app.id },
+  });
+  if (existingLinks > 0) return { finalized: false };
+
+  const approved = await prisma.halalApplicationCompetencyWorkerProposal.findMany({
+    where: { applicationId: app.id, status: "APPROVED", competencyCertificateId: { not: null } },
+    include: {
+      competencyCertificate: { select: { id: true, status: true, certificateNumber: true } },
+    },
+  });
+  if (approved.length < 2) return { finalized: false };
+
+  const allIssued = approved.every(
+    (p) =>
+      p.competencyCertificate?.status === HalalCompetencyStatus.ISSUED &&
+      p.competencyCertificate.certificateNumber
+  );
+  if (!allIssued) return { finalized: false };
+
+  const uniqueIds = [...new Set(approved.map((p) => p.competencyCertificateId!).filter(Boolean))];
+  await assertCompetencyCertificateIdsLinkable(app.id, uniqueIds);
+  await linkCompetencyWorkersAndIssueBusinessCertificate(
+    app.id,
+    uniqueIds,
+    app.business.userId,
+    ip,
+    userAgent
+  );
+  return { finalized: true, applicationId: app.id };
+}
+
 export async function listApplicationCompetencyWorkerCandidates(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
@@ -1605,7 +1823,37 @@ export async function listApplicationCompetencyWorkerCandidates(req: Request, re
       orderBy: { fullName: "asc" },
     });
     const bizLower = (app.business.name || "").trim().toLowerCase();
-    const sorted = [...rows].sort((a, b) => {
+    const approvedProposalRows = await prisma.halalApplicationCompetencyWorkerProposal.findMany({
+      where: { applicationId: id, status: "APPROVED", competencyCertificateId: { not: null } },
+      include: {
+        competencyCertificate: {
+          select: {
+            id: true,
+            fullName: true,
+            certificateNumber: true,
+            employerName: true,
+            jobTitle: true,
+            expiresAt: true,
+            issuedAt: true,
+            businessRegisteredWorker: true,
+          },
+        },
+      },
+    });
+    const approvedProposalItems = approvedProposalRows
+      .map((p) => p.competencyCertificate)
+      .filter(
+        (c): c is NonNullable<typeof c> =>
+          c != null && c.status === HalalCompetencyStatus.ISSUED && !!c.certificateNumber
+      );
+
+    const mergedById = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) mergedById.set(r.id, r);
+    for (const r of approvedProposalItems) {
+      if (!mergedById.has(r.id)) mergedById.set(r.id, r);
+    }
+    const combined = [...mergedById.values()];
+    const sorted = combined.sort((a, b) => {
       const am = bizLower && a.employerName.toLowerCase().includes(bizLower) ? 0 : 1;
       const bm = bizLower && b.employerName.toLowerCase().includes(bizLower) ? 0 : 1;
       if (am !== bm) return am - bm;
@@ -1614,6 +1862,75 @@ export async function listApplicationCompetencyWorkerCandidates(req: Request, re
     res.json({ items: sorted });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to list competency workers" });
+  }
+}
+
+export async function listApplicationBusinessCompetencyProgress(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isPrivileged =
+      perms?.includes("halal.admin") ||
+      perms?.includes("halal.supervisor") ||
+      perms?.includes("halal.committee") ||
+      perms?.includes("halal.inspector") ||
+      perms?.includes("halal.audit") ||
+      perms?.includes("halal.finance");
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (!isPrivileged && app.business.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const bizName = (app.business.name || "").trim();
+    const applications = bizName
+      ? await prisma.halalCompetencyCertificate.findMany({
+          where: { employerName: { contains: bizName, mode: "insensitive" } },
+          select: {
+            id: true,
+            fullName: true,
+            status: true,
+            certificateNumber: true,
+            employerName: true,
+            jobTitle: true,
+            email: true,
+            phone: true,
+            updatedAt: true,
+            issuedAt: true,
+            expiresAt: true,
+            businessRegisteredWorker: true,
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+
+    const registrations = await prisma.halalApplicationCompetencyWorkerProposal.findMany({
+      where: { applicationId: id },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        jobTitle: true,
+        status: true,
+        rejectionReason: true,
+        reviewedAt: true,
+        createdAt: true,
+        uploadedCertificateUrl: true,
+        competencyCertificate: {
+          select: { id: true, status: true, certificateNumber: true },
+        },
+      },
+    });
+
+    res.json({ businessName: bizName, applications, registrations });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to load worker competency progress" });
   }
 }
 
@@ -1644,66 +1961,269 @@ export async function submitApplicationCompetencyWorkers(req: Request, res: Resp
       return res.status(400).json({ message: "Certificate already issued for this application." });
     }
 
-    const now = new Date();
-    const certs = await prisma.halalCompetencyCertificate.findMany({
-      where: {
-        id: { in: uniqueIds },
-        status: HalalCompetencyStatus.ISSUED,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        certificateNumber: { not: null },
-      },
-      select: { id: true },
+    await assertCompetencyCertificateIdsLinkable(id, uniqueIds);
+    const result = await linkCompetencyWorkersAndIssueBusinessCertificate(
+      id,
+      uniqueIds,
+      userId,
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await enrichHalalApplicationResponse(result as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to link competency workers" });
+  }
+}
+
+export async function submitApplicationCompetencyWorkerProposals(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const body = SubmitHalalApplicationCompetencyWorkerProposalsDto.parse(req.body);
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true, certificate: true },
     });
-    if (certs.length !== uniqueIds.length) {
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) {
+      return res.status(403).json({ message: "Only the business owner can register workers for this application." });
+    }
+    assertHalalApplicationNotPaused(app);
+    if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK || !app.feePaidAt) {
       return res.status(400).json({
-        message:
-          "One or more selected records are not active issued Halal competency certificates. Refresh the list and try again.",
+        message: "Workers can only be registered after payment is complete and before your Halal certificate is issued.",
+      });
+    }
+    if (app.certificate) {
+      return res.status(400).json({ message: "Certificate already issued for this application." });
+    }
+
+    const pendingCount = await prisma.halalApplicationCompetencyWorkerProposal.count({
+      where: { applicationId: id, status: "PENDING" },
+    });
+    if (pendingCount > 0) {
+      return res.status(400).json({
+        message: "You already have worker registrations awaiting admin review. Wait for review or contact support before submitting more.",
       });
     }
 
-    await prisma.$transaction([
-      prisma.halalApplicationCompetencyWorker.createMany({
-        data: uniqueIds.map((competencyCertificateId) => ({
-          applicationId: id,
-          competencyCertificateId,
-        })),
-      }),
-      prisma.halalApplication.update({
-        where: { id },
-        data: { status: HalalApplicationStatus.APPROVED },
-      }),
-    ]);
+    const existingProposalCount = await prisma.halalApplicationCompetencyWorkerProposal.count({
+      where: { applicationId: id },
+    });
+    if (existingProposalCount === 0 && body.workers.length < 2) {
+      return res.status(400).json({ message: "Register at least two workers on your first submission." });
+    }
 
-    await generateCertificateForApplication(id, userId, req.ip, req.get("user-agent"));
+    const employerName = app.business.name.trim();
+    await prisma.halalApplicationCompetencyWorkerProposal.createMany({
+      data: body.workers.map((w) => ({
+        applicationId: id,
+        fullName: w.fullName.trim(),
+        dateOfBirth: parseCompetencyWorkerDateOfBirth(w.dateOfBirth),
+        phone: w.phone.trim(),
+        email: w.email.trim(),
+        jobTitle: w.jobTitle?.trim() || null,
+        employerName,
+        uploadedCertificateUrl: w.uploadedCertificateUrl.trim(),
+      })),
+    });
 
-    const result = await prisma.halalApplication.findUnique({
+    const updated = await prisma.halalApplication.findUnique({
       where: { id },
       include: {
-        business: { include: { region: true, zone: true, woreda: true } },
-        inspections: { include: { inspector: true } },
-        certificate: true,
-        competencyWorkerLinks: {
+        business: true,
+        competencyWorkerProposals: {
+          orderBy: { createdAt: "asc" },
           include: {
+            reviewedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+            competencyCertificate: true,
+          },
+        },
+      },
+    });
+    res.json(await enrichHalalApplicationResponse(updated as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to submit worker registrations" });
+  }
+}
+
+export async function approveCompetencyWorkerProposal(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    const { id, proposalId } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
+    if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK) {
+      return res.status(400).json({ message: "Worker review is only available during the competency linking stage." });
+    }
+
+    const proposal = await prisma.halalApplicationCompetencyWorkerProposal.findFirst({
+      where: { id: proposalId, applicationId: id },
+    });
+    if (!proposal) return res.status(404).json({ message: "Worker registration not found" });
+    if (proposal.status !== "PENDING") {
+      return res.status(400).json({ message: "This worker registration has already been reviewed." });
+    }
+
+    const cert = await prisma.halalCompetencyCertificate.create({
+      data: {
+        userId: app.business.userId,
+        fullName: proposal.fullName,
+        dateOfBirth: proposal.dateOfBirth,
+        phone: proposal.phone,
+        email: proposal.email,
+        employerName: proposal.employerName,
+        jobTitle: proposal.jobTitle,
+        religiousAnswers: { registeredViaBusinessApplication: true },
+        externalCertificateUrl: proposal.uploadedCertificateUrl,
+        businessRegisteredWorker: true,
+        theoreticalPassed: true,
+        technicalPassed: true,
+        status: HalalCompetencyStatus.PAYMENT_PENDING,
+        feeAmount: new Prisma.Decimal(HALAL_COMPETENCY_FEE),
+      },
+    });
+
+    await prisma.halalApplicationCompetencyWorkerProposal.update({
+      where: { id: proposalId },
+      data: {
+        status: "APPROVED",
+        reviewedById: actorId,
+        reviewedAt: new Date(),
+        competencyCertificateId: cert.id,
+      },
+    });
+
+    const updated = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: {
+        business: true,
+        competencyWorkerProposals: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            reviewedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
             competencyCertificate: {
               select: {
                 id: true,
                 fullName: true,
                 certificateNumber: true,
+                status: true,
                 employerName: true,
                 jobTitle: true,
-                expiresAt: true,
-                issuedAt: true,
                 pdfUrl: true,
-                status: true,
+                externalCertificateUrl: true,
+                businessRegisteredWorker: true,
               },
             },
           },
         },
       },
     });
-    res.json(await attachAgreementTemplateResolvedUrl(result as any));
+    res.json(await enrichHalalApplicationResponse(updated as any));
   } catch (e: any) {
-    res.status(400).json({ message: e.message || "Failed to link competency workers" });
+    res.status(400).json({ message: e.message || "Failed to approve worker registration" });
+  }
+}
+
+export async function rejectCompetencyWorkerProposal(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    const { id, proposalId } = req.params;
+    const body = RejectHalalApplicationCompetencyWorkerProposalDto.parse(req.body);
+    const app = await prisma.halalApplication.findUnique({ where: { id } });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    assertHalalApplicationNotPaused(app);
+
+    const proposal = await prisma.halalApplicationCompetencyWorkerProposal.findFirst({
+      where: { id: proposalId, applicationId: id },
+    });
+    if (!proposal) return res.status(404).json({ message: "Worker registration not found" });
+    if (proposal.status !== "PENDING") {
+      return res.status(400).json({ message: "This worker registration has already been reviewed." });
+    }
+
+    await prisma.halalApplicationCompetencyWorkerProposal.update({
+      where: { id: proposalId },
+      data: {
+        status: "REJECTED",
+        rejectionReason: body.reason,
+        reviewedById: actorId,
+        reviewedAt: new Date(),
+      },
+    });
+
+    const updated = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: {
+        business: true,
+        competencyWorkerProposals: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            reviewedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+            competencyCertificate: true,
+          },
+        },
+      },
+    });
+    res.json(await enrichHalalApplicationResponse(updated as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to reject worker registration" });
+  }
+}
+
+export async function finalizeApplicationCompetencyWorkersFromProposals(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true, certificate: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId) {
+      return res.status(403).json({ message: "Only the business owner can confirm workers for this application." });
+    }
+    assertHalalApplicationNotPaused(app);
+    if (app.status !== HalalApplicationStatus.PENDING_COMPETENCY_LINK || !app.feePaidAt) {
+      return res.status(400).json({ message: "Workers can only be confirmed at this stage." });
+    }
+    if (app.certificate) {
+      return res.status(400).json({ message: "Certificate already issued for this application." });
+    }
+
+    const pendingCount = await prisma.halalApplicationCompetencyWorkerProposal.count({
+      where: { applicationId: id, status: "PENDING" },
+    });
+    if (pendingCount > 0) {
+      return res.status(400).json({ message: "Some worker registrations are still awaiting admin review." });
+    }
+
+    const approved = await prisma.halalApplicationCompetencyWorkerProposal.findMany({
+      where: { applicationId: id, status: "APPROVED", competencyCertificateId: { not: null } },
+      select: { competencyCertificateId: true },
+    });
+    const uniqueIds = [...new Set(approved.map((p) => p.competencyCertificateId!).filter(Boolean))];
+    if (uniqueIds.length < 2) {
+      return res.status(400).json({
+        message: "At least two admin-approved worker registrations are required before your business Halal certificate can be issued.",
+      });
+    }
+
+    await assertCompetencyCertificateIdsLinkable(id, uniqueIds);
+    const result = await linkCompetencyWorkersAndIssueBusinessCertificate(
+      id,
+      uniqueIds,
+      userId,
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(await enrichHalalApplicationResponse(result as any));
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to issue business certificate" });
   }
 }
 

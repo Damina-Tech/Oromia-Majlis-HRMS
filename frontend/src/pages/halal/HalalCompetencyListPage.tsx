@@ -140,6 +140,11 @@ export default function HalalCompetencyListPage() {
                       <TableCell className="align-top py-3">
                         <div className="font-medium text-foreground">{row.fullName}</div>
                         <div className="text-xs text-muted-foreground md:hidden mt-0.5 truncate max-w-[200px]">{row.employerName}</div>
+                        {row.businessRegisteredWorker && (
+                          <Badge variant="outline" className="mt-1 text-[10px] border-cyan-300 text-cyan-800 dark:border-cyan-800 dark:text-cyan-200">
+                            Business-registered worker
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="align-top py-3 hidden md:table-cell text-muted-foreground">{row.employerName}</TableCell>
                       <TableCell className="align-top py-3 hidden lg:table-cell">

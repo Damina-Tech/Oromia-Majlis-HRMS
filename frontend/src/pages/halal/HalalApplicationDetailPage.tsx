@@ -38,6 +38,8 @@ import {
   Landmark,
   Upload,
   UserPlus,
+  GraduationCap,
+  Copy,
   ExternalLink,
   MapPin,
   Mail,
@@ -48,9 +50,11 @@ import {
   Users,
   Pause,
   PlayCircle,
+  X,
 } from "lucide-react";
 import {
   halalApi,
+  HALAL_COMPETENCY_FEE_ETB,
   type HalalApplication,
   type HalalApplicationStatus,
   type HalalInspectionExpertRole,
@@ -94,7 +98,7 @@ const NEXT_ACTION_HINTS: Record<HalalApplicationStatus, { title: string; descrip
   PENDING_COMPETENCY_LINK: {
     title: "Confirm Halal competency workers",
     description:
-      "Your certification fee is paid. Select at least two people from the national list of issued Halal competency certificate holders who work at your facility. Your business Halal certificate is generated after you confirm.",
+      "Your certification fee is paid. Link at least two Halal competency workers—by selecting from the list, registering external certificate holders for admin review, or after staff complete platform certification. Pay the competency fee for each approved registered worker; your business Halal certificate is issued automatically when all are paid.",
   },
   INSPECTION: {
     title: "Committee review",
@@ -317,6 +321,34 @@ export default function HalalMyApplicationDetailPage() {
 
   const [competencySearch, setCompetencySearch] = useState("");
   const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
+  const [competencyWorkerTab, setCompetencyWorkerTab] = useState<"existing" | "register" | "platform">("existing");
+
+  type WorkerProposalDraft = {
+    fullName: string;
+    dateOfBirth: string;
+    phone: string;
+    email: string;
+    jobTitle: string;
+    certificateFile: File | null;
+  };
+
+  const emptyWorkerProposalDraft = (): WorkerProposalDraft => ({
+    fullName: "",
+    dateOfBirth: "",
+    phone: "",
+    email: "",
+    jobTitle: "",
+    certificateFile: null,
+  });
+
+  const [workerProposalDrafts, setWorkerProposalDrafts] = useState<WorkerProposalDraft[]>([
+    emptyWorkerProposalDraft(),
+    emptyWorkerProposalDraft(),
+  ]);
+  const [workerRegistrationFormExpanded, setWorkerRegistrationFormExpanded] = useState(true);
+  const [rejectWorkerProposalOpen, setRejectWorkerProposalOpen] = useState(false);
+  const [rejectWorkerProposalId, setRejectWorkerProposalId] = useState<string | null>(null);
+  const [rejectWorkerProposalReason, setRejectWorkerProposalReason] = useState("");
 
   const { data: competencyCandidatesRes, isLoading: loadingCompetencyCandidates } = useQuery({
     queryKey: ["halal-application-competency-candidates", id],
@@ -330,6 +362,15 @@ export default function HalalMyApplicationDetailPage() {
       setCompetencySearch("");
     }
   }, [app?.status]);
+
+  useEffect(() => {
+    if (app?.status !== "PENDING_COMPETENCY_LINK") return;
+    const proposalCount = app.competencyWorkerProposals?.length ?? 0;
+    if (proposalCount > 0) {
+      setWorkerRegistrationFormExpanded(false);
+      setWorkerProposalDrafts([]);
+    }
+  }, [app?.status, app?.competencyWorkerProposals?.length]);
 
   const filteredCompetencyCandidates = useMemo(() => {
     const items = competencyCandidatesRes?.items ?? [];
@@ -354,6 +395,66 @@ export default function HalalMyApplicationDetailPage() {
       const msg = e.response?.data?.message;
       toast.error(typeof msg === "string" ? msg : "Failed to confirm workers");
     },
+  });
+
+  const submitWorkerProposalsMutation = useMutation({
+    mutationFn: async () => {
+      const workers = await Promise.all(
+        workerProposalDrafts.map(async (w) => {
+          if (!w.fullName.trim() || !w.dateOfBirth || !w.phone.trim() || !w.email.trim()) {
+            throw new Error("Each worker needs full name, date of birth, phone, and email.");
+          }
+          if (!w.certificateFile) {
+            throw new Error(`Upload a Halal competency certificate for ${w.fullName.trim() || "each worker"}.`);
+          }
+          const { url } = await halalApi.businesses.uploadDocument(w.certificateFile);
+          return {
+            fullName: w.fullName.trim(),
+            dateOfBirth: w.dateOfBirth,
+            phone: w.phone.trim(),
+            email: w.email.trim(),
+            jobTitle: w.jobTitle.trim() || undefined,
+            uploadedCertificateUrl: url,
+          };
+        })
+      );
+      return halalApi.applications.submitCompetencyWorkerProposals(id!, workers);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-competency-certificates"] });
+      toast.success("Worker registrations submitted for admin review.");
+      setWorkerRegistrationFormExpanded(false);
+      setWorkerProposalDrafts([]);
+      setCompetencyWorkerTab("register");
+    },
+    onError: (e: any) => {
+      const msg = e.response?.data?.message ?? e.message;
+      toast.error(typeof msg === "string" ? msg : "Failed to submit worker registrations");
+    },
+  });
+
+  const approveWorkerProposalMutation = useMutation({
+    mutationFn: (proposalId: string) => halalApi.applications.approveCompetencyWorkerProposal(id!, proposalId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-competency-certificates"] });
+      toast.success("Worker registration approved.");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve worker registration"),
+  });
+
+  const rejectWorkerProposalMutation = useMutation({
+    mutationFn: ({ proposalId, reason }: { proposalId: string; reason: string }) =>
+      halalApi.applications.rejectCompetencyWorkerProposal(id!, proposalId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      toast.success("Worker registration rejected.");
+      setRejectWorkerProposalOpen(false);
+      setRejectWorkerProposalId(null);
+      setRejectWorkerProposalReason("");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to reject worker registration"),
   });
 
   useEffect(() => {
@@ -607,6 +708,60 @@ export default function HalalMyApplicationDetailPage() {
   const visibleInspections = inCommitteeReviewAfterFirstInspection
     ? (application.inspections ?? []).filter((i) => i.completedAt != null)
     : (application.inspections ?? []);
+  const competencyWorkerProposals = application.competencyWorkerProposals ?? [];
+  const pendingWorkerProposals = competencyWorkerProposals.filter((p) => p.status === "PENDING");
+  const approvedWorkerProposals = competencyWorkerProposals.filter((p) => p.status === "APPROVED");
+  const hasPendingWorkerProposals = pendingWorkerProposals.length > 0;
+  const hasWorkerProposalHistory = competencyWorkerProposals.length > 0;
+  const approvedWorkersAwaitingPayment = approvedWorkerProposals.filter(
+    (p) => p.competencyCertificate?.status === "PAYMENT_PENDING"
+  );
+  const allApprovedWorkersPaid =
+    approvedWorkerProposals.length >= 2 &&
+    !hasPendingWorkerProposals &&
+    approvedWorkerProposals.every((p) => p.competencyCertificate?.status === "ISSUED");
+  const registeredWorkersAwaitingPayment =
+    approvedWorkerProposals.length >= 2 &&
+    !hasPendingWorkerProposals &&
+    approvedWorkersAwaitingPayment.length > 0 &&
+    application.status === "PENDING_COMPETENCY_LINK";
+  const workersPaymentPhase =
+    approvedWorkerProposals.length >= 2 &&
+    !hasPendingWorkerProposals &&
+    (registeredWorkersAwaitingPayment || allApprovedWorkersPaid);
+  const businessNameForWorkers = application.business?.name ?? "your business";
+  const workerCompetencyShareUrl = `${window.location.origin}/halal/competency/new?${new URLSearchParams({
+    employer: businessNameForWorkers,
+  }).toString()}`;
+  const workerCompetencyProgressPath = isAdminContext
+    ? `/admin/halal/applications/${id}/worker-competency`
+    : `/halal/applications/${id}/worker-competency`;
+
+  const copyWorkerCompetencyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(workerCompetencyShareUrl);
+      toast.success("Worker registration link copied. Share it with your staff so they can apply on the platform.");
+    } catch {
+      toast.error("Could not copy link to clipboard");
+    }
+  };
+
+  const closeWorkerRegistrationDraftForm = () => {
+    setWorkerRegistrationFormExpanded(false);
+    setWorkerProposalDrafts([]);
+  };
+
+  const removeWorkerProposalDraft = (idx: number) => {
+    setWorkerProposalDrafts((rows) => {
+      const next = rows.filter((_, i) => i !== idx);
+      if (hasWorkerProposalHistory && next.length === 0) {
+        setWorkerRegistrationFormExpanded(false);
+      }
+      return next;
+    });
+  };
+
+  const isAddingMoreWorkerProposals = hasWorkerProposalHistory && workerRegistrationFormExpanded;
 
   const handleApproveWithMeetingMinutes = async () => {
     try {
@@ -1598,7 +1753,7 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
-      {/* Owner: after payment, pick ≥2 issued competency certificate holders before business certificate is generated */}
+      {/* Owner: after payment, confirm Halal competency workers before business certificate is generated */}
       {application.status === "PENDING_COMPETENCY_LINK" && isApplicationOwner && !isPaused && (
         <Card className="shadow-sm border-cyan-200/70 dark:border-cyan-900/40 bg-cyan-50/20 dark:bg-cyan-950/15">
           <CardHeader>
@@ -1607,89 +1762,492 @@ export default function HalalMyApplicationDetailPage() {
               Halal competency workers
             </CardTitle>
             <CardDescription>
-              Your certification fee is paid. Select at least two people from the list of{" "}
-              <strong>issued</strong> Halal competency certificate holders who work at{" "}
-              <strong>{application.business?.name ?? "your business"}</strong>. Names whose employer matches your
-              business appear first. Your business Halal certificate is created after you confirm.
+              Your certification fee is paid. Link at least two Halal competency-certified workers at{" "}
+              <strong>{businessNameForWorkers}</strong> before your business Halal certificate is generated.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="competency-worker-search">Search list</Label>
-              <Input
-                id="competency-worker-search"
-                placeholder="Name, certificate number, or employer…"
-                value={competencySearch}
-                onChange={(e) => setCompetencySearch(e.target.value)}
-              />
-            </div>
-            {loadingCompetencyCandidates ? (
-              <p className="text-sm text-muted-foreground">Loading competency certificate holders…</p>
-            ) : (
-              <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-                <ul className="divide-y divide-border">
-                  {filteredCompetencyCandidates.length === 0 ? (
-                    <li className="px-3 py-6 text-sm text-muted-foreground text-center">
-                      No matching issued competency certificates. If the list is empty, workers must complete competency
-                      certification (issued status) before they appear here.
+            {hasPendingWorkerProposals && (
+              <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/25 p-3 text-sm text-amber-950 dark:text-amber-100">
+                {pendingWorkerProposals.length} worker registration
+                {pendingWorkerProposals.length === 1 ? "" : "s"} awaiting admin review. After Majlis approves at least
+                two workers, pay the competency fee for each to generate your business Halal certificate.
+              </div>
+            )}
+            {registeredWorkersAwaitingPayment && (
+              <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/25 p-3 text-sm text-amber-950 dark:text-amber-100 space-y-3">
+                <div className="space-y-1">
+                  <p>
+                    {approvedWorkersAwaitingPayment.length} approved worker
+                    {approvedWorkersAwaitingPayment.length === 1 ? "" : "s"} still need competency certificate payment (
+                    {HALAL_COMPETENCY_FEE_ETB.toLocaleString()} ETB each).
+                  </p>
+                  <p className="text-xs text-amber-900/85 dark:text-amber-200/85">
+                    Pay for each worker below. When every approved worker&apos;s payment is complete, your business Halal
+                    certificate is generated automatically.
+                  </p>
+                </div>
+                <ul className="space-y-2">
+                  {approvedWorkersAwaitingPayment.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200/60 bg-background/60 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{p.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{p.email ?? p.phone ?? "—"}</p>
+                      </div>
+                      {p.competencyCertificate?.id && (
+                        <Button
+                          size="sm"
+                          className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                          onClick={() => navigate(`/halal/competency/${p.competencyCertificate!.id}`)}
+                        >
+                          <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                          Pay now
+                        </Button>
+                      )}
                     </li>
-                  ) : (
-                    filteredCompetencyCandidates.map((c) => {
-                      const checked = selectedCompetencyIds.includes(c.id);
-                      return (
-                        <li key={c.id} className="flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40">
-                          <Checkbox
-                            id={`comp-worker-${c.id}`}
-                            checked={checked}
-                            onCheckedChange={() => {
-                              setSelectedCompetencyIds((prev) =>
-                                prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id]
-                              );
-                            }}
-                            className="mt-0.5"
-                          />
-                          <label htmlFor={`comp-worker-${c.id}`} className="min-w-0 flex-1 cursor-pointer space-y-0.5">
-                            <p className="text-sm font-medium leading-tight">{c.fullName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Cert. {c.certificateNumber ?? "—"} · {c.employerName}
-                              {c.jobTitle ? ` · ${c.jobTitle}` : ""}
-                            </p>
-                            {c.expiresAt && (
-                              <p className="text-xs text-muted-foreground">
-                                Valid until {new Date(c.expiresAt).toLocaleDateString()}
-                              </p>
-                            )}
-                          </label>
-                          {c.certificateNumber ? (
-                            <Button variant="ghost" size="sm" className="shrink-0 h-8 text-xs" asChild>
-                              <a
-                                href={`/verify/halal-competency/${encodeURIComponent(c.certificateNumber)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </a>
-                            </Button>
-                          ) : null}
-                        </li>
-                      );
-                    })
-                  )}
+                  ))}
                 </ul>
               </div>
             )}
-            <p className="text-sm text-muted-foreground">
-              Selected: <strong>{selectedCompetencyIds.length}</strong> (minimum 2 required)
-            </p>
-            <Button
-              className="bg-cyan-700 hover:bg-cyan-800 text-white"
-              disabled={
-                selectedCompetencyIds.length < 2 || submitCompetencyWorkersMutation.isPending || loadingCompetencyCandidates
-              }
-              onClick={() => submitCompetencyWorkersMutation.mutate()}
-            >
-              {submitCompetencyWorkersMutation.isPending ? "Confirming…" : "Confirm workers and issue certificate"}
-            </Button>
+            {allApprovedWorkersPaid && application.status === "PENDING_COMPETENCY_LINK" && (
+              <div className="rounded-lg border border-emerald-200/70 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/25 p-3 text-sm text-emerald-950 dark:text-emerald-100">
+                All approved workers are paid. Your business Halal certificate will be issued momentarily…
+              </div>
+            )}
+
+            <Tabs value={competencyWorkerTab} onValueChange={(v) => setCompetencyWorkerTab(v as typeof competencyWorkerTab)}>
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                <TabsTrigger value="existing" className="text-xs sm:text-sm">
+                  Select from list
+                </TabsTrigger>
+                <TabsTrigger value="register" className="text-xs sm:text-sm">
+                  Register workers
+                </TabsTrigger>
+                <TabsTrigger value="platform" className="text-xs sm:text-sm">
+                  Platform registration
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="existing" className="space-y-4 mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Choose from issued Halal competency certificate holders already in the system. Workers whose employer
+                  matches <strong>{businessNameForWorkers}</strong> appear first.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="competency-worker-search">Search list</Label>
+                  <Input
+                    id="competency-worker-search"
+                    placeholder="Name, certificate number, or employer…"
+                    value={competencySearch}
+                    onChange={(e) => setCompetencySearch(e.target.value)}
+                  />
+                </div>
+                {loadingCompetencyCandidates ? (
+                  <p className="text-sm text-muted-foreground">Loading competency certificate holders…</p>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto rounded-md border border-border">
+                    <ul className="divide-y divide-border">
+                      {filteredCompetencyCandidates.length === 0 ? (
+                        <li className="px-3 py-6 text-sm text-muted-foreground text-center">
+                          No matching issued certificates yet. Use <strong>Register workers</strong> if staff already
+                          hold external competency certificates, or <strong>Platform registration</strong> to have them
+                          apply through the normal process.
+                        </li>
+                      ) : (
+                        filteredCompetencyCandidates.map((c) => {
+                          const checked = selectedCompetencyIds.includes(c.id);
+                          return (
+                            <li key={c.id} className="flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40">
+                              <Checkbox
+                                id={`comp-worker-${c.id}`}
+                                checked={checked}
+                                disabled={hasPendingWorkerProposals}
+                                onCheckedChange={() => {
+                                  setSelectedCompetencyIds((prev) =>
+                                    prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id]
+                                  );
+                                }}
+                                className="mt-0.5"
+                              />
+                          <label htmlFor={`comp-worker-${c.id}`} className="min-w-0 flex-1 cursor-pointer space-y-0.5">
+                            <p className="text-sm font-medium leading-tight flex flex-wrap items-center gap-2">
+                              {c.fullName}
+                              {c.businessRegisteredWorker && (
+                                <Badge variant="outline" className="text-[10px] font-normal border-cyan-300 text-cyan-800">
+                                  Admin-approved registration
+                                </Badge>
+                              )}
+                            </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Cert. {c.certificateNumber ?? "—"} · {c.employerName}
+                                  {c.jobTitle ? ` · ${c.jobTitle}` : ""}
+                                </p>
+                                {c.expiresAt && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Valid until {new Date(c.expiresAt).toLocaleDateString()}
+                                  </p>
+                                )}
+                              </label>
+                              {c.certificateNumber ? (
+                                <Button variant="ghost" size="sm" className="shrink-0 h-8 text-xs" asChild>
+                                  <a
+                                    href={`/verify/halal-competency/${encodeURIComponent(c.certificateNumber)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                </Button>
+                              ) : null}
+                            </li>
+                          );
+                        })
+                      )}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  Selected: <strong>{selectedCompetencyIds.length}</strong> (minimum 2 required)
+                </p>
+                <Button
+                  className="bg-cyan-700 hover:bg-cyan-800 text-white"
+                  disabled={
+                    hasPendingWorkerProposals ||
+                    selectedCompetencyIds.length < 2 ||
+                    submitCompetencyWorkersMutation.isPending ||
+                    loadingCompetencyCandidates
+                  }
+                  onClick={() => submitCompetencyWorkersMutation.mutate()}
+                >
+                  {submitCompetencyWorkersMutation.isPending ? "Confirming…" : "Confirm workers and issue certificate"}
+                </Button>
+              </TabsContent>
+
+              <TabsContent value="register" className="space-y-4 mt-4">
+                <p className="text-sm text-muted-foreground">
+                  If your workers already hold Halal competency certificates but are not in the system, register at least
+                  two of them with their details and upload a copy of each certificate. After Majlis approves each worker,
+                  pay the competency fee ({HALAL_COMPETENCY_FEE_ETB.toLocaleString()} ETB per worker) to link them to{" "}
+                  <strong>{businessNameForWorkers}</strong>. Your business Halal certificate is issued automatically once
+                  all approved workers are paid.
+                </p>
+
+                {hasWorkerProposalHistory && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-sm font-medium">Submitted registrations</p>
+                    <ul className="space-y-2">
+                      {competencyWorkerProposals.map((p) => (
+                        <li key={p.id} className="flex flex-wrap items-start justify-between gap-2 text-sm border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                          <div className="min-w-0">
+                            <p className="font-medium">{p.fullName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {p.email ?? "—"} · {p.phone ?? "—"}
+                            </p>
+                            {p.status === "REJECTED" && p.rejectionReason && (
+                              <p className="text-xs text-red-700 dark:text-red-300 mt-1 whitespace-pre-wrap">Reason: {p.rejectionReason}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <Badge
+                              variant="outline"
+                              className={
+                                p.status === "PENDING"
+                                  ? "border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-200"
+                                  : p.status === "APPROVED"
+                                    ? p.competencyCertificate?.status === "ISSUED"
+                                      ? "border-teal-300 text-teal-800 dark:border-teal-800 dark:text-teal-200"
+                                      : "border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200"
+                                    : "border-red-300 text-red-800 dark:border-red-800 dark:text-red-200"
+                              }
+                            >
+                              {p.status === "APPROVED" && p.competencyCertificate?.status === "PAYMENT_PENDING"
+                                ? "Approved · payment due"
+                                : p.status === "APPROVED" && p.competencyCertificate?.status === "ISSUED"
+                                  ? "Paid · issued"
+                                  : p.status.replace(/_/g, " ")}
+                            </Badge>
+                            {p.status === "APPROVED" &&
+                              p.competencyCertificate?.status === "PAYMENT_PENDING" &&
+                              p.competencyCertificate.id && (
+                                <Button
+                                  size="sm"
+                                  className="h-8 bg-amber-600 hover:bg-amber-700 text-white"
+                                  onClick={() => navigate(`/halal/competency/${p.competencyCertificate!.id}`)}
+                                >
+                                  <CreditCard className="h-3.5 w-3.5 mr-1" />
+                                  Pay
+                                </Button>
+                              )}
+                            <Button variant="ghost" size="sm" className="h-8" asChild>
+                              <a href={resolveFileUrl(p.uploadedCertificateUrl) ?? "#"} target="_blank" rel="noopener noreferrer">
+                                <Eye className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!hasPendingWorkerProposals && !workersPaymentPhase && (
+                  <div className="space-y-4">
+                    {workerRegistrationFormExpanded && workerProposalDrafts.length > 0 && (
+                      <>
+                        {isAddingMoreWorkerProposals && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                            <p className="text-sm font-medium">Add more workers</p>
+                            <Button type="button" variant="ghost" size="sm" onClick={closeWorkerRegistrationDraftForm}>
+                              <X className="h-4 w-4 mr-1" />
+                              Close
+                            </Button>
+                          </div>
+                        )}
+                        {workerProposalDrafts.map((w, idx) => (
+                          <div key={idx} className="rounded-lg border border-border p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-medium">Worker {idx + 1}</p>
+                              {(isAddingMoreWorkerProposals && workerProposalDrafts.length >= 1) ||
+                              (!isAddingMoreWorkerProposals && workerProposalDrafts.length > 2) ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 h-8"
+                                  onClick={() => removeWorkerProposalDraft(idx)}
+                                >
+                                  Remove
+                                </Button>
+                              ) : null}
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label>Full name</Label>
+                                <Input
+                                  value={w.fullName}
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) => (i === idx ? { ...r, fullName: e.target.value } : r))
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label>Date of birth</Label>
+                                <Input
+                                  type="date"
+                                  value={w.dateOfBirth}
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) => (i === idx ? { ...r, dateOfBirth: e.target.value } : r))
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label>Phone</Label>
+                                <Input
+                                  type="tel"
+                                  value={w.phone}
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) => (i === idx ? { ...r, phone: e.target.value } : r))
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label>Email</Label>
+                                <Input
+                                  type="email"
+                                  value={w.email}
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) => (i === idx ? { ...r, email: e.target.value } : r))
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label>Job title (optional)</Label>
+                                <Input
+                                  value={w.jobTitle}
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) => (i === idx ? { ...r, jobTitle: e.target.value } : r))
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label>Halal competency certificate (PDF or image)</Label>
+                                <Input
+                                  type="file"
+                                  accept=".pdf,image/*"
+                                  onChange={(e) =>
+                                    setWorkerProposalDrafts((rows) =>
+                                      rows.map((r, i) =>
+                                        i === idx ? { ...r, certificateFile: e.target.files?.[0] ?? null } : r
+                                      )
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {!isAddingMoreWorkerProposals && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setWorkerProposalDrafts((rows) => [...rows, emptyWorkerProposalDraft()])}
+                            >
+                              <UserPlus className="h-4 w-4 mr-1" />
+                              Add another worker
+                            </Button>
+                          )}
+                          {isAddingMoreWorkerProposals && (
+                            <Button type="button" variant="outline" size="sm" onClick={closeWorkerRegistrationDraftForm}>
+                              Close
+                            </Button>
+                          )}
+                          <Button
+                            className="bg-cyan-700 hover:bg-cyan-800 text-white"
+                            disabled={
+                              (isAddingMoreWorkerProposals
+                                ? workerProposalDrafts.length < 1
+                                : workerProposalDrafts.length < 2) || submitWorkerProposalsMutation.isPending
+                            }
+                            onClick={() => submitWorkerProposalsMutation.mutate()}
+                          >
+                            {submitWorkerProposalsMutation.isPending
+                              ? "Submitting…"
+                              : isAddingMoreWorkerProposals
+                                ? "Submit worker for admin review"
+                                : "Submit workers for admin review"}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+
+                    {hasWorkerProposalHistory && !workerRegistrationFormExpanded && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setWorkerRegistrationFormExpanded(true);
+                          setWorkerProposalDrafts([emptyWorkerProposalDraft()]);
+                        }}
+                      >
+                        <UserPlus className="h-4 w-4 mr-1" />
+                        Add another worker
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+              </TabsContent>
+
+              <TabsContent value="platform" className="space-y-4 mt-4">
+                <div className="rounded-lg border border-border bg-background/60 p-4 space-y-3">
+                  <p className="text-sm flex items-start gap-2">
+                    <GraduationCap className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" />
+                    <span>
+                      If your staff do not yet have Halal competency certification, each worker should create their own
+                      account and apply through the normal competency programme. When completing the application they
+                      should enter <strong>{businessNameForWorkers}</strong> as their employer.
+                    </span>
+                  </p>
+                  <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1 pl-1">
+                    <li>Worker registers on the platform and starts a Halal competency application.</li>
+                    <li>They complete interviews, pay the competency fee, and receive an issued certificate.</li>
+                    <li>Return here and use <strong>Select from list</strong> to link them to this business application.</li>
+                  </ol>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button variant="outline" size="sm" type="button" onClick={() => void copyWorkerCompetencyShareLink()}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy link for workers
+                    </Button>
+                    <Button variant="outline" size="sm" type="button" onClick={() => navigate(workerCompetencyProgressPath)}>
+                      <Users className="h-4 w-4 mr-2" />
+                      View worker competency progress
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
+
+      {application.status === "PENDING_COMPETENCY_LINK" && canCommitteeReview && hasWorkerProposalHistory && (
+        <Card className="shadow-sm border-violet-200/70 dark:border-violet-900/40">
+          <CardHeader>
+            <CardTitle className="text-base">Review registered competency workers</CardTitle>
+            <CardDescription>
+              The business owner submitted worker details with external competency certificates. Approve valid workers so
+              the owner can pay the competency fee for each. When every approved worker is paid, the business Halal
+              certificate is issued automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {competencyWorkerProposals.map((p) => (
+              <div key={p.id} className="rounded-md border border-border p-3 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{p.fullName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.email ?? "—"} · {p.phone ?? "—"}
+                      {p.jobTitle ? ` · ${p.jobTitle}` : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Employer: {p.employerName}</p>
+                  </div>
+                  <Badge variant="outline">{p.status.replace(/_/g, " ")}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={resolveFileUrl(p.uploadedCertificateUrl) ?? "#"} target="_blank" rel="noopener noreferrer">
+                      <Eye className="h-4 w-4 mr-1" />
+                      View certificate
+                    </a>
+                  </Button>
+                  {p.status === "PENDING" && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={approveWorkerProposalMutation.isPending || isPaused}
+                        onClick={() => approveWorkerProposalMutation.mutate(p.id)}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-300 text-red-700"
+                        disabled={isPaused}
+                        onClick={() => {
+                          setRejectWorkerProposalId(p.id);
+                          setRejectWorkerProposalReason("");
+                          setRejectWorkerProposalOpen(true);
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {p.status === "REJECTED" && p.rejectionReason && (
+                  <p className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap">{p.rejectionReason}</p>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
@@ -1699,8 +2257,14 @@ export default function HalalMyApplicationDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">Halal competency workers</CardTitle>
             <CardDescription>
-              Payment is complete. The business owner must select at least two issued Halal competency certificate holders
-              from the national list before the business Halal certificate is generated.
+              Payment is complete. The business owner must link at least two Halal competency workers—by selecting from the
+              list, registering external certificate holders for review and payment, or after staff complete platform
+              competency certification—before the business Halal certificate is generated.
+              {hasPendingWorkerProposals
+                ? ` ${pendingWorkerProposals.length} worker registration(s) awaiting review.`
+                : registeredWorkersAwaitingPayment
+                  ? ` ${approvedWorkersAwaitingPayment.length} approved worker(s) awaiting competency payment.`
+                  : null}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -2036,7 +2600,52 @@ export default function HalalMyApplicationDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Reject dialog */}
+      <Dialog
+        open={rejectWorkerProposalOpen}
+        onOpenChange={(o) => !rejectWorkerProposalMutation.isPending && setRejectWorkerProposalOpen(o)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject worker registration</DialogTitle>
+            <DialogDescription>
+              The business owner will see your reason and can submit a corrected registration.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="reject-worker-proposal-reason">Reason for rejection</Label>
+            <Textarea
+              id="reject-worker-proposal-reason"
+              rows={4}
+              value={rejectWorkerProposalReason}
+              onChange={(e) => setRejectWorkerProposalReason(e.target.value)}
+              placeholder="Explain what was wrong and what the owner should provide…"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectWorkerProposalOpen(false)} disabled={rejectWorkerProposalMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                rejectWorkerProposalMutation.isPending ||
+                !rejectWorkerProposalId ||
+                rejectWorkerProposalReason.trim().length < 10
+              }
+              onClick={() =>
+                rejectWorkerProposalId &&
+                rejectWorkerProposalMutation.mutate({
+                  proposalId: rejectWorkerProposalId,
+                  reason: rejectWorkerProposalReason.trim(),
+                })
+              }
+            >
+              {rejectWorkerProposalMutation.isPending ? "Rejecting…" : "Reject worker"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={rejectManualPaymentOpen}
         onOpenChange={(o) => !rejectManualPaymentMutation.isPending && setRejectManualPaymentOpen(o)}
