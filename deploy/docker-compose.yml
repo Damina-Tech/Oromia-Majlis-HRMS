@@ -1,0 +1,38 @@
+# PostgreSQL + Redis for HRMS (run on VPS: docker compose up -d)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hrms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hrms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/env/postgres.env}
+      POSTGRES_DB: ${POSTGRES_DB:-majlis_hrms}
+    volumes:
+      - hrms_pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hrms} -d ${POSTGRES_DB:-majlis_hrms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hrms-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in deploy/env/postgres.env}
+    volumes:
+      - hrms_redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hrms_pg_data:
+  hrms_redis_data:

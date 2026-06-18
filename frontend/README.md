@@ -1,6 +1,32 @@
 HRMS Software UI
 
-## Tech Features
+# VPS deployment (Ubuntu + Nginx + PM2 + Docker)
+# Full guide: ../DEPLOYMENT.md
+
+## Quick start on VPS
+
+```bash
+ssh root@YOUR_VPS_IP
+git clone https://github.com/Damina-Tech/Oromia-Majlis-HRMS.git /var/www/hrms
+cd /var/www/hrms
+bash deploy/scripts/vps-bootstrap.sh
+bash deploy/scripts/generate-secrets.sh    # save output
+cp deploy/env/postgres.env.example deploy/env/postgres.env
+cp deploy/env/backend.env.example backend/.env
+cp deploy/env/frontend.env.example frontend/.env.production
+# edit the three env files with secrets and your public URL
+cp deploy/nginx/hrms-ip-only.conf /etc/nginx/sites-available/hrms
+ln -sf /etc/nginx/sites-available/hrms /etc/nginx/sites-enabled/hrms
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+bash deploy/scripts/deploy-app.sh main
+```
+
+See **[DEPLOYMENT.md](../DEPLOYMENT.md)** for HTTPS, security checklist, and troubleshooting.
+
+---
+
+## Tech stack (local dev)
 
 - ⚡️ **Vite** - Lightning fast build tool
 - 🔥 **React 18** - Latest React features

@@ -12,9 +12,18 @@
  */
 
 /**
- * Base API URL from environment variable or fallback to localhost for development
+ * Base API URL: explicit VITE_API_URL, or same-origin in browser, or localhost in dev.
  */
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+function resolveApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "http://localhost:4000";
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 /**
  * Full API endpoint URL (includes /api/v1)

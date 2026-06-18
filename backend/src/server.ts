@@ -13,11 +13,28 @@ import { processMembershipExpiryReminders } from "./modules/membership/membershi
 import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
 import { uploadsRoot } from "./lib/uploads-path.js";
 
+function assertProductionSecrets() {
+  if (process.env.NODE_ENV !== "production") return;
+  const weak = ["your-access-secret", "your-refresh-secret", "change_me_long_random_string", "change_me_also_long_random_string"];
+  const access = process.env.JWT_ACCESS_SECRET || "";
+  const refresh = process.env.JWT_REFRESH_SECRET || "";
+  if (!access || !refresh || weak.includes(access) || weak.includes(refresh) || access.length < 32) {
+    console.error("FATAL: Set strong JWT_ACCESS_SECRET and JWT_REFRESH_SECRET in production (32+ chars).");
+    process.exit(1);
+  }
+}
+
+assertProductionSecrets();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 
 // Security middleware
 app.use(
@@ -87,12 +104,13 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// Debug: Log all incoming requests to /api (before routing)
-app.use("/api", (req, res, next) => {
-  console.log(`[SERVER] Incoming API Request: ${req.method} ${req.path || req.url}`);
-  console.log(`[SERVER] Original URL: ${req.originalUrl}`);
-  next();
-});
+// Debug request logging (development only)
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api", (req, res, next) => {
+    console.log(`[SERVER] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+}
 
 // API routes
 app.use("/api", apiRoutes);

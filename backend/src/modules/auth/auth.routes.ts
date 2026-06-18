@@ -35,6 +35,16 @@ const ResetPasswordDto = z.object({
   password: z.string().min(6, "Password must be at least 6 characters") 
 });
 
+function refreshCookieOptions() {
+  const secure = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure,
+    path: "/",
+  };
+}
+
 function signAccess(
   userId: string,
   roles: string[],
@@ -97,7 +107,7 @@ router.post("/login", async (req, res) => {
   const tokenExtra = { employeeId, isSuperAdmin, divisions };
   const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
   const refreshToken = signRefresh(user.id, roles, permissions, tokenExtra);
-  res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
+  res.cookie("refreshToken", refreshToken, refreshCookieOptions());
 
   res.json({
     accessToken,
@@ -173,7 +183,7 @@ router.post("/register", async (req, res) => {
 
     const accessToken = signAccess(newUser.id, roles, permissions, undefined);
     const refreshToken = signRefresh(newUser.id, roles, permissions, undefined);
-    res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions());
 
     res.status(201).json({
       accessToken,
