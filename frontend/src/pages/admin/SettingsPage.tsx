@@ -275,7 +275,7 @@ const SettingsPage: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
           <p className="text-muted-foreground">
-            Manage how Oromia Majlis HRMS works for your account.
+            Manage how Oromia Majlis System works for your account.
           </p>
         </div>
       </div>
@@ -534,7 +534,7 @@ const SettingsPage: React.FC = () => {
                 Theme & display
               </CardTitle>
               <CardDescription>
-                Personalize how Oromia Majlis HRMS looks on your device.
+                Personalize how Oromia Majlis System looks on your device.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
