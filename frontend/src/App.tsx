@@ -55,6 +55,7 @@ import ReportViewer from "./components/reports/ReportViewer";
 import OnboardingPage from "./pages/onboarding/OnboardingPage";
 import NotificationsPage from "./pages/notifications/NotificationsPage";
 import UsersPage from "./pages/admin/UsersPage";
+import AccessControlPage from "./pages/admin/AccessControlPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import ProfilePage from "./pages/profile/ProfilePage";
 import NotFound from "./pages/common/NotFound";
@@ -546,8 +547,20 @@ function AppRoutes() {
           data-path="src/App.tsx"
         />
         <Route
+          path="admin/access-control"
+          element={
+            <PermissionRoute permissions={["system.admin", "divisions.read", "divisions.manage"]}>
+              <AccessControlPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
           path="admin/users"
-          element={<UsersPage data-id="ynptafeot" data-path="src/App.tsx" />}
+          element={
+            <PermissionRoute permissions={["system.admin", "users.read", "users.write"]}>
+              <UsersPage data-id="ynptafeot" data-path="src/App.tsx" />
+            </PermissionRoute>
+          }
           data-id="hdaqm9k8n"
           data-path="src/App.tsx"
         />

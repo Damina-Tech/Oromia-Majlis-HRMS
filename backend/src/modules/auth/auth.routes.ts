@@ -5,6 +5,8 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import crypto from "crypto";
 import { buildEffectivePermissionNames } from "../users/permission-utils.js";
+import { buildAuthSessionForUser } from "./auth-session.js";
+import type { UserDivisionContext } from "../org-divisions/division-access.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -33,13 +35,23 @@ const ResetPasswordDto = z.object({
   password: z.string().min(6, "Password must be at least 6 characters") 
 });
 
-function signAccess(userId: string, roles: string[], permissions: string[], employeeId?: string) {
+function signAccess(
+  userId: string,
+  roles: string[],
+  permissions: string[],
+  extra?: { employeeId?: string; isSuperAdmin?: boolean; divisions?: UserDivisionContext[] }
+) {
   const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
-  return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "2h" });
+  return jwt.sign({ id: userId, roles, permissions, ...extra }, secret, { expiresIn: "2h" });
 }
-function signRefresh(userId: string, roles: string[], permissions: string[], employeeId?: string) {
+function signRefresh(
+  userId: string,
+  roles: string[],
+  permissions: string[],
+  extra?: { employeeId?: string; isSuperAdmin?: boolean; divisions?: UserDivisionContext[] }
+) {
   const secret = process.env.JWT_REFRESH_SECRET || "your-refresh-secret";
-  return jwt.sign({ id: userId, roles, permissions, employeeId }, secret, { expiresIn: "14d" });
+  return jwt.sign({ id: userId, roles, permissions, ...extra }, secret, { expiresIn: "14d" });
 }
 
 router.post("/login", async (req, res) => {
@@ -77,29 +89,30 @@ router.post("/login", async (req, res) => {
   
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-  
-  const roles = user.userRoles.map((ur: any) => ur.role.name);
-  const employeeId = user.employee?.id;
-  
-  const permissions = buildEffectivePermissionNames(user.userRoles as any, user.userPermissions as any);
-  
-  const accessToken = signAccess(user.id, roles, permissions, employeeId);
-  const refreshToken = signRefresh(user.id, roles, permissions, employeeId);
-  res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
-  const avatarUrl = user.avatarUrl ?? user.employee?.avatarUrl ?? null;
 
-  res.json({ 
-    accessToken, 
-    user: { 
-      id: user.id, 
-      email: user.email, 
+  const session = await buildAuthSessionForUser(prisma, user.id);
+  if (!session) return res.status(403).json({ message: "Account is inactive. Please contact your administrator." });
+
+  const { roles, permissions, employeeId, isSuperAdmin, divisions, avatarUrl } = session;
+  const tokenExtra = { employeeId, isSuperAdmin, divisions };
+  const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
+  const refreshToken = signRefresh(user.id, roles, permissions, tokenExtra);
+  res.cookie("refreshToken", refreshToken, { httpOnly: true, sameSite: "lax", secure: false });
+
+  res.json({
+    accessToken,
+    user: {
+      id: user.id,
+      email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       roles,
       permissions,
       employeeId,
-      avatarUrl
-    } 
+      avatarUrl,
+      isSuperAdmin,
+      divisions,
+    },
   });
 });
 
@@ -220,16 +233,15 @@ router.post("/refresh", async (req, res) => {
       } 
     });
     if (!user) return res.status(401).json({ message: "User missing" });
-    
-    const roles = user.userRoles.map((ur: any) => ur.role.name);
-    const employeeId = user.employee?.id;
-    
-    const permissions = buildEffectivePermissionNames(user.userRoles as any, user.userPermissions as any);
-    
-    const accessToken = signAccess(user.id, roles, permissions, employeeId);
-    const avatarUrl = user.avatarUrl ?? user.employee?.avatarUrl ?? null;
 
-    res.json({ 
+    const session = await buildAuthSessionForUser(prisma, user.id);
+    if (!session) return res.status(401).json({ message: "User inactive" });
+
+    const { roles, permissions, employeeId, isSuperAdmin, divisions, avatarUrl } = session;
+    const tokenExtra = { employeeId, isSuperAdmin, divisions };
+    const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
+
+    res.json({
       accessToken,
       user: {
         id: user.id,
@@ -239,8 +251,10 @@ router.post("/refresh", async (req, res) => {
         roles,
         permissions,
         employeeId,
-        avatarUrl
-      }
+        avatarUrl,
+        isSuperAdmin,
+        divisions,
+      },
     });
   } catch {
     return res.status(401).json({ message: "Invalid refresh" });

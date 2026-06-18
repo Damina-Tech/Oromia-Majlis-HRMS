@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { seedPermissionsAndRoleMappings } from "./permission-seed.shared";
+import { seedOrgDivisionsAndAdmins } from "./org-division-seed.shared";
 
 const prisma = new PrismaClient();
 const NEW_SEED_EMAIL_DOMAIN = "oromiamajlis.org";
@@ -32,7 +33,12 @@ async function main() {
   console.log("Starting database seeding...");
 
   // Create roles
-  const roles = ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS", "HALAL_COMPETENCY", "MAJLIS_REPRESENTATIVE", "MEMBER"];
+  const roles = [
+    "ADMIN", "HR", "MANAGER", "EMPLOYEE", "HALAL_BUSINESS", "HALAL_COMPETENCY",
+    "MAJLIS_REPRESENTATIVE", "MEMBER",
+    "HR_DIVISION_ADMIN", "HALAL_DIVISION_ADMIN", "MEMBERSHIP_DIVISION_ADMIN",
+    "INSTITUTION_DIVISION_ADMIN", "DIVISION_OFFICER",
+  ];
   for (const name of roles) {
     await prisma.role.upsert({ 
       where: { name }, 
@@ -44,6 +50,7 @@ async function main() {
 
   // Seed permissions and assign to roles
   await seedPermissions();
+  await seedOrgDivisionsAndAdmins(prisma);
 
   // Seed asset management data
   await seedAssets();

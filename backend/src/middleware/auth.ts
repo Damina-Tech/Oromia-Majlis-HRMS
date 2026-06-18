@@ -1,11 +1,16 @@
 import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
+import { isSuperAdminUser, userCanUsePermissionInScope, type UserDivisionContext } from "../modules/org-divisions/division-access.js";
+
+export type { UserDivisionContext };
 
 export interface JwtUser { 
   id: string; 
   roles: string[]; 
   permissions: string[];
-  employeeId?: string; 
+  employeeId?: string;
+  isSuperAdmin?: boolean;
+  divisions?: UserDivisionContext[];
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -42,7 +47,9 @@ export function hasPermission(...permissions: string[]) {
     if (!u) return res.status(401).json({ message: "Unauthenticated" });
     
     // Check if user has all required permissions
-    const hasAllPermissions = permissions.every(p => u.permissions.includes(p));
+    const hasAllPermissions = permissions.every(
+      (p) => u.permissions.includes(p) && userCanUsePermissionInScope(u, p)
+    );
     
     if (!hasAllPermissions) {
       return res.status(403).json({ 
@@ -60,22 +67,37 @@ export function hasPermission(...permissions: string[]) {
  * Check if user has ANY of the specified permissions
  * User needs at least ONE of the specified permissions
  */
+export function hasSuperAdmin() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const u = (req as any).user as JwtUser | undefined;
+    if (!u) return res.status(401).json({ message: "Unauthenticated" });
+    if (!isSuperAdminUser(u)) {
+      return res.status(403).json({ message: "Forbidden: super admin access required" });
+    }
+    next();
+  };
+}
+
+/**
+ * Check if user has ANY of the specified permissions (division-scoped when assignments exist).
+ */
 export function hasAnyPermission(...permissions: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const u = (req as any).user as JwtUser | undefined;
     if (!u) return res.status(401).json({ message: "Unauthenticated" });
-    
-    // Check if user has at least one of the required permissions
-    const hasAnyPerm = permissions.some(p => u.permissions.includes(p));
-    
+
+    const hasAnyPerm = permissions.some(
+      (p) => u.permissions.includes(p) && userCanUsePermissionInScope(u, p)
+    );
+
     if (!hasAnyPerm) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         message: "Forbidden: Insufficient permissions",
         required: permissions,
-        current: u.permissions
+        current: u.permissions,
       });
     }
-    
+
     next();
   };
 }

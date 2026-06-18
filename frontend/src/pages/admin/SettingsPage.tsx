@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Link } from "react-router-dom";
 import {
   getNotificationPreferences,
   updateNotificationPreferences,
@@ -59,7 +60,7 @@ const AVAILABLE_TIMEZONES = [
 ];
 
 const SettingsPage: React.FC = () => {
-  const { user, refreshUserData } = useAuth();
+  const { user, refreshUserData, isSuperAdmin, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState("account");
   const [accountForm, setAccountForm] = useState({
     firstName: "",
@@ -278,6 +279,34 @@ const SettingsPage: React.FC = () => {
           </p>
         </div>
       </div>
+      {(isSuperAdmin() || hasPermission("divisions.manage") || hasPermission("users.write")) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              System administration
+            </CardTitle>
+            <CardDescription>
+              Super admins manage roles, divisions, and user access from dedicated admin pages.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            {(isSuperAdmin() || hasPermission("divisions.read") || hasPermission("divisions.manage")) && (
+              <Button asChild variant="outline">
+                <Link to="/admin/access-control">Access control</Link>
+              </Button>
+            )}
+            {(isSuperAdmin() || hasPermission("users.read") || hasPermission("users.write")) && (
+              <Button asChild variant="outline">
+                <Link to="/admin/users">
+                  <Users className="h-4 w-4 mr-2" />
+                  User management
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex w-full flex-wrap justify-start gap-2">
           <TabsTrigger value="account">Account</TabsTrigger>

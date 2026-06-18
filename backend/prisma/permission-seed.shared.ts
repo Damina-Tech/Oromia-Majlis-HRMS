@@ -42,6 +42,9 @@ export const PERMISSIONS = [
   { name: "expenses.approve", module: "expenses", action: "approve", description: "Approve expenses" },
   { name: "documents.view", module: "documents", action: "view", description: "View documents" },
   { name: "documents.manage", module: "documents", action: "manage", description: "Manage documents" },
+  { name: "system.admin", module: "system", action: "admin", description: "Full system-wide administration" },
+  { name: "divisions.read", module: "divisions", action: "read", description: "View org divisions and assignments" },
+  { name: "divisions.manage", module: "divisions", action: "manage", description: "Manage division heads and user assignments" },
   { name: "announcements.view", module: "announcements", action: "view", description: "View announcements" },
   { name: "announcements.create", module: "announcements", action: "create", description: "Create announcements" },
   { name: "announcements.edit", module: "announcements", action: "edit", description: "Edit announcements" },
@@ -98,6 +101,33 @@ export const ROLE_PERMISSIONS = {
   HALAL_COMPETENCY: ["dashboard.view", "profile.read", "profile.write", "halal.competency"],
   MAJLIS_REPRESENTATIVE: ["dashboard.view", "profile.read", "profile.write", "majlis.membership.view", "majlis.membership.register", "majlis.dashboard.view", "majlis.institutions.read", "majlis.assignments.read"],
   MEMBER: ["dashboard.view", "profile.read", "profile.write", "majlis.member"],
+  HR_DIVISION_ADMIN: [
+    "dashboard.view", "profile.read", "profile.write", "divisions.read",
+    "employees.read", "employees.write", "employees.delete", "employees.id.generate", "employees.id.batch",
+    "departments.read", "departments.write", "attendance.view", "attendance.manage", "attendance.read", "attendance.mark",
+    "leave.view", "leave.read", "leave.approve", "leave.manage", "leave.apply",
+    "payroll.view", "payroll.process", "timesheet.view", "timesheet.approve", "timesheet.manage",
+    "onboarding.view", "onboarding.manage", "organization.view", "reports.view", "reports.generate",
+    "documents.view", "announcements.view", "notifications.view",
+  ],
+  HALAL_DIVISION_ADMIN: [
+    "dashboard.view", "profile.read", "profile.write", "divisions.read",
+    "halal.business", "halal.competency", "halal.review", "halal.supervisor", "halal.committee",
+    "halal.audit", "halal.inspector", "halal.finance", "halal.admin", "halal.approve", "halal.renew",
+    "documents.view", "documents.manage", "notifications.view",
+  ],
+  MEMBERSHIP_DIVISION_ADMIN: [
+    "dashboard.view", "profile.read", "profile.write", "divisions.read",
+    "majlis.membership.view", "majlis.membership.register", "majlis.membership.admin",
+    "majlis.dashboard.view", "notifications.view",
+  ],
+  INSTITUTION_DIVISION_ADMIN: [
+    "dashboard.view", "profile.read", "profile.write", "divisions.read",
+    "majlis.institutions.read", "majlis.institutions.write", "majlis.institutions.approve",
+    "majlis.assignments.read", "majlis.assignments.write", "majlis.assignments.approve",
+    "majlis.dashboard.view", "notifications.view",
+  ],
+  DIVISION_OFFICER: ["dashboard.view", "profile.read", "profile.write", "divisions.read"],
 } as const;
 
 export async function seedPermissionsAndRoleMappings(prisma: PrismaClient) {

@@ -23,6 +23,7 @@ import institutionRoutes from "../modules/institutions/institution.routes.js";
 import institutionRecognitionRoutes from "../modules/institutions/institution-recognition.routes.js";
 import halalRoutes from "../modules/halal/halal.routes.js";
 import membershipRoutes from "../modules/membership/membership.routes.js";
+import orgDivisionRoutes from "../modules/org-divisions/org-division.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -97,5 +98,8 @@ router.use("/v1/halal", halalRoutes);
 
 // Majlis membership - public registration + admin/representative
 router.use("/v1/membership", membershipRoutes);
+
+// Org divisions & department-scoped RBAC (super admin / divisions.manage)
+router.use("/v1/org-divisions", orgDivisionRoutes);
 
 export default router;

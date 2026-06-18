@@ -44,6 +44,7 @@
       "reports": "التقارير",
       "notifications": "التنبيهات",
       "userManagement": "إدارة المستخدمين",
+      "accessControl": "التحكم في الوصول",
       "systemSettings": "إعدادات النظام"
     },
     "sub": {

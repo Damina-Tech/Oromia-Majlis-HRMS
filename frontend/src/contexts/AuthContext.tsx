@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/services/api';
+import {
+  isSuperAdminUser,
+  userCanUsePermissionInScope,
+  userHasDivision,
+  type UserDivisionContext,
+} from '@/lib/division-access';
+
+export type { UserDivisionContext };
 
 export interface User {
   id: string;
@@ -10,6 +18,8 @@ export interface User {
   permissions: string[];
   employeeId?: string;
   avatarUrl?: string | null;
+  isSuperAdmin?: boolean;
+  divisions?: UserDivisionContext[];
 }
 
 /** Default redirect path after login based on user role */
@@ -43,13 +53,30 @@ interface AuthContextType {
   logout: () => void;
   refreshUserData: () => Promise<boolean>;
   updateUserProfile: (patch: Partial<User>) => void;
-  storeAuthFromResponse: (accessToken: string, userData: { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[]; employeeId?: string; avatarUrl?: string | null }) => void;
+  storeAuthFromResponse: (accessToken: string, userData: Partial<User> & { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] }) => void;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
+  isSuperAdmin: () => boolean;
+  hasDivision: (code: string) => boolean;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function mapAuthUser(userData: Partial<User> & { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] }): User {
+  return {
+    id: userData.id,
+    email: userData.email,
+    firstName: userData.firstName || '',
+    lastName: userData.lastName || '',
+    roles: userData.roles || [],
+    permissions: userData.permissions || [],
+    employeeId: userData.employeeId,
+    avatarUrl: userData.avatarUrl ?? null,
+    isSuperAdmin: userData.isSuperAdmin,
+    divisions: userData.divisions ?? [],
+  };
+}
 
 export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -64,16 +91,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
       const response = await api.post('/auth/refresh');
       const { accessToken, user: userData } = response.data;
       
-      const user: User = {
-        id: userData.id,
-        email: userData.email,
-        firstName: userData.firstName || '',
-        lastName: userData.lastName || '',
-        roles: userData.roles || [],
-        permissions: userData.permissions || [],
-        employeeId: userData.employeeId,
-        avatarUrl: userData.avatarUrl ?? null,
-      };
+      const user = mapAuthUser(userData);
       
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('hrms_user', JSON.stringify(user));
@@ -153,17 +171,8 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     }
   };
 
-  const storeAuthFromResponse = (accessToken: string, userData: { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[]; employeeId?: string; avatarUrl?: string | null }) => {
-    const user: User = {
-      id: userData.id,
-      email: userData.email,
-      firstName: userData.firstName || '',
-      lastName: userData.lastName || '',
-      roles: userData.roles || [],
-      permissions: userData.permissions || [],
-      employeeId: userData.employeeId,
-      avatarUrl: userData.avatarUrl ?? null,
-    };
+  const storeAuthFromResponse = (accessToken: string, userData: Partial<User> & { id: string; email: string; firstName: string; lastName: string; roles: string[]; permissions: string[] }) => {
+    const user = mapAuthUser(userData);
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('hrms_user', JSON.stringify(user));
     setUser(user);
@@ -208,10 +217,12 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
     if (!user.permissions || !Array.isArray(user.permissions)) return false;
-    
-    // Check if user has the specific permission
-    return user.permissions.includes(permission);
+    return userCanUsePermissionInScope(user, permission);
   };
+
+  const isSuperAdmin = (): boolean => isSuperAdminUser(user);
+
+  const hasDivision = (code: string): boolean => userHasDivision(user, code);
 
   const value = {
     user,
@@ -224,6 +235,8 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     storeAuthFromResponse,
     isAuthenticated: !!user,
     hasPermission,
+    isSuperAdmin,
+    hasDivision,
     isLoading
   };
 

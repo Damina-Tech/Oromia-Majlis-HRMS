@@ -155,10 +155,16 @@ const menuItems = [
 
 const adminItems = [
 {
+  id: 'accessControl',
+  icon: Shield,
+  href: '/admin/access-control',
+  permission: 'divisions.read'
+},
+{
   id: 'userManagement',
   icon: Shield,
   href: '/admin/users',
-  permission: '*'
+  permission: 'users.read'
 },
 {
   id: 'systemSettings',
@@ -170,7 +176,7 @@ const adminItems = [
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const { t } = useTranslation();
-  const { user, logout, hasPermission, refreshUserData } = useAuth();
+  const { user, logout, hasPermission, refreshUserData, isSuperAdmin } = useAuth();
   const location = useLocation();
   const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set());
 
@@ -271,8 +277,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   });
 
   const filteredAdminItems = adminItems.filter((item) => {
-    // Admin section is permission-driven in role+user-permission model.
-    if (item.permission === '*') return hasPermission('users.read') || hasPermission('users.write');
+    if (item.id === 'accessControl') {
+      return isSuperAdmin() || hasPermission('divisions.read') || hasPermission('divisions.manage');
+    }
+    if (item.id === 'userManagement') {
+      return isSuperAdmin() || hasPermission('users.read') || hasPermission('users.write');
+    }
+    if (item.permission === '*') return true;
     return hasPermission(item.permission);
   });
 

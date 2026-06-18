@@ -84,6 +84,8 @@ model User {
   halalCompetencyWorkerProposalsReviewed HalalApplicationCompetencyWorkerProposal[] @relation("HalalCompetencyWorkerProposalReviewedBy")
   membersRegistered                Member[]                @relation("MemberRegisteredBy")
   memberProfile                    Member?                 @relation("MemberProfile")
+  divisionAssignments              UserDivisionAssignment[]
+  headedOrgDivisions               OrgDivision[]           @relation("OrgDivisionHead")
 }
 
 model Role {
@@ -94,6 +96,7 @@ model Role {
   updatedAt   DateTime?        @updatedAt
   permissions RolePermission[]
   users       UserRole[]
+  divisionAssignments UserDivisionAssignment[]
 }
 
 model Permission {
@@ -156,6 +159,50 @@ model Department {
   employees Employee[]
   expenses  Expense[]
   leads     Lead[]
+}
+
+/// Functional government divisions (HR, Halal, Membership, etc.) — distinct from HR `Department` org units.
+enum OrgDivisionCode {
+  HR
+  HALAL
+  MEMBERSHIP
+  INSTITUTION
+  FINANCE
+  DOCUMENTS
+}
+
+model OrgDivision {
+  id          String           @id @default(cuid())
+  code        OrgDivisionCode  @unique
+  name        String
+  description String?
+  headUserId  String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  headUser    User?            @relation("OrgDivisionHead", fields: [headUserId], references: [id], onDelete: SetNull)
+  assignments UserDivisionAssignment[]
+
+  @@index([headUserId])
+  @@index([active])
+}
+
+/// Links users to one or more org divisions with a division-scoped role (supports multi-department admins).
+model UserDivisionAssignment {
+  id         String      @id @default(cuid())
+  userId     String
+  divisionId String
+  roleId     String
+  isPrimary  Boolean     @default(false)
+  assignedAt DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  division   OrgDivision @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, divisionId, roleId])
+  @@index([userId])
+  @@index([divisionId])
+  @@index([roleId])
 }
 
 model Employee {
