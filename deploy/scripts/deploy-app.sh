@@ -42,6 +42,9 @@ if [ ! -f .env ]; then
 fi
 chmod 600 .env
 npm ci
+# Linux VPS: lockfile from Windows may omit @napi-rs/canvas native binding
+CANVAS_VER="$(node -e "console.log(require('@napi-rs/canvas/package.json').version)" 2>/dev/null || echo "0.1.82")"
+npm install "@napi-rs/canvas-linux-x64-gnu@${CANVAS_VER}" --no-save
 npx prisma generate
 npx prisma migrate deploy
 npm run build

@@ -4,25 +4,24 @@ import { seedPermissionsAndRoleMappings } from "./permission-seed.shared";
 import { seedOrgDivisionsAndAdmins } from "./org-division-seed.shared";
 
 const prisma = new PrismaClient();
-const NEW_SEED_EMAIL_DOMAIN = "oromiamajlis.org";
-const LEGACY_SEED_EMAIL_DOMAIN = "ciro.gov.et";
-
-function toLegacySeedEmail(email: string): string {
-  if (!email.endsWith(`@${NEW_SEED_EMAIL_DOMAIN}`)) return email;
-  return email.replace(`@${NEW_SEED_EMAIL_DOMAIN}`, `@${LEGACY_SEED_EMAIL_DOMAIN}`);
-}
+const NEW_SEED_EMAIL_DOMAIN = "oriasc.org";
+const LEGACY_SEED_EMAIL_DOMAINS = ["ciro.gov.et", "oromiamajlis.org", "oromia.gov.et"];
 
 async function migrateLegacyUserEmailIfNeeded(email: string): Promise<void> {
-  const legacyEmail = toLegacySeedEmail(email);
-  if (legacyEmail === email) return;
+  if (!email.endsWith(`@${NEW_SEED_EMAIL_DOMAIN}`)) return;
   const existingNew = await prisma.user.findUnique({ where: { email } });
   if (existingNew) return;
-  const existingLegacy = await prisma.user.findUnique({ where: { email: legacyEmail } });
-  if (!existingLegacy) return;
-  await prisma.user.update({
-    where: { id: existingLegacy.id },
-    data: { email },
-  });
+  const localPart = email.split("@")[0] ?? "";
+  for (const legacyDomain of LEGACY_SEED_EMAIL_DOMAINS) {
+    const legacyEmail = `${localPart}@${legacyDomain}`;
+    const existingLegacy = await prisma.user.findUnique({ where: { email: legacyEmail } });
+    if (!existingLegacy) continue;
+    await prisma.user.update({
+      where: { id: existingLegacy.id },
+      data: { email },
+    });
+    return;
+  }
 }
 
 async function seedPermissions() {
@@ -74,7 +73,7 @@ async function main() {
   console.log("✅ Created departments:", deptNames.join(", "));
 
   // Create admin user
-  const adminEmail = "admin@oromiamajlis.org";
+  const adminEmail = "admin@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(adminEmail);
   const adminPassword = await bcrypt.hash("Admin12345!", 10);
   const admin = await prisma.user.upsert({
@@ -131,7 +130,7 @@ async function main() {
   await seedIdCardTemplates(admin);
 
   // Create manager user
-  const managerEmail = "manager@oromiamajlis.org";
+  const managerEmail = "manager@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(managerEmail);
   const managerPassword = await bcrypt.hash("Manager123!", 10);
   const managerUser = await prisma.user.upsert({
@@ -185,7 +184,7 @@ async function main() {
   console.log("✅ Created manager employee:", managerEmp.employeeCode);
 
   // Create an employee user for testing
-  const employeeEmail = "employee@oromiamajlis.org";
+  const employeeEmail = "employee@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(employeeEmail);
   const employeePassword = await bcrypt.hash("Employee123!", 10);
   
@@ -251,7 +250,7 @@ async function main() {
   await seedMemberTestUser(admin);
 
   // Create additional department manager (Finance Department)
-  const financeManagerEmail = "finance.manager@oromiamajlis.org";
+  const financeManagerEmail = "finance.manager@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(financeManagerEmail);
   const financeManagerPassword = await bcrypt.hash("FinanceMgr123!", 10);
   const financeManagerUser = await prisma.user.upsert({
@@ -303,7 +302,7 @@ async function main() {
   console.log("✅ Created finance manager:", financeManagerEmp.employeeCode);
 
   // Create additional employees under different managers
-  const employee2Email = "john.doe@oromiamajlis.org";
+  const employee2Email = "john.doe@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(employee2Email);
   const employee2Password = await bcrypt.hash("Employee123!", 10);
   const employee2User = await prisma.user.upsert({
@@ -356,7 +355,7 @@ async function main() {
   console.log("✅ Created employee 2:", employee2Emp.employeeCode);
 
   // Create HR user
-  const hrEmail = "hr@oromiamajlis.org";
+  const hrEmail = "hr@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(hrEmail);
   const hrPassword = await bcrypt.hash("HrUser123!", 10);
   const hrUser = await prisma.user.upsert({
@@ -408,7 +407,7 @@ async function main() {
   console.log("✅ Created HR user:", hrEmp.employeeCode);
 
   // Create an employee under finance manager
-  const financeEmployeeEmail = "finance.emp@oromiamajlis.org";
+  const financeEmployeeEmail = "finance.emp@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(financeEmployeeEmail);
   const financeEmployeePassword = await bcrypt.hash("FinanceEmp123!", 10);
   const financeEmployeeUser = await prisma.user.upsert({
@@ -756,41 +755,48 @@ async function main() {
   console.log("\n📋 Test User Credentials:");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🔴 ADMIN ROLE:");
-  console.log("   Email: admin@oromiamajlis.org");
+  console.log("   Email: admin@oriasc.org");
   console.log("   Password: Admin12345!");
   console.log("   Access: Full system access with all permissions");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟡 DEPARTMENT MANAGER ROLES:");
   console.log("   1. Main Manager (HR Department):");
-  console.log("      Email: manager@oromiamajlis.org");
+  console.log("      Email: manager@oriasc.org");
   console.log("      Password: Manager123!");
   console.log("   2. Finance Manager (Finance Department):");
-  console.log("      Email: finance.manager@oromiamajlis.org");
+  console.log("      Email: finance.manager@oriasc.org");
   console.log("      Password: FinanceMgr123!");
   console.log("   Access: Department management, team oversight");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟢 EMPLOYEE ROLES:");
   console.log("   1. Test Employee (IT Department):");
-  console.log("      Email: employee@oromiamajlis.org");
+  console.log("      Email: employee@oriasc.org");
   console.log("      Password: Employee123!");
   console.log("   2. John Doe (IT Department):");
-  console.log("      Email: john.doe@oromiamajlis.org");
+  console.log("      Email: john.doe@oriasc.org");
   console.log("      Password: Employee123!");
   console.log("   3. Finance Employee (Finance Department):");
-  console.log("      Email: finance.emp@oromiamajlis.org");
+  console.log("      Email: finance.emp@oriasc.org");
   console.log("      Password: FinanceEmp123!");
   console.log("   Access: Basic employee features");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🔵 HR ROLE:");
-  console.log("   Email: hr@oromiamajlis.org");
+  console.log("   Email: hr@oriasc.org");
   console.log("   Password: HrUser123!");
   console.log("   Access: HR management features");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🟣 MEMBERSHIP ROLES:");
   console.log("   Member (portal - profile/certificate/renewal):");
-  console.log("      Email: member@oromiamajlis.org");
+  console.log("      Email: member@oriasc.org");
   console.log("      Password: Member123!");
   console.log("   Representative (register members, mark payment): use ADMIN or create user with MAJLIS_REPRESENTATIVE role");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🏛️  DIVISION ADMIN ROLES (@oriasc.org, password: Division@12345):");
+  console.log("   HR:          hr.admin@oriasc.org");
+  console.log("   Halal:       halal.admin@oriasc.org");
+  console.log("   Membership:  membership.admin@oriasc.org");
+  console.log("   Institution: institution.admin@oriasc.org");
+  console.log("   Multi-dept:  multi.admin@oriasc.org (HR + Halal)");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
@@ -861,7 +867,7 @@ async function seedAssets() {
 
   // Create sample assets (only if admin user exists)
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@oromiamajlis.org" },
+    where: { email: "admin@oriasc.org" },
   });
 
   if (adminUser && createdCategories.length > 0 && createdLocations.length > 0) {
@@ -1166,7 +1172,7 @@ async function seedDocumentTemplates() {
 
   // Get admin user for createdBy
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@oromiamajlis.org" },
+    where: { email: "admin@oriasc.org" },
   });
 
   if (!adminUser) {
@@ -1621,7 +1627,7 @@ async function seedTasks() {
 
   // Get users and employees for task assignment
   const adminUser = await prisma.user.findFirst({
-    where: { email: "admin@oromiamajlis.org" },
+    where: { email: "admin@oriasc.org" },
   });
   
   const employees = await prisma.employee.findMany({
@@ -2540,7 +2546,7 @@ async function seedHalalCertification(adminUser: { id: string }) {
     },
   });
 
-  const inspectorUser = await prisma.user.findFirst({ where: { email: "admin@oromiamajlis.org" } });
+  const inspectorUser = await prisma.user.findFirst({ where: { email: "admin@oriasc.org" } });
   if (inspectorUser) {
     await prisma.halalInspection.create({
       data: {
@@ -2599,7 +2605,7 @@ async function seedMemberTestUser(adminUser: { id: string }) {
   const memberRole = await prisma.role.findUnique({ where: { name: "MEMBER" } });
   if (!memberRole) return;
 
-  const memberEmail = "member@oromiamajlis.org";
+  const memberEmail = "member@oriasc.org";
   await migrateLegacyUserEmailIfNeeded(memberEmail);
   const memberPassword = await bcrypt.hash("Member123!", 10);
   const memberUser = await prisma.user.upsert({

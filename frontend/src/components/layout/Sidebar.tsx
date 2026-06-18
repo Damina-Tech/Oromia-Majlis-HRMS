@@ -87,12 +87,13 @@ const menuItems = [
   href: '/attendance',
   permission: 'attendance.view'
 },
-{
-  id: 'payroll',
-  icon: DollarSign,
-  href: '/payroll',
-  permission: 'payroll.view'
-},
+// Payroll hidden for now — re-enable when module is ready
+// {
+//   id: 'payroll',
+//   icon: DollarSign,
+//   href: '/payroll',
+//   permission: 'payroll.view'
+// },
 // {
 //   title: 'Leads',
 //   icon: Handshake,

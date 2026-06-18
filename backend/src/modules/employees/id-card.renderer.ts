@@ -1,4 +1,3 @@
-import { createCanvas, loadImage } from "@napi-rs/canvas";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -46,6 +45,16 @@ type GeneratedAssets = {
 
 const DEFAULT_FONT_FAMILY = "Inter, sans-serif";
 
+type CanvasModule = typeof import("@napi-rs/canvas");
+let canvasModule: CanvasModule | null = null;
+
+async function getCanvasModule(): Promise<CanvasModule> {
+  if (!canvasModule) {
+    canvasModule = await import("@napi-rs/canvas");
+  }
+  return canvasModule;
+}
+
 function getDimensions(settings: IdCardTemplateSettings) {
   if (settings.size === "CUSTOM" && settings.customDimensions) {
     return settings.customDimensions;
@@ -60,6 +69,7 @@ function formatDate(date?: Date | null) {
 
 async function loadImageFromSource(src?: string | null) {
   if (!src) return null;
+  const { loadImage } = await getCanvasModule();
   try {
     if (src.startsWith("data:")) {
       return await loadImage(src);
@@ -85,6 +95,7 @@ async function loadImageFromSource(src?: string | null) {
 
 async function buildCodeImage(value: string, type: "QR" | "BARCODE" | "NONE", width: number) {
   if (!value || type === "NONE") return null;
+  const { loadImage } = await getCanvasModule();
   try {
     if (type === "QR") {
       const buffer = await QRCode.toBuffer(value, {
@@ -144,6 +155,7 @@ async function writePdfFromPng(buffer: Buffer, pdfPath: string, width: number, h
 }
 
 export async function generateIdCardAssets(options: RenderOptions): Promise<GeneratedAssets> {
+  const { createCanvas } = await getCanvasModule();
   const { employee, settings, template, issueDate, expiryDate, codeType } = options;
   const dims = getDimensions(settings);
   const canvas = createCanvas(dims.width, dims.height);

@@ -10,9 +10,17 @@ const DIVISION_DEFS = [
   { code: "DOCUMENTS" as const, name: "Documents", description: "Templates, certificates, and document generation" },
 ];
 
+const LEGACY_DIVISION_EMAILS: Record<string, string> = {
+  "hr.admin@oromia.gov.et": "hr.admin@oriasc.org",
+  "halal.admin@oromia.gov.et": "halal.admin@oriasc.org",
+  "membership.admin@oromia.gov.et": "membership.admin@oriasc.org",
+  "institution.admin@oromia.gov.et": "institution.admin@oriasc.org",
+  "multi.admin@oromia.gov.et": "multi.admin@oriasc.org",
+};
+
 const DIVISION_ADMIN_USERS = [
   {
-    email: "hr.admin@oromia.gov.et",
+    email: "hr.admin@oriasc.org",
     firstName: "Sara",
     lastName: "Hussen",
     roleName: "HR_DIVISION_ADMIN",
@@ -20,7 +28,7 @@ const DIVISION_ADMIN_USERS = [
     isHead: true,
   },
   {
-    email: "halal.admin@oromia.gov.et",
+    email: "halal.admin@oriasc.org",
     firstName: "Omar",
     lastName: "Yusuf",
     roleName: "HALAL_DIVISION_ADMIN",
@@ -28,7 +36,7 @@ const DIVISION_ADMIN_USERS = [
     isHead: true,
   },
   {
-    email: "membership.admin@oromia.gov.et",
+    email: "membership.admin@oriasc.org",
     firstName: "Fatuma",
     lastName: "Ahmed",
     roleName: "MEMBERSHIP_DIVISION_ADMIN",
@@ -36,7 +44,7 @@ const DIVISION_ADMIN_USERS = [
     isHead: true,
   },
   {
-    email: "institution.admin@oromia.gov.et",
+    email: "institution.admin@oriasc.org",
     firstName: "Daniel",
     lastName: "Bekele",
     roleName: "INSTITUTION_DIVISION_ADMIN",
@@ -44,7 +52,7 @@ const DIVISION_ADMIN_USERS = [
     isHead: true,
   },
   {
-    email: "multi.admin@oromia.gov.et",
+    email: "multi.admin@oriasc.org",
     firstName: "Hanna",
     lastName: "Mulugeta",
     roleName: "HR_DIVISION_ADMIN",
@@ -71,6 +79,15 @@ export async function seedOrgDivisionsAndAdmins(prisma: PrismaClient) {
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
   for (const spec of DIVISION_ADMIN_USERS) {
+    const legacyEmail = Object.entries(LEGACY_DIVISION_EMAILS).find(([, next]) => next === spec.email)?.[0];
+    if (legacyEmail) {
+      const existingNew = await prisma.user.findUnique({ where: { email: spec.email } });
+      const existingLegacy = await prisma.user.findUnique({ where: { email: legacyEmail } });
+      if (!existingNew && existingLegacy) {
+        await prisma.user.update({ where: { id: existingLegacy.id }, data: { email: spec.email } });
+      }
+    }
+
     const division = await prisma.orgDivision.findUnique({ where: { code: spec.divisionCode } });
     const role = await prisma.role.findUnique({ where: { name: spec.roleName } });
     if (!division || !role) {

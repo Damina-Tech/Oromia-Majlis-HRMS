@@ -136,21 +136,47 @@ Or set explicitly: `VITE_API_URL=https://hrms.yourdomain.gov.et`
 
 ### Option A — Domain + HTTPS (production)
 
-1. Edit `deploy/nginx/hrms.conf` — replace `hrms.yourdomain.gov.et` with your domain.
-2. Install site:
+**Do not use `hrms.conf` before certificates exist** — it references SSL files that are not there yet and Nginx will fail.
+
+#### Step 1 — HTTP-only config (first time)
 
 ```bash
-cp deploy/nginx/hrms.conf /etc/nginx/sites-available/hrms
+cd /var/www/hrms
+mkdir -p /var/www/certbot
+
+# Remove broken symlink if present
+rm -f /etc/nginx/sites-enabled/hrms
+
+# Install HTTP-only site (replace domain in file)
+sed 's/hrms.yourdomain.gov.et/system.oriasc.org/g' deploy/nginx/hrms-certbot-init.conf \
+  | tee /etc/nginx/sites-available/hrms
+
 ln -sf /etc/nginx/sites-available/hrms /etc/nginx/sites-enabled/hrms
 rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
 ```
 
-3. For first certificate, temporarily comment out the `ssl_certificate` lines and use HTTP-only block, **or** use certbot standalone after deploy.
+Confirm DNS: `system.oriasc.org` A record → your VPS IP (`dig +short system.oriasc.org`).
 
-After app is deployed:
+#### Step 2 — Obtain certificate
 
 ```bash
-certbot --nginx -d hrms.yourdomain.gov.et
+certbot --nginx -d system.oriasc.org
+```
+
+Certbot will add HTTPS to the active site. Then reload:
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+#### Step 3 (optional) — Full production config
+
+After certs exist, you may switch to `deploy/nginx/hrms.conf` (with your domain substituted) for extra security headers and HTTP→HTTPS redirect — only if cert paths match:
+
+```bash
+sed 's/hrms.yourdomain.gov.et/system.oriasc.org/g' deploy/nginx/hrms.conf \
+  | tee /etc/nginx/sites-available/hrms
 nginx -t && systemctl reload nginx
 ```
 

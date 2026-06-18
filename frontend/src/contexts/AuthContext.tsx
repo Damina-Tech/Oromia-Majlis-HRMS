@@ -204,7 +204,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
 
     try {
       // For demo purposes, simulate SSO by logging in as admin
-      const success = await login('admin@ciro.gov.et', 'Admin12345!');
+      const success = await login('admin@oriasc.org', 'Admin12345!');
       setIsLoading(false);
       return success;
     } catch (error) {
