@@ -196,7 +196,7 @@ export default function MyMembershipPage() {
 
   const { data: staffUsersData, isLoading: staffUsersLoading } = useQuery({
     queryKey: ["users-for-member-sync"],
-    queryFn: () => listUsers({ limit: 100, status: "ACTIVE", pageSize: 100 }),
+    queryFn: () => listUsers({ status: "ACTIVE", pageSize: 100 }),
     enabled: isMembershipAdmin && (!!error || !member),
   });
 

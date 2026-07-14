@@ -36,6 +36,8 @@ export function parseMembershipRegisterQueryParams(search: string): MembershipRe
   };
 }
 
-export function isMembershipRegisterSuccessRoute(params: MembershipRegisterQueryParams): boolean {
+export function isMembershipRegisterSuccessRoute(
+  params: Pick<MembershipRegisterQueryParams, "step"> | MembershipRegisterQueryParams
+): boolean {
   return params.step === "success";
 }

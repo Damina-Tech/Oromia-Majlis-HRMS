@@ -410,12 +410,13 @@ const SettingsPage: React.FC = () => {
                         description: "Receive notifications inside Oromia Majlis HRMS.",
                         icon: SunMedium,
                         disabled: true,
-                      },    
+                      },
                       {
                         key: "email",
                         label: "Email",
                         description: "Important updates will be sent to your inbox.",
                         icon: Mail,
+                        disabled: false,
                       },
                       {
                         key: "push",
@@ -423,18 +424,21 @@ const SettingsPage: React.FC = () => {
                         description:
                           "Get push notifications on supported browsers and devices.",
                         icon: Smartphone,
+                        disabled: false,
                       },
                       {
                         key: "sms",
                         label: "SMS",
                         description: "Time-critical alerts delivered via SMS.",
                         icon: ShieldCheck,
+                        disabled: false,
                       },
                       {
                         key: "whatsapp",
                         label: "WhatsApp",
                         description: "Notifications delivered to WhatsApp (beta).",
                         icon: Smartphone,
+                        disabled: false,
                       },
                     ] as const
                   ).map(({ key, label, description, icon: Icon, disabled }) => (

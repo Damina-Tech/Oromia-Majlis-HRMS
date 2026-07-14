@@ -98,15 +98,18 @@ export default function MembershipRegisterPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { step: stepParam, draftToken: draftTokenParam, subscriptionId: subscriptionIdParam, trxRef, refId } = useMemo(
+  const registerQuery = useMemo(
     () => parseMembershipRegisterQueryParams(location.search || `?${searchParams.toString()}`),
     [location.search, searchParams]
   );
-  const isSuccessPage = isMembershipRegisterSuccessRoute({
+  const {
     step: stepParam,
     draftToken: draftTokenParam,
     subscriptionId: subscriptionIdParam,
-  });
+    trxRef,
+    refId,
+  } = registerQuery;
+  const isSuccessPage = isMembershipRegisterSuccessRoute(registerQuery);
 
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");

@@ -15,7 +15,7 @@ export function getMembershipPlansWithHardcodedFees(apiPlans: MembershipPlan[] |
   if (!apiPlans?.length) return [];
 
   return (Object.keys(MEMBERSHIP_PLAN_FEES) as MembershipPlanType[])
-    .map((planType) => {
+    .map((planType): MembershipPlan | null => {
       const config = MEMBERSHIP_PLAN_FEES[planType];
       const apiPlan = apiPlans.find((p) => p.planType === planType);
       if (!apiPlan) return null;
