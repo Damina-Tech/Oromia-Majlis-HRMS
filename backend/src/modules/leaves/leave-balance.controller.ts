@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { z } from "zod";
-
-const prisma = new PrismaClient();
 
 const CreateLeaveBalanceDto = z.object({
   employeeId: z.string(),

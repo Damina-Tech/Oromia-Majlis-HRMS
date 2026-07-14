@@ -1,8 +1,7 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import prisma from "../db/client.js";
 
-const prisma = new PrismaClient();
+import bcrypt from "bcrypt";
 
 async function seed(): Promise<void> {
   // Create roles

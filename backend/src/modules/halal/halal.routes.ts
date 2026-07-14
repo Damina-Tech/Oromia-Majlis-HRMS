@@ -21,6 +21,7 @@ import {
   confirmPayment,
   initChapaPayment,
   chapaCallback,
+  confirmChapaPayment,
   confirmManualPayment,
   approveManualPayment,
   rejectManualPayment,
@@ -40,6 +41,7 @@ import {
   updateInspection,
   deleteInspection,
   completeInspection,
+  submitOwnerInspectionEvidence,
   listCertificates,
   getCertificate,
   getCertificateLifecycle,
@@ -228,6 +230,12 @@ router.post("/applications/:id/confirm-payment", requireAuth, hasAnyPermission("
 router.post("/applications/:id/payment/chapa-init", requireAuth, hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"), initChapaPayment);
 router.get("/applications/:id/payment/chapa-callback", chapaCallback); // Public - Chapa calls this
 router.post(
+  "/applications/:id/payment/chapa-confirm",
+  requireAuth,
+  hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"),
+  confirmChapaPayment
+);
+router.post(
   "/applications/:id/payment/manual",
   requireAuth,
   hasAnyPermission("halal.business", "halal.admin", "halal.supervisor"),
@@ -265,6 +273,12 @@ router.get("/inspections/:id", requireAuth, hasAnyPermission("halal.inspector", 
 router.patch("/inspections/:id", requireAuth, hasAnyPermission("halal.inspector", "halal.admin", "halal.supervisor", "halal.committee"), updateInspection);
 router.delete("/inspections/:id", requireAuth, hasAnyPermission("halal.inspector", "halal.admin", "halal.supervisor", "halal.committee"), deleteInspection);
 router.patch("/inspections/:id/complete", requireAuth, hasAnyPermission("halal.inspector", "halal.admin"), completeInspection);
+router.patch(
+  "/inspections/:id/owner-evidence",
+  requireAuth,
+  hasAnyPermission("halal.business"),
+  submitOwnerInspectionEvidence
+);
 
 // Certificates (download before :id to avoid "download" as id)
 router.get("/certificates", requireAuth, hasAnyPermission(...HALAL_MODULE_ACCESS), listCertificates);

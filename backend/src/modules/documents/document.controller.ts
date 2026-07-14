@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -19,8 +20,6 @@ import { NotificationService } from "../notifications/notification.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const prisma = new PrismaClient();
 
 // Helper function to get current user ID
 function getCurrentUserId(req: Request): string {

@@ -2,6 +2,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/services/api';
 import {
   isSuperAdminUser,
+  isInternalStaffUser,
+  isHalalBusinessPortalOnly,
+  isHalalCompetencyPortalOnly,
+  isMemberPortalOnly,
   userCanUsePermissionInScope,
   userHasDivision,
   type UserDivisionContext,
@@ -27,21 +31,28 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
   if (explicitRedirect && explicitRedirect.startsWith("/") && !explicitRedirect.startsWith("//")) {
     return explicitRedirect;
   }
-  if (user.roles?.includes("HALAL_COMPETENCY") && user.permissions?.includes("halal.competency")) {
+
+  // Staff/admin (including ADMIN who has majlis.member via all-permissions) → main dashboard
+  if (isInternalStaffUser(user)) {
+    return "/dashboard";
+  }
+
+  if (isHalalCompetencyPortalOnly(user)) {
     return "/halal/competency";
   }
-  if (user.roles?.includes("HALAL_BUSINESS") && user.permissions?.includes("halal.business")) {
+  if (isHalalBusinessPortalOnly(user)) {
     return "/halal/dashboard";
   }
-  if (user.roles?.includes("MEMBER") && user.permissions?.includes("majlis.member")) {
+  if (isMemberPortalOnly(user)) {
     return "/my-membership";
   }
+
   return "/dashboard";
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; code?: string }>;
   register: (payload: {
     email: string;
     password: string;
@@ -169,19 +180,28 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     }
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message?: string; code?: string }> => {
     setIsLoading(true);
 
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const response = await api.post('/auth/login', { email: email.trim(), password });
       const { accessToken, user: userData } = response.data;
       storeAuthFromResponse(accessToken, userData);
       setIsLoading(false);
-      return true;
+      return { success: true };
     } catch (error: any) {
       console.error('Login failed:', error);
       setIsLoading(false);
-      return false;
+      const msg = error?.response?.data?.message;
+      const code = error?.response?.data?.code;
+      return {
+        success: false,
+        message: typeof msg === "string" ? msg : "Invalid email or password. Please check your credentials.",
+        code: typeof code === "string" ? code : undefined,
+      };
     }
   };
 
@@ -213,19 +233,10 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     }
   };
 
-  const loginWithSSO = async (provider: string): Promise<boolean> => {
-    setIsLoading(true);
-
-    try {
-      // For demo purposes, simulate SSO by logging in as admin
-      const success = await login('admin@oriasc.org', 'Admin12345!');
-      setIsLoading(false);
-      return success;
-    } catch (error) {
-      console.error('SSO login failed:', error);
-      setIsLoading(false);
-      return false;
-    }
+  const loginWithSSO = async (_provider: string): Promise<boolean> => {
+    // OAuth providers must be wired through dedicated auth endpoints — never auto-login as admin.
+    setIsLoading(false);
+    return false;
   };
 
   const hasPermission = (permission: string): boolean => {

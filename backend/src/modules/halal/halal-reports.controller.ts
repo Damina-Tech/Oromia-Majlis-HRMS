@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 
 function num(d: Prisma.Decimal | null | undefined): number {
   if (d == null) return 0;

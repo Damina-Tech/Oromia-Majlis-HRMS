@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient, HalalCompetencyStatus, HalalCompetencyRenewalStatus } from "@prisma/client";
+import { Prisma, HalalCompetencyStatus, HalalCompetencyRenewalStatus } from "@prisma/client";
+import prisma from "../../db/client.js";
 import fetch from "node-fetch";
 import { generateHalalCompetencyCertificatePDF } from "./halal-competency-pdf-generator.js";
 import {
@@ -12,8 +13,6 @@ import {
   HALAL_COMPETENCY_FEE,
 } from "./halal.dto.js";
 import { paginate } from "../../lib/paginate.js";
-
-const prisma = new PrismaClient();
 
 const RENEWAL_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 

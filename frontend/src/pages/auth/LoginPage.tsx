@@ -37,8 +37,8 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
+      const result = await login(email, password);
+      if (result.success) {
         const currentUser = JSON.parse(localStorage.getItem('hrms_user') || '{}');
         const redirectTo = getLoginRedirect(currentUser, redirectParam || undefined);
         toast({
@@ -48,8 +48,8 @@ const LoginPage: React.FC = () => {
         navigate(redirectTo);
       } else {
         toast({
-          title: "Login Failed",
-          description: "Invalid email or password. Please check your credentials.",
+          title: result.code === "ACCOUNT_LOCKED" ? "Account temporarily locked" : "Login Failed",
+          description: result.message || "Invalid email or password. Please check your credentials.",
           variant: "destructive"
         });
       }

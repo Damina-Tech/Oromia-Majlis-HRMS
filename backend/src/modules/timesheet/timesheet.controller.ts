@@ -1,5 +1,6 @@
 ﻿import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateTimesheetDto,
   UpdateTimesheetDto,
@@ -13,8 +14,6 @@ import {
 } from "./timesheet.dto.js";
 import { paginate } from "../../utils/pagination.js";
 import { getWeekDates, getMonthDates, getYearDates } from "../../utils/date-utils.js";
-
-const prisma = new PrismaClient();
 
 // Helper function to get current user's employee ID
 function getCurrentUserEmployeeId(req: Request): string | null {

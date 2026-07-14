@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
+import prisma from "../../db/client.js";
 import type { Express } from "express";
-import { PrismaClient } from "@prisma/client";
+
 import bcrypt from "bcrypt";
 import {
   CreateUserDto,
@@ -12,8 +13,6 @@ import {
 import { CreateRoleDto, UpdateRoleDto } from "./role.dto.js";
 import { paginate } from "../../lib/paginate.js";
 import { buildEffectivePermissionDetails } from "./permission-utils.js";
-
-const prisma = new PrismaClient();
 
 type MulterRequest = Request & {
   file?: Express.Multer.File;

@@ -1,10 +1,6 @@
 ﻿import { Request, Response } from "express";
-import {
-  PrismaClient,
-  Prisma,
-  NotificationModule,
-  NotificationType,
-} from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateAssetDto,
   UpdateAssetDto,
@@ -20,8 +16,6 @@ import {
 import { paginate } from "../../utils/pagination.js";
 import { NotificationService } from "../notifications/notification.service.js";
 import { generateAssetCode } from "./asset-utils.js";
-
-const prisma = new PrismaClient();
 
 // Helper function to get current user ID
 function getCurrentUserId(req: Request): string {

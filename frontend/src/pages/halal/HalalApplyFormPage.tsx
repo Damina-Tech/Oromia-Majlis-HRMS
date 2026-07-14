@@ -66,7 +66,7 @@ export default function HalalApplyFormPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
-      toast.success("Application submitted successfully. You can now pay the certification fee.");
+      toast.success("Application submitted successfully. You can check and sign the agreement.");
       navigate("/halal/applications/" + data.id);
     },
     onError: (e: any) =>

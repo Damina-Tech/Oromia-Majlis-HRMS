@@ -1,5 +1,6 @@
 ﻿import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CheckInDto,
   CheckOutDto,
@@ -8,8 +9,6 @@ import {
   UpdateAttendanceDto,
 } from "./attendance.dto.js";
 import { getLocationInfo, parseLocationString } from "../../utils/location.js";
-
-const prisma = new PrismaClient();
 
 /**
  * Extract date from a Date object, creating a new Date with only the date part (time set to 00:00:00)

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../db/client.js";
+
 import {
   GenerateReportDto,
   ListReportsQuery,
@@ -58,8 +59,6 @@ function subDays(date: Date, days: number): Date {
   d.setDate(d.getDate() - days);
   return d;
 }
-
-const prisma = new PrismaClient();
 
 // Helper functions
 function getCurrentUserId(req: Request): string {

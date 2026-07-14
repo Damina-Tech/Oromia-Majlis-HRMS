@@ -1,13 +1,12 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../db/client.js";
+
 import {
   CreateDocumentSettingsDto,
   UpdateDocumentSettingsDto,
   type CreateDocumentSettingsData,
   type UpdateDocumentSettingsData,
 } from "./document-settings.dto.js";
-
-const prisma = new PrismaClient();
 
 function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateExpenseDto,
   UpdateExpenseDto,
@@ -11,8 +12,6 @@ import {
 } from "./expense.dto.js";
 import { paginate } from "../../utils/pagination.js";
 import { NotificationService } from "../notifications/notification.service.js";
-
-const prisma = new PrismaClient();
 
 // Helper functions
 function getCurrentUserId(req: Request): string {

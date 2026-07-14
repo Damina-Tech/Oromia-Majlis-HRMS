@@ -1,5 +1,6 @@
 ﻿import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreatePayrollDto,
   UpdatePayrollDto,
@@ -7,8 +8,6 @@ import {
   ListPayrollQuery,
   GeneratePayrollDto,
 } from "./payroll.dto.js";
-
-const prisma = new PrismaClient();
 
 /**
  * Calculate tax based on gross salary (Ethiopian tax brackets - simplified)

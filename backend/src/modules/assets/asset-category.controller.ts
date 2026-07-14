@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-import { CreateAssetCategoryDto, UpdateAssetCategoryDto } from "./asset.dto.js";
+import prisma from "../../db/client.js";
 
-const prisma = new PrismaClient();
+import { CreateAssetCategoryDto, UpdateAssetCategoryDto } from "./asset.dto.js";
 
 export async function listAssetCategories(req: Request, res: Response) {
   try {

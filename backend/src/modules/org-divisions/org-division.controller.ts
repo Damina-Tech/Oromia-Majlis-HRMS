@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../db/client.js";
+
 import {
   CreateDivisionAssignmentDto,
   ListDivisionAssignmentsQuery,
@@ -7,8 +8,6 @@ import {
   UpdateOrgDivisionDto,
 } from "./org-division.dto.js";
 import { isSuperAdminUser } from "./division-access.js";
-
-const prisma = new PrismaClient();
 
 function assertAccessControl(req: Request, res: Response): boolean {
   const user = (req as any).user;

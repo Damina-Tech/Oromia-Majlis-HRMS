@@ -1,8 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-import * as fs from "fs";
-import * as path from "path";
 
-const prisma = new PrismaClient();
+import * as fs from "fs";
+import prisma from "../../db/client.js";
+import * as path from "path";
 
 /**
  * Generate PDF payslip for a payroll item

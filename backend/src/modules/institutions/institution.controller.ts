@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma, InstitutionType, InstitutionStatus, InstitutionAuditAction } from "@prisma/client";
+import { Prisma, InstitutionType, InstitutionStatus, InstitutionAuditAction } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { z } from "zod";
 import {
   CreateInstitutionDto,
@@ -18,7 +19,6 @@ import {
 import { paginate } from "../../lib/paginate.js";
 import { resolveOromiaGeography } from "./oromia-geography.service.js";
 
-const prisma = new PrismaClient();
 
 function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;

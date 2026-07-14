@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -21,8 +22,6 @@ import { generateBankExport, getBankExportBuffer } from "./bank-export.js";
 import { generateAndSavePayslip, generatePayslipData } from "./payslip-generator.js";
 import { NotificationService } from "../notifications/notification.service.js";
 import { format } from "date-fns";
-
-const prisma = new PrismaClient();
 
 /**
  * Create a new payroll run and generate items for employees

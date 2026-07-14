@@ -1,6 +1,5 @@
-import { PrismaClient, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 
 /**
  * Calculate income tax based on Ethiopian PAYE tax brackets

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import archiver from "archiver";
 import path from "path";
 import fs from "fs";
@@ -15,7 +16,6 @@ import {
 import { JwtUser } from "../../middleware/auth.js";
 import { generateIdCardAssets } from "./id-card.renderer.js";
 
-const prisma = new PrismaClient();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsRoot = path.join(__dirname, "../../../uploads");

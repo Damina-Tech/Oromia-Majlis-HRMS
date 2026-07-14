@@ -1,18 +1,6 @@
 import { Request, Response } from "express";
-import {
-  Prisma,
-  PrismaClient,
-  HalalApplicationStatus,
-  HalalBusinessStatus,
-  HalalBusinessCategory,
-  HalalCertificateStatus,
-  HalalAuditAction,
-  HalalPaymentMethod,
-  HalalPaymentStatus,
-  DocumentTemplateStatus,
-  HalalInspectionExpertRole,
-  HalalCompetencyStatus,
-} from "@prisma/client";
+import { Prisma, HalalApplicationStatus, HalalBusinessStatus, HalalBusinessCategory, HalalCertificateStatus, HalalAuditAction, HalalPaymentMethod, HalalPaymentStatus, DocumentTemplateStatus, HalalInspectionExpertRole, HalalCompetencyStatus } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { generateHalalCertificatePDF } from "./halal-certificate-generator.js";
 import {
   CreateHalalBusinessDto,
@@ -21,6 +9,7 @@ import {
   UpdateHalalApplicationDto,
   AssignInspectionDto,
   CompleteInspectionDto,
+  OwnerInspectionEvidenceDto,
   UpdateInspectionAssignmentDto,
   ApproveApplicationDto,
   CreateRenewalDto,
@@ -41,7 +30,6 @@ import { paginate } from "../../lib/paginate.js";
 import fetch from "node-fetch";
 import { sendBusinessApprovedSms, sendCertificateReadySms } from "./halal-sms.js";
 
-const prisma = new PrismaClient();
 const REQUIRED_FIXED_REGISTRATION_DOCUMENTS = [
   "Health Certificate",
   "ISO 22000 Certificate",
@@ -164,6 +152,26 @@ function assertHalalApplicationNotPaused(app: { pausedAt?: Date | null }) {
       "This application is paused by Majlis. No further actions can be taken until an administrator resumes it."
     );
   }
+}
+
+/** Completed inspections that include a non-conformity report require an owner evidence response before HRC. */
+function completedInspectionsHaveRequiredOwnerEvidence(
+  inspections: { completedAt: Date | null; checklistData: unknown }[]
+): boolean {
+  const completed = inspections.filter((i) => i.completedAt != null);
+  if (completed.length === 0) return false;
+
+  const withNonConformity = completed.filter((i) => {
+    const data = (i.checklistData as Record<string, unknown> | null) || {};
+    return typeof data.nonConformityReportUrl === "string" && data.nonConformityReportUrl.trim().length > 0;
+  });
+  // Legacy completed inspections without a non-conformity file can still reach HRC
+  if (withNonConformity.length === 0) return true;
+
+  return withNonConformity.every((i) => {
+    const data = (i.checklistData as Record<string, unknown> | null) || {};
+    return typeof data.evidenceReportUrl === "string" && data.evidenceReportUrl.trim().length > 0;
+  });
 }
 
 const halalApplicationPausedBySelect = {
@@ -861,7 +869,7 @@ export async function listApplications(req: Request, res: Response) {
   }
 }
 
-const DEFAULT_CERTIFICATION_FEE = 20000;
+const DEFAULT_CERTIFICATION_FEE = 2;
 
 /**
  * Blank agreement file from Document Templates (uploaded PDF/DOC path).
@@ -1362,67 +1370,158 @@ export async function chapaCallback(req: Request, res: Response) {
     if (!id || !trx_ref || status !== "success") {
       return res.status(400).send("Invalid callback");
     }
-    const app = await prisma.halalApplication.findUnique({
-      where: { id },
-      include: { business: true },
+    const result = await finalizeHalalApplicationChapaPayment(id, {
+      trxRef: trx_ref,
+      refId: ref_id || null,
     });
-    if (!app || app.chapaTxRef !== trx_ref) {
-      return res.status(404).send("Application not found");
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 400;
+      return res.status(code).send(result.message);
     }
-    if (isHalalApplicationPaused(app)) {
-      return res.status(400).send("Application paused");
-    }
-    if (app.feePaidAt) {
-      return res.status(200).send("OK"); // Already processed
-    }
-    const secretKey = process.env.CHAPA_SECRET_KEY;
-    if (!secretKey) return res.status(500).send("Config error");
-    const verifyResp = await fetch(`https://api.chapa.co/v1/transaction/verify/${ref_id}`, {
-      headers: { Authorization: `Bearer ${secretKey}` },
-    });
-    const verifyData = (await verifyResp.json()) as any;
-    if (verifyData.status !== "success" || verifyData.data?.status !== "success") {
-      return res.status(400).send("Verification failed");
-    }
-    const updatedApp = await prisma.halalApplication.update({
-      where: { id },
-      data: {
-        feePaidAt: new Date(),
-        status: HalalApplicationStatus.PENDING_COMPETENCY_LINK,
-        paymentMethod: "CHAPA",
-        chapaTxRef: trx_ref,
-        chapaRefId: ref_id || null,
-      },
-      include: { business: true },
-    });
-    await prisma.halalPayment.updateMany({
-      where: {
-        applicationId: id,
-        method: HalalPaymentMethod.CHAPA,
-        chapaTxRef: trx_ref,
-        status: HalalPaymentStatus.PENDING,
-      },
-      data: {
-        status: HalalPaymentStatus.COMPLETED,
-        paidAt: new Date(),
-        chapaRefId: ref_id || null,
-      },
-    });
-    await createAuditLog(
-      HalalAuditAction.APPLICATION_APPROVED,
-      updatedApp.business.userId,
-      "HalalApplication",
-      id,
-      id,
-      app,
-      updatedApp,
-      req.ip,
-      req.get("user-agent")
-    );
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
   }
+}
+
+/**
+ * Authenticated confirm after Chapa return_url redirect.
+ * Needed because callback_url may not reach the server (localhost / firewall),
+ * while the user is always redirected back to the frontend.
+ */
+export async function confirmChapaPayment(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const perms = (req as any).user?.permissions as string[] | undefined;
+    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
+    const { id } = req.params;
+    const body = typeof req.body === "object" && req.body !== null ? req.body : {};
+    const trx_ref =
+      (typeof body.trx_ref === "string" && body.trx_ref) ||
+      (typeof body.trxRef === "string" && body.trxRef) ||
+      undefined;
+    const ref_id =
+      (typeof body.ref_id === "string" && body.ref_id) ||
+      (typeof body.refId === "string" && body.refId) ||
+      undefined;
+
+    const app = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+    if (!app) return res.status(404).json({ message: "Application not found" });
+    if (app.business.userId !== userId && !isAdmin) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (app.feePaidAt) {
+      return res.json(await attachAgreementTemplateResolvedUrl(app as any));
+    }
+
+    const trxRef = trx_ref || app.chapaTxRef;
+    if (!trxRef) {
+      return res.status(400).json({
+        message: "No Chapa payment reference found. Start payment again or wait a moment and refresh.",
+      });
+    }
+
+    const result = await finalizeHalalApplicationChapaPayment(id, {
+      trxRef,
+      refId: ref_id || null,
+    });
+    if (!result.ok) {
+      const statusCode =
+        result.reason === "not_found" ? 404 : result.reason === "paused" ? 400 : 400;
+      return res.status(statusCode).json({ message: result.message });
+    }
+
+    const updated = await prisma.halalApplication.findUnique({
+      where: { id },
+      include: {
+        business: true,
+        inspections: { include: { inspector: true } },
+        certificate: true,
+      },
+    });
+    res.json(await attachAgreementTemplateResolvedUrl(updated as any));
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to confirm Chapa payment" });
+  }
+}
+
+type FinalizeChapaResult =
+  | { ok: true; alreadyPaid?: boolean }
+  | { ok: false; reason: "not_found" | "paused" | "mismatch" | "verify_failed" | "config"; message: string };
+
+async function finalizeHalalApplicationChapaPayment(
+  id: string,
+  options: { trxRef: string; refId?: string | null }
+): Promise<FinalizeChapaResult> {
+  const app = await prisma.halalApplication.findUnique({
+    where: { id },
+    include: { business: true },
+  });
+  if (!app) return { ok: false, reason: "not_found", message: "Application not found" };
+  if (app.chapaTxRef && app.chapaTxRef !== options.trxRef) {
+    return { ok: false, reason: "mismatch", message: "Payment reference mismatch" };
+  }
+  if (isHalalApplicationPaused(app)) {
+    return { ok: false, reason: "paused", message: "Application is paused" };
+  }
+  if (app.feePaidAt) {
+    return { ok: true, alreadyPaid: true };
+  }
+
+  const secretKey = process.env.CHAPA_SECRET_KEY;
+  if (!secretKey) return { ok: false, reason: "config", message: "Chapa payment is not configured" };
+
+  // Prefer ref_id when present; fall back to tx_ref (Chapa accepts either)
+  const verifyRef = (options.refId && String(options.refId).trim()) || options.trxRef;
+  const verifyResp = await fetch(`https://api.chapa.co/v1/transaction/verify/${encodeURIComponent(verifyRef)}`, {
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  const verifyData = (await verifyResp.json()) as any;
+  if (verifyData.status !== "success" || verifyData.data?.status !== "success") {
+    return {
+      ok: false,
+      reason: "verify_failed",
+      message: "Payment could not be verified with Chapa yet. If you completed payment, wait a moment and refresh.",
+    };
+  }
+
+  const updatedApp = await prisma.halalApplication.update({
+    where: { id },
+    data: {
+      feePaidAt: new Date(),
+      status: HalalApplicationStatus.PENDING_COMPETENCY_LINK,
+      paymentMethod: "CHAPA",
+      chapaTxRef: options.trxRef,
+      chapaRefId: options.refId || null,
+    },
+    include: { business: true },
+  });
+  await prisma.halalPayment.updateMany({
+    where: {
+      applicationId: id,
+      method: HalalPaymentMethod.CHAPA,
+      chapaTxRef: options.trxRef,
+      status: HalalPaymentStatus.PENDING,
+    },
+    data: {
+      status: HalalPaymentStatus.COMPLETED,
+      paidAt: new Date(),
+      chapaRefId: options.refId || null,
+    },
+  });
+  await createAuditLog(
+    HalalAuditAction.APPLICATION_APPROVED,
+    updatedApp.business.userId,
+    "HalalApplication",
+    id,
+    id,
+    app,
+    updatedApp
+  );
+  return { ok: true };
 }
 
 // Manual payment - bank transfer with receipt upload
@@ -2377,6 +2476,12 @@ export async function approveApplication(req: Request, res: Response) {
     if (!completed && body.approved) {
       return res.status(400).json({ message: "At least one inspection must be completed before approval" });
     }
+    if (body.approved && !completedInspectionsHaveRequiredOwnerEvidence(old.inspections)) {
+      return res.status(400).json({
+        message:
+          "The business owner must upload an evidence report in response to each non-conformity report before committee approval",
+      });
+    }
     const app = await prisma.halalApplication.update({
       where: { id },
       data: {
@@ -2793,11 +2898,18 @@ export async function completeInspection(req: Request, res: Response) {
     if (!old) return res.status(404).json({ message: "Inspection not found" });
     if (old.inspectorId !== userId) return res.status(403).json({ message: "Only assigned inspector can complete" });
     assertHalalApplicationNotPaused(old.application);
+
+    // Evidence report is the business owner's response — strip if sent by inspector
+    const checklistData = { ...((data.checklistData as Record<string, unknown>) || {}) };
+    delete checklistData.evidenceReportUrl;
+    delete checklistData.evidenceReportFileName;
+    delete checklistData.evidenceReportSubmittedAt;
+
     const ins = await prisma.halalInspection.update({
       where: { id },
       data: {
         completedAt: new Date(),
-        checklistData: data.checklistData as any,
+        checklistData: checklistData as any,
         evidence: data.evidence as any,
         gpsLat: data.gpsLat,
         gpsLng: data.gpsLng,
@@ -2806,14 +2918,100 @@ export async function completeInspection(req: Request, res: Response) {
       },
       include: { application: { include: { business: true } }, inspector: true },
     });
-    await prisma.halalApplication.update({
-      where: { id: old.applicationId },
-      data: { status: HalalApplicationStatus.INSPECTION },
-    });
+    // HRC (INSPECTION) is reached only after the business owner submits evidence for non-conformity reports
     await createAuditLog(HalalAuditAction.INSPECTION_COMPLETED, userId, "HalalInspection", id, old.applicationId, old, ins, req.ip, req.get("user-agent"));
     res.json(ins);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to complete inspection" });
+  }
+}
+
+/** Business owner uploads evidence report as a response to the inspector's non-conformity report */
+export async function submitOwnerInspectionEvidence(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    const body = typeof req.body === "object" && req.body !== null ? req.body : {};
+    const data = OwnerInspectionEvidenceDto.parse(body);
+
+    const old = await prisma.halalInspection.findUnique({
+      where: { id },
+      include: {
+        application: {
+          select: {
+            id: true,
+            status: true,
+            pausedAt: true,
+            business: { select: { userId: true } },
+          },
+        },
+      },
+    });
+    if (!old) return res.status(404).json({ message: "Inspection not found" });
+    if (old.application.business.userId !== userId) {
+      return res.status(403).json({ message: "Only the business owner can submit evidence for this inspection" });
+    }
+    if (!old.completedAt) {
+      return res.status(400).json({ message: "Inspection must be completed before evidence can be submitted" });
+    }
+    assertHalalApplicationNotPaused(old.application);
+
+    const existing = (old.checklistData as Record<string, unknown> | null) || {};
+    const ncUrl = typeof existing.nonConformityReportUrl === "string" ? existing.nonConformityReportUrl : "";
+    if (!ncUrl) {
+      return res.status(400).json({
+        message: "No non-conformity report is available to respond to yet",
+      });
+    }
+
+    const checklistData = {
+      ...existing,
+      evidenceReportUrl: data.evidenceReportUrl,
+      evidenceReportFileName: data.evidenceReportFileName || undefined,
+      evidenceReportSubmittedAt: new Date().toISOString(),
+    };
+
+    const ins = await prisma.halalInspection.update({
+      where: { id },
+      data: { checklistData: checklistData as any },
+      include: { application: { include: { business: true } }, inspector: true },
+    });
+
+    // Once every completed non-conformity has an owner evidence response, advance to HRC (INSPECTION)
+    const siblingInspections = await prisma.halalInspection.findMany({
+      where: { applicationId: old.applicationId },
+      select: { id: true, completedAt: true, checklistData: true },
+    });
+    const inspectionsForGate = siblingInspections.map((row) =>
+      row.id === id ? { ...row, checklistData } : row
+    );
+    if (
+      completedInspectionsHaveRequiredOwnerEvidence(inspectionsForGate) &&
+      (old.application.status === HalalApplicationStatus.SUBMITTED ||
+        old.application.status === HalalApplicationStatus.INSPECTION)
+    ) {
+      if (old.application.status === HalalApplicationStatus.SUBMITTED) {
+        await prisma.halalApplication.update({
+          where: { id: old.applicationId },
+          data: { status: HalalApplicationStatus.INSPECTION },
+        });
+      }
+    }
+
+    await createAuditLog(
+      HalalAuditAction.INSPECTION_COMPLETED,
+      userId,
+      "HalalInspection",
+      id,
+      old.applicationId,
+      old,
+      { ...ins, ownerEvidenceSubmitted: true },
+      req.ip,
+      req.get("user-agent")
+    );
+    res.json(ins);
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to submit evidence report" });
   }
 }
 

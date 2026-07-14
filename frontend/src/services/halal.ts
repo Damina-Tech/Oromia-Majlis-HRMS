@@ -124,6 +124,8 @@ export interface HalalApplication {
   paymentMethod?: string;
   paymentBankName?: string | null;
   paymentReceiptUrl?: string | null;
+  chapaTxRef?: string | null;
+  chapaRefId?: string | null;
   /** Set when finance rejects a manual receipt; cleared when owner re-uploads or pays via Chapa. */
   manualPaymentRejectionReason?: string | null;
   manualPaymentRejectedAt?: string | null;
@@ -297,10 +299,47 @@ export function getHalalApplicationStatusBadgeLabel(app: HalalApplication): stri
       if (!agreementDone) {
         return app.agreementOwnerSubmittedAt ? "Agreement (Majlis)" : "Agreement";
       }
+      if (halalInspectionsAwaitingOwnerEvidence(app.inspections ?? []).length > 0) {
+        return "Awaiting evidence";
+      }
       return "Inspection";
     default:
       return app.status;
   }
+}
+
+/** Completed inspections that have a non-conformity report but no owner evidence response yet. */
+export function halalInspectionsAwaitingOwnerEvidence(
+  inspections: Pick<HalalInspection, "completedAt" | "checklistData">[]
+): Pick<HalalInspection, "completedAt" | "checklistData">[] {
+  return inspections.filter((ins) => {
+    if (!ins.completedAt) return false;
+    const data = (ins.checklistData as Record<string, unknown> | undefined) || {};
+    const nc =
+      typeof data.nonConformityReportUrl === "string" && data.nonConformityReportUrl.trim().length > 0;
+    const ev =
+      typeof data.evidenceReportUrl === "string" && data.evidenceReportUrl.trim().length > 0;
+    return nc && !ev;
+  });
+}
+
+/** True when every completed non-conformity has an owner evidence response (required before HRC). */
+export function hasRequiredOwnerEvidenceForHrc(
+  inspections: Pick<HalalInspection, "completedAt" | "checklistData">[] | undefined
+): boolean {
+  const list = inspections ?? [];
+  const completed = list.filter((i) => i.completedAt != null);
+  if (completed.length === 0) return false;
+  const withNc = completed.filter((ins) => {
+    const data = (ins.checklistData as Record<string, unknown> | undefined) || {};
+    return typeof data.nonConformityReportUrl === "string" && data.nonConformityReportUrl.trim().length > 0;
+  });
+  // Legacy completed inspections without a non-conformity file can still reach HRC
+  if (withNc.length === 0) return true;
+  return withNc.every((ins) => {
+    const data = (ins.checklistData as Record<string, unknown> | undefined) || {};
+    return typeof data.evidenceReportUrl === "string" && data.evidenceReportUrl.trim().length > 0;
+  });
 }
 
 export type HalalInspectionExpertRole = "TECHNICAL_EXPERT" | "SHARIA_EXPERT";
@@ -734,6 +773,11 @@ export const halalApi = {
     confirmPayment: (id: string) => api.post<HalalApplication>(`/halal/applications/${id}/confirm-payment`).then((r) => r.data),
     initChapaPayment: (id: string) =>
       api.post<{ checkoutUrl: string; txRef: string }>(`/halal/applications/${id}/payment/chapa-init`).then((r) => r.data),
+    /** Verify Chapa payment after return_url redirect (fallback when webhook callback is missed). */
+    confirmChapaPayment: (
+      id: string,
+      data?: { trx_ref?: string; ref_id?: string; trxRef?: string; refId?: string }
+    ) => api.post<HalalApplication>(`/halal/applications/${id}/payment/chapa-confirm`, data ?? {}).then((r) => r.data),
     confirmManualPayment: (id: string, data: { bankName: string; receipt: File }) => {
       const form = new FormData();
       form.append("bankName", data.bankName);
@@ -786,6 +830,11 @@ export const halalApi = {
     delete: (id: string) => api.delete(`/halal/inspections/${id}`),
     complete: (id: string, data: { checklistData?: Record<string, unknown>; evidence?: { url: string; type: string }[]; gpsLat?: number; gpsLng?: number; notes?: string }) =>
       api.patch<HalalInspection>(`/halal/inspections/${id}/complete`, data).then((r) => r.data),
+    /** Business owner response to a completed non-conformity report */
+    submitOwnerEvidence: (
+      id: string,
+      data: { evidenceReportUrl: string; evidenceReportFileName?: string }
+    ) => api.patch<HalalInspection>(`/halal/inspections/${id}/owner-evidence`, data).then((r) => r.data),
   },
   certificates: {
     list: (params?: { page?: number; limit?: number; status?: string }) =>

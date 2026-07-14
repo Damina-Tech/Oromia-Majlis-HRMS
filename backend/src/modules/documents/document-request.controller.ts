@@ -1,10 +1,6 @@
 import { Request, Response } from "express";
-import {
-  PrismaClient,
-  Prisma,
-  NotificationModule,
-  NotificationType,
-} from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateDocumentRequestDto,
   UpdateDocumentRequestDto,
@@ -22,8 +18,6 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const prisma = new PrismaClient();
 
 function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;

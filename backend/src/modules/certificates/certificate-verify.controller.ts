@@ -1,13 +1,6 @@
 import { Request, Response } from "express";
-import {
-  HalalCertificateStatus,
-  HalalCompetencyStatus,
-  HalalProductCertificateStatus,
-  InstitutionRecognitionStatus,
-  PrismaClient,
-} from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { HalalCertificateStatus, HalalCompetencyStatus, HalalProductCertificateStatus, InstitutionRecognitionStatus } from "@prisma/client";
+import prisma from "../../db/client.js";
 
 export type CertificateVerifyType =
   | "HALAL_BUSINESS"

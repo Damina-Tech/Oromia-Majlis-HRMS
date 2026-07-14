@@ -1,10 +1,6 @@
 ﻿import { Request, Response } from "express";
-import {
-  PrismaClient,
-  Prisma,
-  NotificationModule,
-  NotificationType,
-} from "@prisma/client";
+import { Prisma, NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateLeaveRequestDto,
   UpdateLeaveStatusDto,
@@ -13,8 +9,6 @@ import {
 } from "./leave.dto.js";
 
 import { NotificationService } from "../notifications/notification.service.js";
-
-const prisma = new PrismaClient();
 
 // Helper function to calculate days between two dates
 function calculateDays(startDate: Date, endDate: Date): number {

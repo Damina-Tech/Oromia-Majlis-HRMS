@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateTaxRateDto,
   UpdateTaxRateDto,
@@ -8,8 +9,6 @@ import {
   ListTaxRateQuery,
   ListPensionRateQuery,
 } from "./tax-pension.dto.js";
-
-const prisma = new PrismaClient();
 
 // ========== Tax Rate CRUD ==========
 

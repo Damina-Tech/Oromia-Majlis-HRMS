@@ -29,6 +29,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -83,6 +93,8 @@ const AccessControlPage: React.FC = () => {
     roleId: "",
     isPrimary: false,
   });
+  const [removeAssignmentId, setRemoveAssignmentId] = useState<string | null>(null);
+  const [removingAssignment, setRemovingAssignment] = useState(false);
 
   const divisionRoles = useMemo(
     () => roles.filter((r) => DIVISION_ADMIN_ROLES.includes(r.name)),
@@ -162,15 +174,18 @@ const AccessControlPage: React.FC = () => {
     }
   };
 
-  const removeAssignment = async (id: string) => {
-    if (!canManage) return;
-    if (!confirm("Remove this division assignment?")) return;
+  const removeAssignment = async () => {
+    if (!canManage || !removeAssignmentId) return;
+    setRemovingAssignment(true);
     try {
-      await deleteDivisionAssignment(id);
+      await deleteDivisionAssignment(removeAssignmentId);
       toast.success("Assignment removed");
+      setRemoveAssignmentId(null);
       await loadData();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to remove assignment");
+    } finally {
+      setRemovingAssignment(false);
     }
   };
 
@@ -328,7 +343,7 @@ const AccessControlPage: React.FC = () => {
                             size="sm"
                             variant="ghost"
                             className="text-destructive"
-                            onClick={() => removeAssignment(a.id)}
+                            onClick={() => setRemoveAssignmentId(a.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -492,6 +507,36 @@ const AccessControlPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!removeAssignmentId}
+        onOpenChange={(open) => {
+          if (!open && !removingAssignment) setRemoveAssignmentId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove division assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the user&apos;s role for this division. They may need to re-login for access
+              changes to take effect.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingAssignment}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void removeAssignment();
+              }}
+              disabled={removingAssignment}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removingAssignment ? "Removing…" : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

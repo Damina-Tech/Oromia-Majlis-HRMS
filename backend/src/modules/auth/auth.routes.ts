@@ -1,16 +1,33 @@
 import { Router } from "express";
+import prisma from "../../db/client.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
+
 import { z } from "zod";
 import crypto from "crypto";
 import { buildEffectivePermissionNames } from "../users/permission-utils.js";
 import { buildAuthSessionForUser } from "./auth-session.js";
 import type { UserDivisionContext } from "../org-divisions/division-access.js";
 import { requireAuth } from "../../middleware/auth.js";
+import rateLimit from "express-rate-limit";
+import {
+  LOGIN_MAX_FAILED_ATTEMPTS,
+  computeLockUntil,
+  getLoginLockStatus,
+} from "./login-lockout.js";
 
-const prisma = new PrismaClient();
 const router = Router();
+
+/** IP-based throttle so attackers cannot spray many accounts from one IP */
+const loginIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: "Too many login attempts from this network. Please try again in 15 minutes.",
+  },
+});
 const LoginDto = z.object({ email: z.string().email(), password: z.string().min(6) });
 const RegisterHalalPurpose = z.enum(["halal_business_certificate", "halal_competency_certificate"]);
 const RegisterHalalDto = z.object({
@@ -46,13 +63,25 @@ function refreshCookieOptions() {
   };
 }
 
+function getRequiredSecret(name: "JWT_ACCESS_SECRET" | "JWT_REFRESH_SECRET", weakFallback: string): string {
+  const value = process.env[name] || "";
+  const weak = ["your-access-secret", "your-refresh-secret", "change_me_long_random_string", "change_me_also_long_random_string", weakFallback];
+  if (process.env.NODE_ENV === "production") {
+    if (!value || weak.includes(value) || value.length < 32) {
+      throw new Error(`${name} must be set to a strong secret (32+ chars) in production`);
+    }
+    return value;
+  }
+  return value || weakFallback;
+}
+
 function signAccess(
   userId: string,
   roles: string[],
   permissions: string[],
   extra?: { employeeId?: string; isSuperAdmin?: boolean; divisions?: UserDivisionContext[] }
 ) {
-  const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
+  const secret = getRequiredSecret("JWT_ACCESS_SECRET", "your-access-secret");
   return jwt.sign({ id: userId, roles, permissions, ...extra }, secret, { expiresIn: "2h" });
 }
 function signRefresh(
@@ -61,70 +90,145 @@ function signRefresh(
   permissions: string[],
   extra?: { employeeId?: string; isSuperAdmin?: boolean; divisions?: UserDivisionContext[] }
 ) {
-  const secret = process.env.JWT_REFRESH_SECRET || "your-refresh-secret";
+  const secret = getRequiredSecret("JWT_REFRESH_SECRET", "your-refresh-secret");
   return jwt.sign({ id: userId, roles, permissions, ...extra }, secret, { expiresIn: "14d" });
 }
 
-router.post("/login", async (req, res) => {
-  const { email, password } = LoginDto.parse(req.body);
-  const user = await prisma.user.findUnique({ 
-    where: { email }, 
-    include: { 
-      userRoles: { 
-        include: { 
-          role: {
-            include: {
-              permissions: {
-                include: {
-                  permission: true
-                }
-              }
-            }
-          } 
-        } 
-      },
-      userPermissions: {
-        include: {
-          permission: true,
+router.post("/login", loginIpLimiter, async (req, res) => {
+  try {
+    const { email, password } = LoginDto.parse(req.body);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
         },
+        userPermissions: {
+          include: {
+            permission: true,
+          },
+        },
+        employee: true,
       },
-      employee: true
-    } 
-  });
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  
-  // Check if user is active
-  if (user.status !== "ACTIVE") {
-    return res.status(403).json({ message: "Account is inactive. Please contact your administrator." });
+    });
+
+    // Same generic message when user missing (avoid email enumeration)
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    if (user.status !== "ACTIVE") {
+      return res.status(403).json({ message: "Account is inactive. Please contact your administrator." });
+    }
+
+    const lock = getLoginLockStatus(user.lockedUntil);
+    if (lock.locked) {
+      res.setHeader("Retry-After", String(lock.retryAfterSeconds));
+      return res.status(429).json({
+        message: lock.message,
+        code: "ACCOUNT_LOCKED",
+        lockedUntil: lock.lockedUntil.toISOString(),
+        retryAfterSeconds: lock.retryAfterSeconds,
+      });
+    }
+
+    // Lock expired — clear counter if still set
+    if (user.lockedUntil || user.failedLoginAttempts > 0) {
+      const stillLocked = getLoginLockStatus(user.lockedUntil).locked;
+      if (!stillLocked && user.lockedUntil) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil: null, failedLoginAttempts: 0 },
+        });
+        user.failedLoginAttempts = 0;
+        user.lockedUntil = null;
+      }
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      const attempts = (user.failedLoginAttempts || 0) + 1;
+      if (attempts >= LOGIN_MAX_FAILED_ATTEMPTS) {
+        const lockedUntil = computeLockUntil();
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: attempts, lockedUntil },
+        });
+        const status = getLoginLockStatus(lockedUntil);
+        if (status.locked) {
+          res.setHeader("Retry-After", String(status.retryAfterSeconds));
+          return res.status(429).json({
+            message: status.message,
+            code: "ACCOUNT_LOCKED",
+            lockedUntil: status.lockedUntil.toISOString(),
+            retryAfterSeconds: status.retryAfterSeconds,
+          });
+        }
+      } else {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: attempts, lockedUntil: null },
+        });
+      }
+      return res.status(401).json({
+        message: "Invalid credentials",
+        remainingAttempts: Math.max(0, LOGIN_MAX_FAILED_ATTEMPTS - attempts),
+      });
+    }
+
+    // Successful login — reset lockout state
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
+    }
+
+    const session = await buildAuthSessionForUser(prisma, user.id);
+    if (!session) {
+      return res.status(403).json({ message: "Account is inactive. Please contact your administrator." });
+    }
+
+    const { roles, permissions, employeeId, isSuperAdmin, divisions, avatarUrl } = session;
+    const tokenExtra = { employeeId, isSuperAdmin, divisions };
+    const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
+    const refreshToken = signRefresh(user.id, roles, permissions, tokenExtra);
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions());
+
+    res.json({
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles,
+        permissions,
+        employeeId,
+        avatarUrl,
+        isSuperAdmin,
+        divisions,
+      },
+    });
+  } catch (e: any) {
+    if (e?.name === "ZodError") {
+      return res.status(400).json({ message: "Invalid login payload", issues: e.issues });
+    }
+    console.error("Login error:", e);
+    return res.status(500).json({ message: "Login failed. Please try again." });
   }
-  
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-
-  const session = await buildAuthSessionForUser(prisma, user.id);
-  if (!session) return res.status(403).json({ message: "Account is inactive. Please contact your administrator." });
-
-  const { roles, permissions, employeeId, isSuperAdmin, divisions, avatarUrl } = session;
-  const tokenExtra = { employeeId, isSuperAdmin, divisions };
-  const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
-  const refreshToken = signRefresh(user.id, roles, permissions, tokenExtra);
-  res.cookie("refreshToken", refreshToken, refreshCookieOptions());
-
-  res.json({
-    accessToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      roles,
-      permissions,
-      employeeId,
-      avatarUrl,
-      isSuperAdmin,
-      divisions,
-    },
-  });
 });
 
 // POST /api/v1/auth/register - Public self-registration (Halal business certification or Halal competency applicant)
@@ -410,7 +514,11 @@ router.post("/reset-password", async (req, res) => {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: resetToken.userId },
-        data: { passwordHash: hashedPassword }
+        data: {
+          passwordHash: hashedPassword,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
       }),
       prisma.passwordResetToken.update({
         where: { id: resetToken.id },

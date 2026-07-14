@@ -19,11 +19,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = header.split(" ")[1];
   try {
     const secret = process.env.JWT_ACCESS_SECRET || "your-access-secret";
+    if (process.env.NODE_ENV === "production" && (secret === "your-access-secret" || secret.length < 32)) {
+      return res.status(500).json({ message: "Server auth misconfigured" });
+    }
     const payload = jwt.verify(token, secret) as JwtUser;
     (req as any).user = payload;
     next();
   } catch (error) {
-    console.error("JWT verification failed:", error);
     return res.status(401).json({ message: "Invalid token" });
   }
 }

@@ -270,12 +270,7 @@ const SettingsPage: React.FC = () => {
     return enabled.length ? enabled.join(", ") : "In-app only";
   }, [notificationChannels]);
 
-  const showEmployeesTab = useMemo(() => {
-    if (!user) return false;
-    if (isSuperAdmin()) return true;
-    if (hasPermission("employees.read") || hasPermission("employees.write")) return true;
-    return !user.roles?.includes("MEMBER");
-  }, [user, isSuperAdmin, hasPermission]);
+  const showEmployeesTab = useMemo(() => isSuperAdmin(), [isSuperAdmin]);
 
   useEffect(() => {
     if (!showEmployeesTab && activeTab === "employees") {

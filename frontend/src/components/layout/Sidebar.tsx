@@ -2,6 +2,11 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  isMemberPortalOnly,
+  isHalalBusinessPortalOnly,
+  isHalalCompetencyPortalOnly,
+} from '@/lib/division-access';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -213,14 +218,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   // Permission-first access model: keep role checks only for identity/display, not for access gating.
   const isEmployee = user?.roles?.some(role => role.toUpperCase() === 'EMPLOYEE') || false;
 
-  const isHalalBusinessOnly = user?.roles?.some(r => r.toUpperCase() === 'HALAL_BUSINESS') &&
-    !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(r.toUpperCase()));
-
-  const isHalalCompetencyOnly =
-    user?.roles?.some((r) => r.toUpperCase() === "HALAL_COMPETENCY") &&
-    !user?.roles?.some((r) =>
-      ["ADMIN", "HR", "MANAGER", "EMPLOYEE", "MAJLIS_REPRESENTATIVE", "MEMBER", "HALAL_BUSINESS"].includes(r.toUpperCase()),
-    );
+  const isHalalBusinessOnly = isHalalBusinessPortalOnly(user);
+  const isHalalCompetencyOnly = isHalalCompetencyPortalOnly(user);
 
   const isHalalStaffAny =
     hasPermission("halal.admin") ||
@@ -233,9 +232,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const hideHalalCompetencyForBusinessPortal =
     user?.roles?.some((r) => r.toUpperCase() === "HALAL_BUSINESS") && !isHalalStaffAny;
 
-  // Member-only: has MEMBER (or majlis.member) and no staff roles — their default is My Membership
-  const isMemberOnly = hasPermission('majlis.member') &&
-    !user?.roles?.some(r => ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'MAJLIS_REPRESENTATIVE'].includes(r.toUpperCase()));
+  // Member-only portal users — hide main Dashboard; staff/admin always keep it
+  const isMemberOnly = isMemberPortalOnly(user);
 
   const filteredMenuItems = menuItems.filter((item) => {
     // Hide main Dashboard only for Halal-only or Member-only users (permission-based: show when user has dashboard.view)
@@ -341,7 +339,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('assets.view') || hasPermission('assets.manage')) {
     assetSubmenuItems.push({ titleKey: 'assetsList', href: '/assets', permission: 'assets.view' });
     assetSubmenuItems.push({ titleKey: 'assetsDashboard', href: '/assets/dashboard', permission: 'assets.view' });
-    assetSubmenuItems.push({ titleKey: 'assetsReports', href: '/assets/reports', permission: 'assets.view' });
   }
 
   // Documents submenu items

@@ -34,9 +34,11 @@ import {
   Factory,
 } from "lucide-react";
 import { halalApi, type HalalBusiness, type HalalBusinessCategory } from "@/services/halal";
-import { regionsApi } from "@/services/institutions";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
+import OromiaLocationPicker from "@/components/location/OromiaLocationPicker";
+import { resolveOromiaLocationIds } from "@/services/oromia-location";
+import { OROMIA_REGION_NAME } from "@/constants/oromia-zones-districts";
 import { resolveFileUrl } from "@/config/api";
 import { randomUUID } from "@/utils/uuid";
 
@@ -56,6 +58,8 @@ const FIELD_LABELS: Record<string, string> = {
   regionId: "Region",
   zoneId: "Zone",
   woredaId: "Woreda",
+  oromiaZone: "Zone",
+  oromiaDistrict: "District / Woreda",
   kebeleName: "Kebele",
   businessId: "Business",
   productList: "Products",
@@ -552,6 +556,9 @@ interface FormData {
   regionId: string;
   zoneId: string;
   woredaId: string;
+  /** Oromia picker names — resolved to regionId/zoneId/woredaId on submit */
+  oromiaZone: string;
+  oromiaDistrict: string;
   kebeleName: string;
   address: string;
   latitude: string;
@@ -597,6 +604,8 @@ const initialFormData: FormData = {
   regionId: "",
   zoneId: "",
   woredaId: "",
+  oromiaZone: "",
+  oromiaDistrict: "",
   kebeleName: "",
   address: "",
   latitude: "",
@@ -707,13 +716,6 @@ export default function HalalRegisterFormPage() {
     enabled: isEdit,
   });
 
-  const { data: regions } = useQuery({
-    queryKey: ["regions"],
-    queryFn: () => regionsApi.list(),
-  });
-  const selectedRegion = regions?.find((r) => r.id === formData.regionId);
-  const selectedZone = selectedRegion?.zones?.find((z) => z.id === formData.zoneId);
-
   useEffect(() => {
     if (isEdit && business) {
       const b = business as import("@/services/halal").HalalBusiness & {
@@ -810,6 +812,8 @@ export default function HalalRegisterFormPage() {
         regionId: business.regionId || "",
         zoneId: business.zoneId || "",
         woredaId: business.woredaId || "",
+        oromiaZone: business.zone?.name || "",
+        oromiaDistrict: business.woreda?.name || "",
         kebeleName: business.kebeleName || "",
         address: business.address || "",
         latitude: business.latitude?.toString() || "",
@@ -895,6 +899,28 @@ export default function HalalRegisterFormPage() {
       toast.error("Please complete the Production system step with valid numbers.");
       return;
     }
+    if (!formData.oromiaZone.trim() || !formData.oromiaDistrict.trim()) {
+      toast.error("Please select zone and district");
+      return;
+    }
+
+    let regionId = formData.regionId || undefined;
+    let zoneId = formData.zoneId || undefined;
+    let woredaId = formData.woredaId || undefined;
+    try {
+      const resolved = await resolveOromiaLocationIds(
+        formData.oromiaZone,
+        formData.oromiaDistrict,
+        "institutions"
+      );
+      regionId = resolved.regionId;
+      zoneId = resolved.zoneId;
+      woredaId = resolved.woredaId;
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "Failed to resolve location");
+      return;
+    }
+
     const productionSystem = buildProductionSystemPayload(formData);
     const lat = formData.latitude ? parseFloat(formData.latitude) : undefined;
     const lng = formData.longitude ? parseFloat(formData.longitude) : undefined;
@@ -918,9 +944,9 @@ export default function HalalRegisterFormPage() {
       contactEmail: primary?.emailAddress.trim(),
       contactPhone: primary?.phoneNumber.trim(),
       ownersManagers: ownersPayload,
-      regionId: formData.regionId || undefined,
-      zoneId: formData.zoneId || undefined,
-      woredaId: formData.woredaId || undefined,
+      regionId,
+      zoneId,
+      woredaId,
       kebeleName: formData.kebeleName || undefined,
       address: formData.address || undefined,
       latitude: lat,
@@ -1109,6 +1135,8 @@ export default function HalalRegisterFormPage() {
         categoryOtherOk &&
         businessTypeOtherOk &&
         formData.tinNumber.trim() &&
+        formData.oromiaZone.trim() &&
+        formData.oromiaDistrict.trim() &&
         hasLicense &&
         hasHealthCert &&
         hasIso22000 &&
@@ -1572,53 +1600,36 @@ export default function HalalRegisterFormPage() {
                 <h4 className="font-medium mb-3 flex items-center gap-2">
                   <MapPin className="h-4 w-4" /> Location
                 </h4>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div>
-                    <Label>Region</Label>
-                    <Select
-                      value={formData.regionId}
-                      onValueChange={(v) => setFormData((p) => ({ ...p, regionId: v, zoneId: "", woredaId: "" }))}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Region" /></SelectTrigger>
-                      <SelectContent>
-                        {regions?.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Zone</Label>
-                    <Select
-                      value={formData.zoneId}
-                      onValueChange={(v) => setFormData((p) => ({ ...p, zoneId: v, woredaId: "" }))}
-                      disabled={!formData.regionId}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Zone" /></SelectTrigger>
-                      <SelectContent>
-                        {selectedRegion?.zones?.map((z) => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Woreda</Label>
-                    <Select
-                      value={formData.woredaId}
-                      onValueChange={(v) => setFormData((p) => ({ ...p, woredaId: v }))}
-                      disabled={!formData.zoneId}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Woreda" /></SelectTrigger>
-                      <SelectContent>
-                        {selectedZone?.woredas?.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                <OromiaLocationPicker
+                  required
+                  value={{
+                    zone: formData.oromiaZone,
+                    district: formData.oromiaDistrict,
+                    kebele: formData.kebeleName,
+                  }}
+                  onChange={(loc) =>
+                    setFormData((p) => ({
+                      ...p,
+                      oromiaZone: loc.zone,
+                      oromiaDistrict: loc.district,
+                      kebeleName: loc.kebele ?? "",
+                      regionId: "",
+                      zoneId: "",
+                      woredaId: "",
+                    }))
+                  }
+                  showKebele
+                  kebeleLabel="Kebele (optional)"
+                  kebelePlaceholder="e.g. Kebele 01"
+                  districtLabel="District / Woreda"
+                />
                 <div className="mt-4">
-                  <Label>Kebele / Area</Label>
+                  <Label>Area / street (optional)</Label>
                   <Textarea
                     value={formData.address}
                     onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
                     rows={2}
-                    placeholder="Street, kebele, or area"
+                    placeholder="Street, neighborhood, or other area details"
                   />
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -2516,11 +2527,14 @@ export default function HalalRegisterFormPage() {
                   <MapPin className="h-4 w-4" /> Location
                 </h4>
                 <div className="grid gap-3 sm:grid-cols-2 text-sm">
-                  <div><span className="text-muted-foreground">Region:</span> <span className="font-medium">{selectedRegion?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Zone:</span> <span className="font-medium">{selectedZone?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Woreda:</span> <span className="font-medium">{selectedZone?.woredas?.find((w) => w.id === formData.woredaId)?.name || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Region:</span> <span className="font-medium">{OROMIA_REGION_NAME}</span></div>
+                  <div><span className="text-muted-foreground">Zone:</span> <span className="font-medium">{formData.oromiaZone || "—"}</span></div>
+                  <div><span className="text-muted-foreground">District / Woreda:</span> <span className="font-medium">{formData.oromiaDistrict || "—"}</span></div>
+                  {formData.kebeleName && (
+                    <div><span className="text-muted-foreground">Kebele:</span> <span className="font-medium">{formData.kebeleName}</span></div>
+                  )}
                   {formData.address && (
-                    <div className="sm:col-span-2"><span className="text-muted-foreground">Kebele / Area:</span> <span className="font-medium">{formData.address}</span></div>
+                    <div className="sm:col-span-2"><span className="text-muted-foreground">Area:</span> <span className="font-medium">{formData.address}</span></div>
                   )}
                   {(formData.latitude || formData.longitude) && (
                     <div className="sm:col-span-2"><span className="text-muted-foreground">Coordinates:</span> <span className="font-medium font-mono">{formData.latitude}, {formData.longitude}</span></div>

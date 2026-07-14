@@ -61,6 +61,8 @@ import {
   isHalalApplicationWithdrawLockedByAgreement,
   getHalalApplicationStatusBadgeLabel,
   getHalalInspectionExpertRoleLabel,
+  hasRequiredOwnerEvidenceForHrc,
+  halalInspectionsAwaitingOwnerEvidence,
 } from "@/services/halal";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
@@ -172,7 +174,7 @@ const ETHIOPIAN_BANKS = [
 ];
 
 const ACCOUNT_NAME = "Oromia Islamic Affairs Supreme Council";
-const HALAL_CERTIFICATION_FEE = 20000;
+const HALAL_CERTIFICATION_FEE = 2;
 
 const BANK_ACCOUNT_DETAILS: Record<string, { accountName: string; accountNumber: string }> = {
   "Commercial Bank of Ethiopia": { accountName: ACCOUNT_NAME, accountNumber: "1000600162447" },
@@ -481,12 +483,62 @@ export default function HalalMyApplicationDetailPage() {
   });
 
   useEffect(() => {
-    if (searchParams.get("payment") === "chapa" && id) {
-      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
-      toast.success("Payment successful");
+    if (searchParams.get("payment") !== "chapa" || !id) return;
+
+    let cancelled = false;
+    const trx_ref = searchParams.get("trx_ref") || searchParams.get("trxRef") || undefined;
+    const ref_id = searchParams.get("ref_id") || searchParams.get("refId") || undefined;
+
+    const confirm = async () => {
+      const delays = [0, 1500, 3000];
+      let lastError: unknown;
+      for (const delay of delays) {
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        if (cancelled) return;
+        try {
+          await halalApi.applications.confirmChapaPayment(id, {
+            ...(trx_ref ? { trx_ref } : {}),
+            ...(ref_id ? { ref_id } : {}),
+          });
+          if (cancelled) return;
+          await queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+          await queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+          toast.success("Payment successful");
+          setSearchParams({}, { replace: true });
+          return;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      if (cancelled) return;
+      const msg = (lastError as any)?.response?.data?.message;
+      toast.error(
+        typeof msg === "string"
+          ? msg
+          : "Payment could not be confirmed yet. If you were charged, use Confirm payment below or refresh this page."
+      );
       setSearchParams({}, { replace: true });
-    }
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+    };
+
+    void confirm();
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams, id, queryClient, setSearchParams]);
+
+  const chapaConfirmMutation = useMutation({
+    mutationFn: () => halalApi.applications.confirmChapaPayment(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
+      toast.success("Payment confirmed");
+    },
+    onError: (e: any) => {
+      const msg = e.response?.data?.message;
+      toast.error(typeof msg === "string" ? msg : "Could not confirm Chapa payment");
+    },
+  });
 
   const withdrawMutation = useMutation({
     mutationFn: () => halalApi.applications.delete(id!),
@@ -512,6 +564,34 @@ export default function HalalMyApplicationDetailPage() {
   const [isUploadingMeetingMinutes, setIsUploadingMeetingMinutes] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [pauseReason, setPauseReason] = useState("");
+  const [ownerEvidenceFiles, setOwnerEvidenceFiles] = useState<Record<string, File | null>>({});
+  const [uploadingOwnerEvidenceId, setUploadingOwnerEvidenceId] = useState<string | null>(null);
+
+  const submitOwnerEvidenceMutation = useMutation({
+    mutationFn: async ({
+      inspectionId,
+      file,
+    }: {
+      inspectionId: string;
+      file: File;
+    }) => {
+      const upload = await halalApi.businesses.uploadDocument(file);
+      return halalApi.inspections.submitOwnerEvidence(inspectionId, {
+        evidenceReportUrl: upload.url,
+        evidenceReportFileName: file.name,
+      });
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["halal-application", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
+      setOwnerEvidenceFiles((prev) => ({ ...prev, [vars.inspectionId]: null }));
+      toast.success("Evidence report submitted successfully");
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to submit evidence report");
+    },
+    onSettled: () => setUploadingOwnerEvidenceId(null),
+  });
 
   const pauseApplicationMutation = useMutation({
     mutationFn: (reason: string) => halalApi.applications.pause(id!, reason),
@@ -613,6 +693,11 @@ export default function HalalMyApplicationDetailPage() {
   const showManualPaymentRejection =
     application.status === "REVIEW" && !isPaid && !hasPendingManualPayment && Boolean(manualPaymentRejectionNotice);
   const hasCompletedInspection = application.inspections?.some((i) => i.completedAt != null) ?? false;
+  const inspectionsAwaitingOwnerEvidence = halalInspectionsAwaitingOwnerEvidence(
+    application.inspections ?? []
+  );
+  const awaitingOwnerEvidence = inspectionsAwaitingOwnerEvidence.length > 0;
+  const hasOwnerEvidenceForHrc = hasRequiredOwnerEvidenceForHrc(application.inspections);
   const effectiveStatus = application.status;
   const isPaused = !!application.pausedAt;
   const agreementDone = !!application.agreementMajlisApprovedAt;
@@ -622,8 +707,16 @@ export default function HalalMyApplicationDetailPage() {
   const currentStepIndex =
     displayStepKey === "REJECTED" ? -1 : WORKFLOW_STEPS.findIndex((s) => s.key === displayStepKey);
   const baseHint = (() => {
-    // Stepper is on "Inspection" while API status stays SUBMITTED until committee moves it forward
+    // Stepper is on "Inspection" while API status stays SUBMITTED until owner evidence unlocks HRC
     if (application.status === "SUBMITTED" && agreementDone) {
+      if (awaitingOwnerEvidence) {
+        return {
+          title: isApplicationOwner ? "Upload evidence report" : "Awaiting owner evidence",
+          description: isApplicationOwner
+            ? "An inspection non-conformity report has been submitted. Upload your evidence report below to respond. The application can only move to Halal Review Committee (HRC) after your evidence is received."
+            : "An inspection non-conformity report is on file. The business owner must upload an evidence report response before this application can proceed to HRC.",
+        };
+      }
       if (isApplicationOwner) {
         return {
           title: "Inspection scheduling",
@@ -635,20 +728,20 @@ export default function HalalMyApplicationDetailPage() {
         return {
           title: "Inspection stage",
           description:
-            "The agreement is finalized. Assign at least two inspectors (Technical experts, and optionally Sharia experts). After at least one inspection report is submitted, you can move this application to committee review.",
+            "The agreement is finalized. Assign inspectors and complete non-conformity reports. After the business owner uploads the required evidence response, the application moves to committee review (HRC).",
         };
       }
       if (isStaff) {
         return {
           title: "Inspection stage",
           description:
-            "The agreement is complete. Inspectors will be assigned and facility inspections carried out before this application proceeds to committee review and payment.",
+            "The agreement is complete. Inspectors will be assigned and facility inspections carried out. HRC begins only after the owner submits evidence for each non-conformity report.",
         };
       }
       return {
         title: "Inspection stage",
         description:
-          "The certification agreement is complete. The workflow continues with inspections, then committee review and certification fee payment.",
+          "The certification agreement is complete. The workflow continues with inspections, owner evidence response, then committee review and certification fee payment.",
       };
     }
     if (application.status === "SUBMITTED" && !agreementDone) {
@@ -691,17 +784,22 @@ export default function HalalMyApplicationDetailPage() {
           : application.pausedReason?.trim() ||
             "This application is paused. Resume it when the issue is resolved to allow the workflow to continue.",
       }
-    : application.status === "INSPECTION" && hasCompletedInspection
+    : application.status === "INSPECTION" && awaitingOwnerEvidence
       ? {
-          title: "Ready for committee review",
-          description:
-            "Inspection has been completed. The committee can now review and decide whether to approve this application for payment.",
+          title: isApplicationOwner ? "Upload evidence report" : "Awaiting owner evidence",
+          description: isApplicationOwner
+            ? "Upload your evidence report in response to the non-conformity report before the Halal Review Committee can decide on this application."
+            : "Evidence report responses are still outstanding. Committee approval is blocked until the business owner uploads them.",
         }
-      : baseHint;
+      : application.status === "INSPECTION" && hasCompletedInspection && hasOwnerEvidenceForHrc
+        ? {
+            title: "Ready for committee review",
+            description:
+              "Inspection and owner evidence are complete. The committee can now review and decide whether to approve this application for payment.",
+          }
+        : baseHint;
   const hideInspectionsUntilOwnerAgreement =
     application.status === "SUBMITTED" && isApplicationOwner && !agreementDone;
-  const assignInspectorsBlockedByAgreement =
-    application.status === "SUBMITTED" && !agreementDone;
   const isRejected = application.status === "REJECTED";
   const showInteractiveAgreementCard = !isRejected && application.status === "SUBMITTED" && !agreementDone;
   const showAgreementDocumentsReadonly =
@@ -717,16 +815,21 @@ export default function HalalMyApplicationDetailPage() {
 
   const biz = application.business;
   const canApprove =
-    !isPaused && canCommitteeApprove && application.status === "INSPECTION" && hasCompletedInspection;
+    !isPaused &&
+    canCommitteeApprove &&
+    application.status === "INSPECTION" &&
+    hasCompletedInspection &&
+    hasOwnerEvidenceForHrc;
   const canReject =
-    !isPaused && canCommitteeReject && ["SUBMITTED", "INSPECTION"].includes(application.status);
+    !isPaused && canCommitteeReject && application.status === "INSPECTION";
   const canPauseApplication =
     isHalalAdmin && !isPaused && application.status !== "REJECTED";
   const canResumeApplication = isHalalAdmin && isPaused;
   const isApproved = application.status === "APPROVED";
-  /** After the first report is in, committee review starts — hide other inspectors' pending assignments. */
+  /** After HRC starts (owner evidence unlocked INSPECTION), hide other inspectors' pending assignments. */
   const inCommitteeReviewAfterFirstInspection =
     hasCompletedInspection &&
+    hasOwnerEvidenceForHrc &&
     ["INSPECTION", "REVIEW", "PENDING_COMPETENCY_LINK", "APPROVED"].includes(application.status);
   const visibleInspections = inCommitteeReviewAfterFirstInspection
     ? (application.inspections ?? []).filter((i) => i.completedAt != null)
@@ -1334,6 +1437,22 @@ export default function HalalMyApplicationDetailPage() {
                     <p className="text-sm text-muted-foreground">
                       Pay securely with Chapa. You will be redirected to complete the payment.
                     </p>
+                    {application.chapaTxRef && (isApplicationOwner || isStaff) && (
+                      <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-950/20 p-3 space-y-2">
+                        <p className="text-sm text-amber-900 dark:text-amber-100">
+                          A Chapa checkout was started earlier. If you already paid, confirm it here so the application can continue.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={chapaConfirmMutation.isPending}
+                          onClick={() => chapaConfirmMutation.mutate()}
+                        >
+                          {chapaConfirmMutation.isPending ? "Confirming…" : "Confirm Chapa payment"}
+                        </Button>
+                      </div>
+                    )}
                     <Button
                       onClick={() => chapaInitMutation.mutate()}
                       disabled={chapaInitMutation.isPending}
@@ -1585,11 +1704,23 @@ export default function HalalMyApplicationDetailPage() {
                 const evName = (data?.evidenceReportFileName as string) || "Evidence report";
                 const ncUrl = ncUrlRaw ? resolveFileUrl(ncUrlRaw) : undefined;
                 const evUrl = evUrlRaw ? resolveFileUrl(evUrlRaw) : undefined;
+                const evidenceSubmittedAt =
+                  typeof data?.evidenceReportSubmittedAt === "string"
+                    ? data.evidenceReportSubmittedAt
+                    : undefined;
+                const needsOwnerEvidence =
+                  isApplicationOwner &&
+                  !!ins.completedAt &&
+                  !!ncUrlRaw &&
+                  !evUrlRaw &&
+                  !isPaused;
                 const hasReports = Boolean(ncUrlRaw || evUrlRaw);
                 const inspectionNotes = ins.notes?.trim() || "";
                 const hasResult = Boolean(
-                  ins.completedAt && (hasReports || recommendations || inspectionNotes)
+                  ins.completedAt && (hasReports || recommendations || inspectionNotes || needsOwnerEvidence)
                 );
+                const selectedEvidenceFile = ownerEvidenceFiles[ins.id] ?? null;
+                const isUploadingThisEvidence = uploadingOwnerEvidenceId === ins.id;
 
                 return (
                   <li
@@ -1643,9 +1774,9 @@ export default function HalalMyApplicationDetailPage() {
                         {hasReports && (
                           <div className="space-y-1.5">
                             <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">
-                              Submitted reports
+                              Inspection documents
                             </span>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col gap-1.5">
                               {ncUrl && (
                                 <a
                                   href={ncUrl}
@@ -1653,21 +1784,71 @@ export default function HalalMyApplicationDetailPage() {
                                   rel="noopener noreferrer"
                                   className="text-xs text-blue-600 hover:underline"
                                 >
-                                  {ncName}
+                                  Non-conformity report: {ncName}
                                 </a>
                               )}
                               {evUrl && (
-                                <a
-                                  href={evUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline"
-                                >
-                                  {evName}
-                                </a>
+                                <div className="space-y-0.5">
+                                  <a
+                                    href={evUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline"
+                                  >
+                                    Owner evidence response: {evName}
+                                  </a>
+                                  {evidenceSubmittedAt && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Submitted {new Date(evidenceSubmittedAt).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </div>
+                        )}
+                        {needsOwnerEvidence && (
+                          <div className="rounded-md border border-amber-200 dark:border-amber-800/60 bg-amber-50/80 dark:bg-amber-950/20 p-3 space-y-2">
+                            <div className="flex items-start gap-2">
+                              <Upload className="h-4 w-4 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                                  Upload evidence report
+                                </p>
+                                <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                                  Respond to the non-conformity report with your evidence (PDF, Word, or image).
+                                </p>
+                              </div>
+                            </div>
+                            <Input
+                              type="file"
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              className="bg-background"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] ?? null;
+                                setOwnerEvidenceFiles((prev) => ({ ...prev, [ins.id]: file }));
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              disabled={!selectedEvidenceFile || isUploadingThisEvidence || submitOwnerEvidenceMutation.isPending}
+                              onClick={() => {
+                                if (!selectedEvidenceFile) return;
+                                setUploadingOwnerEvidenceId(ins.id);
+                                submitOwnerEvidenceMutation.mutate({
+                                  inspectionId: ins.id,
+                                  file: selectedEvidenceFile,
+                                });
+                              }}
+                            >
+                              {isUploadingThisEvidence ? "Uploading…" : "Submit evidence response"}
+                            </Button>
+                          </div>
+                        )}
+                        {!isApplicationOwner && !!ins.completedAt && !!ncUrlRaw && !evUrlRaw && (
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Awaiting business owner evidence response
+                          </p>
                         )}
                         {recommendations ? (
                           <div>
@@ -2467,15 +2648,51 @@ export default function HalalMyApplicationDetailPage() {
         </Card>
       )}
 
-      {/* Staff-only: Committee actions (Approve, Reject, Assign inspectors) */}
-          {canCommitteeReview && !isPaused && (
+      {/* Staff-only: assign inspectors after agreement (Inspection stage) — before HRC */}
+      {canCommitteeReview &&
+        !isPaused &&
+        application.status === "SUBMITTED" &&
+        agreementDone &&
+        !hasCompletedInspection && (
+          <Card className="shadow-sm border-violet-200/50 dark:border-violet-900/30">
+            <CardHeader>
+              <CardTitle className="text-violet-800 dark:text-violet-200">Inspection assignment</CardTitle>
+              <CardDescription>
+                Assign Technical (and optionally Sharia) inspectors for the facility visit
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAssignTechnicalIds([]);
+                  setAssignShariaIds([]);
+                  setAssignScheduledAt("");
+                  setAssignInspectorsOpen(true);
+                }}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Assign inspectors
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+      {/* Staff-only: Committee actions at HRC stage only */}
+      {canCommitteeReview && !isPaused && application.status === "INSPECTION" && (
         <Card className="shadow-sm border-blue-200/50 dark:border-blue-900/30">
           <CardHeader>
             <CardTitle className="text-blue-800 dark:text-blue-200">Committee actions</CardTitle>
             <CardDescription>Review this application and inspection outcome</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {canReject && !canApprove && (
+            {awaitingOwnerEvidence && (
+              <span className="text-xs text-amber-700 dark:text-amber-300 w-full">
+                Awaiting business owner evidence report(s) before approval is allowed
+              </span>
+            )}
+            {canReject && !canApprove && !awaitingOwnerEvidence && (
               <span className="text-xs text-muted-foreground w-full">
                 Complete an inspection before approving
               </span>
@@ -2490,29 +2707,6 @@ export default function HalalMyApplicationDetailPage() {
               <Button size="sm" variant="destructive" onClick={() => setRejectOpen(true)}>
                 <XCircle className="h-4 w-4 mr-2" />
                 Reject
-              </Button>
-            )}
-            {["SUBMITTED", "REVIEW", "INSPECTION"].includes(application.status) && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={hasCompletedInspection || assignInspectorsBlockedByAgreement}
-                title={
-                  hasCompletedInspection
-                    ? "Inspection already completed; cannot reassign"
-                    : assignInspectorsBlockedByAgreement
-                      ? "The certification agreement must be completed by the owner and finalized by Majlis before inspectors can be assigned."
-                      : undefined
-                }
-                onClick={() => {
-                  setAssignTechnicalIds([]);
-                  setAssignShariaIds([]);
-                  setAssignScheduledAt("");
-                  setAssignInspectorsOpen(true);
-                }}
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Assign inspectors
               </Button>
             )}
           </CardContent>

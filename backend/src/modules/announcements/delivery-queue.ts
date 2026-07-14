@@ -1,7 +1,6 @@
-import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
+import { NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { NotificationService } from "../notifications/notification.service.js";
-
-const prisma = new PrismaClient();
 
 /**
  * Enqueue announcement delivery for all target users

@@ -1,6 +1,6 @@
-import { HalalCertificateTemplateType, DocumentTemplateEngine, PrismaClient } from "@prisma/client";
+import { HalalCertificateTemplateType, DocumentTemplateEngine } from "@prisma/client";
+import prisma from "../../db/client.js";
 
-const prisma = new PrismaClient();
 import { parseLayoutConfig } from "./certificate-layout.types.js";
 import { generateCertificatePdfFromLayout } from "./certificate-pdf-generator.js";
 

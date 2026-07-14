@@ -1,12 +1,11 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateSalaryIncrementDto,
   BulkIncrementDto,
   ListSalaryIncrementQuery,
 } from "./salary-increment.dto.js";
-
-const prisma = new PrismaClient();
 
 export async function createSalaryIncrement(req: Request, res: Response) {
   try {

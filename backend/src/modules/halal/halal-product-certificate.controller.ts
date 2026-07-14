@@ -1,10 +1,6 @@
 import { Request, Response } from "express";
-import {
-  Prisma,
-  PrismaClient,
-  HalalCertificateStatus,
-  HalalProductCertificateStatus,
-} from "@prisma/client";
+import { Prisma, HalalCertificateStatus, HalalProductCertificateStatus } from "@prisma/client";
+import prisma from "../../db/client.js";
 import fetch from "node-fetch";
 import { generateHalalProductCertificatePDF } from "./halal-product-certificate-generator.js";
 import {
@@ -13,8 +9,6 @@ import {
   ManualPaymentDto,
 } from "./halal.dto.js";
 import { paginate } from "../../lib/paginate.js";
-
-const prisma = new PrismaClient();
 
 export const HALAL_PRODUCT_CERTIFICATE_FEE = 3500;
 

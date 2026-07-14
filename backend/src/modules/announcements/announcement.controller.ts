@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateAnnouncementDto,
   UpdateAnnouncementDto,
@@ -12,8 +13,6 @@ import {
 } from "./announcement.dto.js";
 import { paginate } from "../../utils/pagination.js";
 import { enqueueAnnouncementDelivery } from "./delivery-queue.js";
-
-const prisma = new PrismaClient();
 
 function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;

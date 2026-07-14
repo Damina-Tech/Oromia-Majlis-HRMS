@@ -4,6 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth, getLoginRedirect } from "./contexts/AuthContext";
+import {
+  isHalalBusinessPortalOnly,
+  isHalalCompetencyPortalOnly,
+  isMemberPortalOnly,
+} from "./lib/division-access";
 import { ThemeProvider } from "./contexts/ThemeProvider";
 import Layout from "./components/layout/Layout";
 import "./i18n/config";
@@ -31,7 +36,6 @@ import OrganizationPage from "./pages/organization/OrganizationPage";
 import TimesheetPage from "./pages/timesheet/TimesheetPage";
 import AssetManagementPage from "./pages/assets/AssetManagementPage";
 import AssetDashboardPage from "./pages/assets/AssetDashboardPage";
-import AssetReportsPage from "./pages/assets/AssetReportsPage";
 import DocumentTemplatesPage from "./pages/documents/DocumentTemplatesPage";
 import CertificateTemplatesPage from "./pages/documents/CertificateTemplatesPage";
 import DocumentGenerationPage from "./pages/documents/DocumentGenerationPage";
@@ -145,13 +149,18 @@ function PermissionRoute({
   return <>{children}</>;
 }
 
-// Dashboard: redirect portal-only Halal registrants to their default area (same rules as getLoginRedirect)
+// Dashboard: only divert portal-only accounts away from the main HR dashboard
 function DashboardOrRedirect() {
   const { user } = useAuth();
   if (!user) return <Dashboard />;
-  const target = getLoginRedirect(user);
-  if (target !== "/dashboard") {
-    return <Navigate to={target} replace />;
+  if (isMemberPortalOnly(user)) {
+    return <Navigate to="/my-membership" replace />;
+  }
+  if (isHalalCompetencyPortalOnly(user)) {
+    return <Navigate to="/halal/competency" replace />;
+  }
+  if (isHalalBusinessPortalOnly(user)) {
+    return <Navigate to="/halal/dashboard" replace />;
   }
   return <Dashboard />;
 }
@@ -444,10 +453,6 @@ function AppRoutes() {
         <Route
           path="assets/dashboard"
           element={<AssetDashboardPage />}
-        />
-        <Route
-          path="assets/reports"
-          element={<AssetReportsPage />}
         />
           <Route
             path="documents/templates"

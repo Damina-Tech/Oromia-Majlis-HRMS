@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
-import { enqueueAnnouncementDelivery } from "./delivery-queue.js";
 
-const prisma = new PrismaClient();
+import { enqueueAnnouncementDelivery } from "./delivery-queue.js";
+import prisma from "../../db/client.js";
 
 /**
  * Process scheduled announcements (run via cron job every minute)

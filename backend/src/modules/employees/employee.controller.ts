@@ -1,5 +1,6 @@
 ﻿import { Request, Response } from "express";
-import { PrismaClient, NotificationModule, NotificationType } from "@prisma/client";
+import { NotificationModule, NotificationType } from "@prisma/client";
+import prisma from "../../db/client.js";
 import bcrypt from "bcrypt";
 import { CreateEmployeeDto, UpdateEmployeeDto, ListEmployeesQuery } from "./employee.dto.js";
 import { paginate } from "../../lib/paginate.js";
@@ -10,8 +11,6 @@ import { fileURLToPath } from "url";
 import { NotificationService } from "../notifications/notification.service.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const prisma = new PrismaClient();
 
 // Extend Request type to include multer file
 interface MulterRequest extends Request {

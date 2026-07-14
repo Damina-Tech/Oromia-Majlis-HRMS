@@ -1,6 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "../../db/client.js";
 
 // Merge field patterns - supports {{field}} and {field}
 const MERGE_FIELD_REGEX = /\{\{?([\w.]+)\}?\}/g;

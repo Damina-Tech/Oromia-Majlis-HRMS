@@ -2,19 +2,13 @@ import { Request, Response } from "express";
 import * as fs from "fs";
 import * as path from "path";
 import { z } from "zod";
-import {
-  PrismaClient,
-  InstitutionRecognitionStatus,
-  InstitutionRecognitionPaymentMethod,
-  InstitutionAuditAction,
-} from "@prisma/client";
+import { InstitutionRecognitionStatus, InstitutionRecognitionPaymentMethod, InstitutionAuditAction } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { CreateInstitutionRecognitionDto, PreviewInstitutionRecognitionDto } from "./institution-recognition.dto.js";
 import {
   generateInstitutionRecognitionPdf,
   renderMosqueRecognitionCertificateBuffer,
 } from "./institution-recognition-pdf-generator.js";
-
-const prisma = new PrismaClient();
 
 export const INSTITUTION_RECOGNITION_FEE_ETB = 10_000;
 

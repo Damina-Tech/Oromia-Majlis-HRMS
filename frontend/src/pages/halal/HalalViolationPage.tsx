@@ -107,7 +107,7 @@ export default function HalalViolationPage() {
   };
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString(undefined, {
+    new Date(d).toLocaleString(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
     });

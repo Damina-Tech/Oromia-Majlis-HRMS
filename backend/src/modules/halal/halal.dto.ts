@@ -243,6 +243,12 @@ export const CompleteInspectionDto = z.object({
   notes: z.string().optional(),
 });
 
+/** Business owner response to a completed inspection non-conformity report */
+export const OwnerInspectionEvidenceDto = z.object({
+  evidenceReportUrl: z.string().min(1, "Evidence report URL is required"),
+  evidenceReportFileName: z.string().optional(),
+});
+
 export const UpdateInspectionAssignmentDto = z.object({
   inspectorId: z.string().optional(),
   scheduledAt: z.string().datetime().nullable().optional(),

@@ -12,6 +12,7 @@ import { processScheduledAnnouncements, retryFailedDeliveries } from "./modules/
 import { processMembershipExpiryReminders } from "./modules/membership/membership-reminder.scheduler.js";
 import { startNotificationWorker } from "./modules/notifications/notification.queue.js";
 import { uploadsRoot } from "./lib/uploads-path.js";
+import prisma from "./db/client.js";
 
 function assertProductionSecrets() {
   if (process.env.NODE_ENV !== "production") return;
@@ -56,18 +57,23 @@ app.use(cors({
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: 300, // general API traffic from shared NAT/office networks
     message: "Too many requests from this IP, please try again later.",
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => {
-      // Skip rate limiting for health check
-      return req.path === "/health";
-    }
+    skip: (req) => req.path === "/health",
   });
-  
-  // Apply rate limiting to all routes except static files
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    message: { message: "Too many authentication requests. Please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   app.use("/api", limiter);
+  app.use("/api/v1/auth", authLimiter);
 } else {
   // In development, use a very lenient rate limit
   const devLimiter = rateLimit({
@@ -83,7 +89,7 @@ if (process.env.NODE_ENV === "production") {
   });
   
   app.use("/api", devLimiter);
-  console.log("ΓÜá∩╕Å  Development mode: Using lenient rate limiting (10000 requests/minute)");
+  console.log("⚠️  Development mode: Using lenient rate limiting (10000 requests/minute)");
 }
 
 // Body parsing middleware
@@ -130,21 +136,21 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`≡ƒÜÇ Server running on port ${PORT}`);
-  console.log(`≡ƒôè Health check: http://localhost:${PORT}/health`);
-  console.log(`≡ƒöù API base URL: http://localhost:${PORT}/api/v1`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 API base URL: http://localhost:${PORT}/api/v1`);
   
   // Start notification worker
   startNotificationWorker()
     .then((worker) => {
       if (worker) {
-        console.log("Γ£à Notification delivery worker started");
+        console.log("✅ Notification delivery worker started");
       } else {
-        console.log("ΓÜá∩╕Å Notification delivery worker not started (Redis unavailable).");
+        console.log("⚠️ Notification delivery worker not started (Redis unavailable).");
       }
     })
     .catch((err) => {
-      console.error("Γ¥î Failed to start notification delivery worker:", err);
+      console.error("❌ Failed to start notification delivery worker:", err);
     });
   
   // Start announcement scheduler
@@ -160,7 +166,7 @@ app.listen(PORT, () => {
   
   // Run immediately on startup
   processScheduledAnnouncements().catch(console.error);
-  console.log("Γ£à Announcement scheduler started");
+  console.log("✅ Announcement scheduler started");
 
   // Membership expiry reminders: run daily at 9:00 (check every hour for simplicity, or use cron)
   setInterval(async () => {
@@ -169,6 +175,17 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error("Membership reminder error:", err);
     }
-  }, 60 * 60 * 1000); // every hour
-  processMembershipExpiryReminders().catch(console.error);
+  }, 60 * 60 * 1000);
 });
+
+async function shutdown() {
+  try {
+    await prisma.$disconnect();
+  } catch {
+    // ignore
+  }
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

@@ -1,13 +1,12 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateAllowanceDto,
   UpdateAllowanceDto,
   AssignEmployeeAllowanceDto,
   ListAllowanceQuery,
 } from "./allowance.dto.js";
-
-const prisma = new PrismaClient();
 
 // ========== Allowance Configuration CRUD ==========
 

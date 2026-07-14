@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../db/client.js";
+
 import { CreateAssetVendorDto, UpdateAssetVendorDto } from "./asset.dto.js";
 import { paginate } from "../../utils/pagination.js";
-
-const prisma = new PrismaClient();
 
 export async function listAssetVendors(req: Request, res: Response) {
   try {

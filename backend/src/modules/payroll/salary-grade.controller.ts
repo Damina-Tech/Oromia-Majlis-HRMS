@@ -1,13 +1,12 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import {
   CreateSalaryGradeDto,
   UpdateSalaryGradeDto,
   CreateSalaryStepDto,
   UpdateSalaryStepDto,
 } from "./salary-grade.dto.js";
-
-const prisma = new PrismaClient();
 
 // ========== Salary Grade CRUD ==========
 

@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-import { CreateAssetLocationDto, UpdateAssetLocationDto } from "./asset.dto.js";
+import prisma from "../../db/client.js";
 
-const prisma = new PrismaClient();
+import { CreateAssetLocationDto, UpdateAssetLocationDto } from "./asset.dto.js";
 
 export async function listAssetLocations(req: Request, res: Response) {
   try {

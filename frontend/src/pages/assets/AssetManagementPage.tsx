@@ -46,7 +46,6 @@ import {
   Archive,
   Wrench,
   TrendingUp,
-  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -497,10 +496,6 @@ export default function AssetManagementPage() {
           <Button variant="outline" onClick={() => navigate("/assets/dashboard")}>
             <TrendingUp className="h-4 w-4 mr-2" />
             Dashboard
-          </Button>
-          <Button variant="outline" onClick={() => navigate("/assets/reports")}>
-            <FileText className="h-4 w-4 mr-2" />
-            Reports
           </Button>
           {canManage && (
             <Button onClick={() => { resetAssetForm(); setAddAssetDialog(true); loadVendors(); }}>

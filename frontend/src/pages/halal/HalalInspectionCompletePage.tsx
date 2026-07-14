@@ -20,7 +20,6 @@ export default function HalalInspectionCompletePage() {
   const [notes, setNotes] = useState("");
   const [recommendations, setRecommendations] = useState("");
   const [nonConformityFile, setNonConformityFile] = useState<File | null>(null);
-  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -38,7 +37,7 @@ export default function HalalInspectionCompletePage() {
       queryClient.invalidateQueries({ queryKey: ["halal-inspections"] });
       queryClient.invalidateQueries({ queryKey: ["halal-applications"] });
       queryClient.invalidateQueries({ queryKey: ["halal-application"] });
-      toast.success("Inspection report submitted successfully");
+      toast.success("Non-conformity report submitted successfully");
       const appId = inspection?.applicationId;
       navigate(appId ? `/halal/applications/${appId}` : "/admin/halal/inspections");
     },
@@ -53,13 +52,10 @@ export default function HalalInspectionCompletePage() {
     if (!nonConformityFile) {
       e.nonConformity = "Upload a non-conformity report (PDF, Word, or image)";
     }
-    if (!evidenceFile) {
-      e.evidence = "Upload an evidence report (PDF, Word, or image)";
-    }
     return e;
-  }, [nonConformityFile, evidenceFile]);
+  }, [nonConformityFile]);
 
-  const isValid = Boolean(nonConformityFile && evidenceFile);
+  const isValid = Boolean(nonConformityFile);
 
   const markTouched = (field: string) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -69,19 +65,16 @@ export default function HalalInspectionCompletePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ nonConformity: true, evidence: true });
+    setTouched({ nonConformity: true });
     if (Object.keys(errors).length > 0) {
       toast.error("Please fix the validation errors before submitting");
       return;
     }
-    if (!nonConformityFile || !evidenceFile) return;
+    if (!nonConformityFile) return;
 
     try {
       setIsUploading(true);
-      const [ncUpload, evUpload] = await Promise.all([
-        halalApi.businesses.uploadDocument(nonConformityFile),
-        halalApi.businesses.uploadDocument(evidenceFile),
-      ]);
+      const ncUpload = await halalApi.businesses.uploadDocument(nonConformityFile);
 
       completeMutation.mutate({
         checklistData: {
@@ -89,14 +82,12 @@ export default function HalalInspectionCompletePage() {
           recommendations: recommendations.trim() || undefined,
           nonConformityReportUrl: ncUpload.url,
           nonConformityReportFileName: nonConformityFile.name,
-          evidenceReportUrl: evUpload.url,
-          evidenceReportFileName: evidenceFile.name,
         },
         notes: notes.trim() || undefined,
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message;
-      toast.error(typeof msg === "string" ? msg : "Failed to upload report files");
+      toast.error(typeof msg === "string" ? msg : "Failed to upload report file");
     } finally {
       setIsUploading(false);
     }
@@ -149,7 +140,6 @@ export default function HalalInspectionCompletePage() {
             </p>
             <ul className="text-sm text-amber-700 dark:text-amber-300 list-disc list-inside space-y-0.5">
               {errors.nonConformity && <li>{errors.nonConformity}</li>}
-              {errors.evidence && <li>{errors.evidence}</li>}
             </ul>
           </div>
         </div>
@@ -161,8 +151,8 @@ export default function HalalInspectionCompletePage() {
             <CheckCircle className="h-5 w-5 text-violet-600" /> Inspection report
           </CardTitle>
           <CardDescription>
-            Upload the non-conformity report and evidence report. Both files are required. Optional text fields
-            support certification review.
+            Upload the non-conformity report. The business owner will upload their evidence response separately after
+            you submit.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -187,30 +177,6 @@ export default function HalalInspectionCompletePage() {
               {showError("nonConformity") && (
                 <p className="text-sm text-destructive flex items-center gap-1">
                   <AlertCircle className="h-4 w-4 shrink-0" /> {errors.nonConformity}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="evidence-file" className="text-base font-semibold flex items-center gap-2">
-                <Upload className="h-4 w-4" /> Evidence report <span className="text-destructive">*</span>
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Supporting evidence from the inspection (photos, scans, or written report — PDF, Word, or image).
-              </p>
-              <Input
-                id="evidence-file"
-                type="file"
-                accept={ACCEPT_REPORT_FILES}
-                onChange={(e) => {
-                  setEvidenceFile(e.target.files?.[0] ?? null);
-                  markTouched("evidence");
-                }}
-                className={showError("evidence") ? "border-destructive" : ""}
-              />
-              {showError("evidence") && (
-                <p className="text-sm text-destructive flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4 shrink-0" /> {errors.evidence}
                 </p>
               )}
             </div>
@@ -261,10 +227,10 @@ export default function HalalInspectionCompletePage() {
                 className="bg-violet-600 hover:bg-violet-700"
               >
                 {isUploading
-                  ? "Uploading files…"
+                  ? "Uploading file…"
                   : completeMutation.isPending
                     ? "Submitting…"
-                    : "Submit inspection report"}
+                    : "Submit non-conformity report"}
               </Button>
             </div>
           </form>

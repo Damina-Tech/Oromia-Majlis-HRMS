@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import prisma from "../../db/client.js";
 import { RunDepreciationDto } from "./asset.dto.js";
 import { calculateDepreciation } from "./asset-utils.js";
 import { paginate } from "../../utils/pagination.js";
-
-const prisma = new PrismaClient();
 
 export async function listAssetDepreciation(req: Request, res: Response) {
   try {

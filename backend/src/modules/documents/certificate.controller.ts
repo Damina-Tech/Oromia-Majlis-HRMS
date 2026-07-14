@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../db/client.js";
+
 import { z } from "zod";
 import { HalalCertificateTemplateTypeEnum } from "./document.dto.js";
 
-const prisma = new PrismaClient();
 import {
   getCertificateFieldCatalog,
   buildSampleCertificateData,
