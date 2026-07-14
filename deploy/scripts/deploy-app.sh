@@ -6,18 +6,73 @@ set -euo pipefail
 APP_DIR="/var/www/hrms"
 BRANCH="${1:-main}"
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/Damina-Tech/Oromia-Majlis-HRMS.git}"
+ENV_BACKUP_DIR="/var/www/hrms-env-backup"
+UPLOADS_BACKUP="/var/www/hrms-uploads-backup"
 
 cd "$APP_DIR"
 
+backup_local_secrets_and_data() {
+  mkdir -p "$ENV_BACKUP_DIR"
+  if [ -f backend/.env ]; then
+    cp -a backend/.env "$ENV_BACKUP_DIR/backend.env"
+    echo "==> Backed up backend/.env"
+  fi
+  if [ -f frontend/.env.production ]; then
+    cp -a frontend/.env.production "$ENV_BACKUP_DIR/frontend.env.production"
+    echo "==> Backed up frontend/.env.production"
+  fi
+  if [ -f deploy/env/postgres.env ]; then
+    cp -a deploy/env/postgres.env "$ENV_BACKUP_DIR/postgres.env"
+    echo "==> Backed up deploy/env/postgres.env"
+  fi
+  # Previously tracked uploads are deleted by git when leaving the repo;
+  # move them aside so reset/pull cannot wipe user files.
+  if [ -d backend/uploads ] && [ ! -L backend/uploads ]; then
+    rm -rf "$UPLOADS_BACKUP"
+    mv backend/uploads "$UPLOADS_BACKUP"
+    echo "==> Moved backend/uploads aside for safe git update"
+  fi
+}
+
+restore_local_secrets_and_data() {
+  if [ -f "$ENV_BACKUP_DIR/backend.env" ]; then
+    cp -a "$ENV_BACKUP_DIR/backend.env" backend/.env
+    chmod 600 backend/.env
+    echo "==> Restored backend/.env"
+  fi
+  if [ -f "$ENV_BACKUP_DIR/frontend.env.production" ]; then
+    cp -a "$ENV_BACKUP_DIR/frontend.env.production" frontend/.env.production
+    echo "==> Restored frontend/.env.production"
+  fi
+  if [ -f "$ENV_BACKUP_DIR/postgres.env" ]; then
+    cp -a "$ENV_BACKUP_DIR/postgres.env" deploy/env/postgres.env
+    chmod 600 deploy/env/postgres.env
+    echo "==> Restored deploy/env/postgres.env"
+  fi
+  if [ -d "$UPLOADS_BACKUP" ]; then
+    mkdir -p backend/uploads
+    # Prefer existing backup content; merge into empty/new tree
+    cp -a "$UPLOADS_BACKUP"/. backend/uploads/
+    echo "==> Restored backend/uploads"
+  fi
+}
+
 echo "==> Pulling latest code (${BRANCH})..."
+backup_local_secrets_and_data
+
 if [ -d .git ]; then
   git fetch origin
   git checkout "$BRANCH"
-  git pull origin "$BRANCH"
+  # Hard reset avoids "local changes would be overwritten" when previously
+  # tracked secrets/node_modules were removed from the repo. Env/uploads are
+  # restored after this step.
+  git reset --hard "origin/${BRANCH}"
 else
   git clone --branch "$BRANCH" "$GITHUB_REPO" "$APP_DIR"
   cd "$APP_DIR"
 fi
+
+restore_local_secrets_and_data
 
 echo "==> Starting PostgreSQL + Redis..."
 if [ ! -f deploy/env/postgres.env ]; then

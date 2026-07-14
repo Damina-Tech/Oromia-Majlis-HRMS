@@ -276,6 +276,40 @@ ufw status
 
 ## Troubleshooting
 
+### `git pull` blocked by `.env` / `node_modules` (after secrets were untracked)
+
+This happens when the VPS clone still has local copies of files that used to be in Git and were later removed from the repo. **Do not force-delete `.env` without a backup.**
+
+Run once on the VPS:
+
+```bash
+cd /var/www/hrms
+
+# 1) Backup secrets and uploads (outside the repo)
+mkdir -p /var/www/hrms-env-backup
+cp -a backend/.env /var/www/hrms-env-backup/backend.env
+[ -f frontend/.env.production ] && cp -a frontend/.env.production /var/www/hrms-env-backup/frontend.env.production
+[ -f deploy/env/postgres.env ] && cp -a deploy/env/postgres.env /var/www/hrms-env-backup/postgres.env
+[ -d backend/uploads ] && mv backend/uploads /var/www/hrms-uploads-backup
+
+# 2) Match GitHub (discards tracked junk like old node_modules)
+git fetch origin
+git checkout dev
+git reset --hard origin/dev
+
+# 3) Restore secrets + uploads
+cp -a /var/www/hrms-env-backup/backend.env backend/.env
+chmod 600 backend/.env
+[ -f /var/www/hrms-env-backup/frontend.env.production ] && cp -a /var/www/hrms-env-backup/frontend.env.production frontend/.env.production
+[ -f /var/www/hrms-env-backup/postgres.env ] && cp -a /var/www/hrms-env-backup/postgres.env deploy/env/postgres.env
+[ -d /var/www/hrms-uploads-backup ] && mkdir -p backend/uploads && cp -a /var/www/hrms-uploads-backup/. backend/uploads/
+
+# 4) Redeploy (reinstalls node_modules, builds, restarts)
+bash deploy/scripts/deploy-app.sh dev
+```
+
+Newer `deploy-app.sh` backs up `.env` / uploads automatically before updating.
+
 | Problem | Fix |
 |---------|-----|
 | `502 Bad Gateway` | `pm2 logs hrms-api` — check backend `.env` and DB |
