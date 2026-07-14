@@ -3,19 +3,45 @@
 .env.*
 !.env.example
 !**/.env.example
+!**/.env.*.example
+docker.env
+*.env
+!*.env.example
 deploy/env/*.env
 deploy/env/*.local
+!**/*.env.example
 
 # Dependencies / build
 node_modules/
+**/node_modules/
 dist/
 build/
+**/dist/
+**/build/
+
+# Runtime uploads / generated files (keep on server only)
+uploads/
+**/uploads/
+backend/uploads/
 
 # OS / IDE
 .DS_Store
 .idea/
 .vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 scripts/deploy-log.txt
+
+# Prisma / temp
+*.tmp
+*.tmp*
+query_engine-*.dll.node.tmp*
