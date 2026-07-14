@@ -25,11 +25,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear invalid token and redirect to login
-      if (typeof window !== "undefined") {
+      const reqUrl = String(error.config?.url || "");
+      // Auth session endpoints are handled by AuthContext (me/refresh). Do not force logout here.
+      const isAuthSessionCall =
+        reqUrl.includes("/auth/me") ||
+        reqUrl.includes("/auth/refresh") ||
+        reqUrl.includes("/auth/login");
+      if (!isAuthSessionCall && typeof window !== "undefined") {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("hrms_user");
-        // Only redirect if not already on login page
         if (!window.location.pathname.includes("/login")) {
           window.location.href = "/login";
         }

@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,8 @@ import {
   Loader2,
   CreditCard,
   Banknote,
+  Eye,
+  RefreshCw,
 } from "lucide-react";
 import {
   institutionsApi,
@@ -67,8 +69,11 @@ import {
 import {
   institutionRecognitionApi,
   type InstitutionRecognition,
+  type PreviewInstitutionRecognitionBody,
   INSTITUTION_RECOGNITION_FEE_ETB,
 } from "@/services/institution-recognition";
+import { listTemplates } from "@/services/documents";
+import { resolveFileUrl } from "@/config/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { listEmployees, type Employee } from "@/services/employees";
@@ -76,6 +81,55 @@ import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
 import { MAJLIS_MANUAL_PAYMENT_BANKS } from "@/constants/majlis-banks";
 
 type StatusBadgeConfig = Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }>;
+
+function openPdfBlob(blob: Blob, filename: string, mode: "download" | "view") {
+  const url = URL.createObjectURL(blob);
+  if (mode === "view") {
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function recognitionPreviewBody(
+  form: {
+    institutionNameOnCert: string;
+    zoneCityAdmin: string;
+    districtSubcity: string;
+    gandaKebele: string;
+    issueDate: string;
+  }
+): PreviewInstitutionRecognitionBody {
+  return {
+    institutionNameOnCert: form.institutionNameOnCert.trim(),
+    zoneCityAdmin: form.zoneCityAdmin.trim(),
+    districtSubcity: form.districtSubcity.trim(),
+    gandaKebele: form.gandaKebele.trim(),
+    issueDate: new Date(form.issueDate).toISOString(),
+  };
+}
+
+function validateRecognitionForm(form: {
+  institutionNameOnCert: string;
+  zoneCityAdmin: string;
+  districtSubcity: string;
+  gandaKebele: string;
+  applicantRole: string;
+  accurate: boolean;
+}): string | null {
+  if (!form.institutionNameOnCert.trim()) return "Institution name on certificate is required";
+  if (!form.zoneCityAdmin.trim()) return "Zone / city administration is required";
+  if (!form.districtSubcity.trim()) return "District / sub-city is required";
+  if (!form.gandaKebele.trim()) return "Kebele is required";
+  if (!form.applicantRole.trim()) return "Your role in this request is required";
+  if (!form.accurate) return "Please confirm that the information is accurate";
+  return null;
+}
 
 export default function InstitutionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -92,6 +146,7 @@ export default function InstitutionDetailPage() {
   const [manualBankId, setManualBankId] = useState("");
   /** True when the dialog was opened from "Complete payment" (existing PENDING_PAYMENT row). */
   const [recognitionOpenedForPaymentResume, setRecognitionOpenedForPaymentResume] = useState(false);
+  const [previewingRecognition, setPreviewingRecognition] = useState(false);
   const [recognitionForm, setRecognitionForm] = useState({
     institutionNameOnCert: "",
     zoneCityAdmin: "",
@@ -140,6 +195,22 @@ export default function InstitutionDetailPage() {
     queryFn: () => institutionRecognitionApi.list(id!),
     enabled: !!id,
   });
+
+  const isMosqueInstitution = institution?.type === "MOSQUE";
+
+  const { data: mosqueTemplateList } = useQuery({
+    queryKey: ["mosque-certificate-template"],
+    queryFn: () =>
+      listTemplates({
+        templateEngine: "PDF_CERTIFICATE",
+        certificateType: "MOSQUE_INSTITUTION",
+        status: "ACTIVE",
+        pageSize: 1,
+      }),
+    enabled: isMosqueInstitution,
+  });
+
+  const activeMosqueTemplate = mosqueTemplateList?.items?.[0];
 
   const createAssignmentMutation = useMutation({
     mutationFn: assignmentsApi.create,
@@ -219,6 +290,17 @@ export default function InstitutionDetailPage() {
     },
   });
 
+  const regenerateRecognitionMutation = useMutation({
+    mutationFn: (recognitionId: string) => institutionRecognitionApi.regenerate(recognitionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+      toast.success("Certificate regenerated with the current mosque template.");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to regenerate certificate");
+    },
+  });
+
   const manualSubmitMutation = useMutation({
     mutationFn: async () => {
       if (!createdRecognitionId) throw new Error("Missing recognition");
@@ -249,11 +331,11 @@ export default function InstitutionDetailPage() {
     setRecognitionForm((f) => ({
       ...f,
       institutionNameOnCert: institution.name,
-      zoneCityAdmin: institution.zone?.name ?? "",
+      zoneCityAdmin: institution.zone?.name ?? institution.region?.name ?? "",
       districtSubcity: institution.woreda?.name ?? "",
       gandaKebele: institution.kebeleName || institution.kebele?.name || "",
     }));
-  }, [institution?.id, institution?.name, institution?.zone?.name, institution?.woreda?.name, institution?.kebele?.name, institution?.kebeleName]);
+  }, [institution?.id, institution?.name, institution?.region?.name, institution?.zone?.name, institution?.woreda?.name, institution?.kebele?.name, institution?.kebeleName]);
 
   useEffect(() => {
     const success = searchParams.get("recognitionPayment");
@@ -288,6 +370,29 @@ export default function InstitutionDetailPage() {
       cancelled = true;
     };
   }, [searchParams, id, queryClient, setSearchParams]);
+
+  const handlePreviewRecognition = async () => {
+    if (!id || !isMosqueInstitution) return;
+    if (
+      !recognitionForm.institutionNameOnCert.trim() ||
+      !recognitionForm.zoneCityAdmin.trim() ||
+      !recognitionForm.districtSubcity.trim() ||
+      !recognitionForm.gandaKebele.trim()
+    ) {
+      toast.error("Fill in all certificate fields before previewing");
+      return;
+    }
+    setPreviewingRecognition(true);
+    try {
+      const blob = await institutionRecognitionApi.previewBlob(id, recognitionPreviewBody(recognitionForm));
+      openPdfBlob(blob, "mosque-recognition-preview.pdf", "view");
+    } catch (e: any) {
+      const msg = e.response?.data?.message;
+      toast.error(typeof msg === "string" ? msg : "Failed to preview certificate");
+    } finally {
+      setPreviewingRecognition(false);
+    }
+  };
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -402,10 +507,16 @@ export default function InstitutionDetailPage() {
             >
               <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Institution recognition certificate</DialogTitle>
+                  <DialogTitle>
+                    {isMosqueInstitution
+                      ? "Mosque recognition certificate"
+                      : "Institution recognition certificate"}
+                  </DialogTitle>
                   <DialogDescription>
                     {recognitionStep === 1
-                      ? "Confirm the details that will appear on the certificate and answer the declaration questions."
+                      ? isMosqueInstitution
+                        ? "Confirm the details that will be printed on the official ORIASC mosque certificate template."
+                        : "Confirm the details that will appear on the certificate and answer the declaration questions."
                       : recognitionOpenedForPaymentResume
                         ? `Complete payment for this request: ${INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB via Chapa or manual bank transfer with receipt.`
                         : `Official recognition fee: ${INSTITUTION_RECOGNITION_FEE_ETB.toLocaleString()} ETB. Pay online with Chapa or upload proof of manual bank payment.`}
@@ -413,8 +524,60 @@ export default function InstitutionDetailPage() {
                 </DialogHeader>
                 {recognitionStep === 1 ? (
                   <div className="space-y-4 py-2">
+                    {isMosqueInstitution ? (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 dark:bg-emerald-950/20 p-3 space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {activeMosqueTemplate?.sourceFileUrl ? (
+                            <img
+                              src={resolveFileUrl(activeMosqueTemplate.sourceFileUrl)}
+                              alt="Mosque certificate template"
+                              className="w-full sm:w-36 h-auto rounded border object-cover shrink-0"
+                            />
+                          ) : null}
+                          <div className="text-sm space-y-1">
+                            <p className="font-medium text-emerald-950 dark:text-emerald-100">
+                              ORIASC mosque certificate template
+                            </p>
+                            {activeMosqueTemplate ? (
+                              <p className="text-emerald-900/80 dark:text-emerald-200/80">
+                                Issued PDFs use <span className="font-mono text-xs">{activeMosqueTemplate.code}</span>{" "}
+                                with certificate number, zone, district, kebele, mosque name, date, and verification QR.
+                              </p>
+                            ) : (
+                              <p className="text-amber-800 dark:text-amber-200">
+                                No active mosque template found.{" "}
+                                <Link to="/documents/certificate-templates" className="underline font-medium">
+                                  Configure one in Documents
+                                </Link>{" "}
+                                before issuing.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {activeMosqueTemplate ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            disabled={previewingRecognition}
+                            onClick={() => void handlePreviewRecognition()}
+                          >
+                            {previewingRecognition ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Preview certificate
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="space-y-2">
-                      <Label htmlFor="ir-name">Institution name on certificate</Label>
+                      <Label htmlFor="ir-name">
+                        {isMosqueInstitution ? "Mosque name on certificate" : "Institution name on certificate"}{" "}
+                        <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="ir-name"
                         value={recognitionForm.institutionNameOnCert}
@@ -422,7 +585,9 @@ export default function InstitutionDetailPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ir-zone">Godina / Bulchiinsa magaalaa (Zone / city administration)</Label>
+                      <Label htmlFor="ir-zone">
+                        Godina / Bulchiinsa magaalaa (Zone / city administration) <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="ir-zone"
                         value={recognitionForm.zoneCityAdmin}
@@ -430,7 +595,9 @@ export default function InstitutionDetailPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ir-dist">Aanaa / Kutaa magaalaa (District / sub-city)</Label>
+                      <Label htmlFor="ir-dist">
+                        Aanaa / Kutaa magaalaa (District / sub-city) <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="ir-dist"
                         value={recognitionForm.districtSubcity}
@@ -438,7 +605,9 @@ export default function InstitutionDetailPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ir-keb">Ganda / Kebele</Label>
+                      <Label htmlFor="ir-keb">
+                        Ganda / Kebele <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="ir-keb"
                         value={recognitionForm.gandaKebele}
@@ -455,7 +624,9 @@ export default function InstitutionDetailPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ir-role">Your role in this request</Label>
+                      <Label htmlFor="ir-role">
+                        Your role in this request <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="ir-role"
                         placeholder="e.g. Majlis officer, institution chairperson"
@@ -500,8 +671,9 @@ export default function InstitutionDetailPage() {
                       className="w-full"
                       disabled={createRecognitionMutation.isPending}
                       onClick={() => {
-                        if (!recognitionForm.accurate) {
-                          toast.error("Please confirm accuracy to continue.");
+                        const validationError = validateRecognitionForm(recognitionForm);
+                        if (validationError) {
+                          toast.error(validationError);
                           return;
                         }
                         createRecognitionMutation.mutate();
@@ -661,7 +833,7 @@ export default function InstitutionDetailPage() {
                 className="bg-amber-500 hover:bg-amber-600 text-white shadow-lg border-0"
               >
                 <Award className="h-4 w-4 mr-2" />
-                Give Recognition
+                {isMosqueInstitution ? "Issue mosque recognition" : "Give Recognition"}
               </Button>
             ) : null}
             <Button
@@ -731,7 +903,9 @@ export default function InstitutionDetailPage() {
               Recognition certificates
             </CardTitle>
             <CardDescription className="text-gray-600">
-              Payment status and PDF downloads for Majlis recognition.
+              {isMosqueInstitution
+                ? "Payment status and ORIASC mosque certificate PDFs (generated from the document template)."
+                : "Payment status and PDF downloads for Majlis recognition."}
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4">
@@ -789,26 +963,53 @@ export default function InstitutionDetailPage() {
                         </Button>
                       ) : null}
                       {row.status === "COMPLETED" && row.certificateNumber ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              const blob = await institutionRecognitionApi.downloadBlob(row.id);
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = `${row.certificateNumber}.pdf`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            } catch (e: any) {
-                              toast.error(e.response?.data?.message || "Download failed");
-                            }
-                          }}
-                        >
-                          <Download className="h-3.5 w-3.5 mr-1" />
-                          PDF
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const blob = await institutionRecognitionApi.downloadBlob(row.id);
+                                openPdfBlob(blob, `${row.certificateNumber}.pdf`, "view");
+                              } catch (e: any) {
+                                toast.error(e.response?.data?.message || "Could not open certificate");
+                              }
+                            }}
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const blob = await institutionRecognitionApi.downloadBlob(row.id);
+                                openPdfBlob(blob, `${row.certificateNumber}.pdf`, "download");
+                              } catch (e: any) {
+                                toast.error(e.response?.data?.message || "Download failed");
+                              }
+                            }}
+                          >
+                            <Download className="h-3.5 w-3.5 mr-1" />
+                            PDF
+                          </Button>
+                          {isMosqueInstitution && canGiveRecognition ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={regenerateRecognitionMutation.isPending}
+                              onClick={() => regenerateRecognitionMutation.mutate(row.id)}
+                              title="Re-render with the current mosque certificate template"
+                            >
+                              {regenerateRecognitionMutation.isPending ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          ) : null}
+                        </>
                       ) : null}
                       {row.status === "MANUAL_PENDING_APPROVAL" && canApproveManual ? (
                         <Button

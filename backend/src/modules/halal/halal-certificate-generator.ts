@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { HalalCertificateTemplateType } from "@prisma/client";
 import { halalBusinessCertificateData } from "../documents/certificate-field-catalog.js";
 import { renderCertificateToFile } from "../documents/certificate-template.service.js";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,8 +17,7 @@ if (!fs.existsSync(certsDir)) {
 }
 
 function getVerifyUrl(certificateId: string): string {
-  const base = process.env.FRONTEND_URL || "http://localhost:8080";
-  return `${base}/verify/halal/${certificateId}`;
+  return publicCertificateVerifyUrl(certificateId);
 }
 
 async function generateHalalCertificatePDFLegacy(params: {

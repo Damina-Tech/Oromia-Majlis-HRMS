@@ -9,19 +9,28 @@ import {
   getActiveCertificateTemplateByCode,
   getActiveCertificateTemplateByType,
 } from "../documents/certificate-template.service.js";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 function businessVerifyUrl(certificateId: string, qrCode: string | null | undefined): string {
   const stored = qrCode?.trim();
   if (stored && (stored.startsWith("http://") || stored.startsWith("https://"))) {
+    // Migrate legacy typed verify URLs to the unified /verify/:code path
+    try {
+      const u = new URL(stored);
+      const m = u.pathname.match(
+        /^\/verify\/(?:halal|halal-product|halal-competency|membership|institution-recognition)\/([^/]+)$/i
+      );
+      if (m?.[1]) return publicCertificateVerifyUrl(decodeURIComponent(m[1]));
+    } catch {
+      /* ignore */
+    }
     return stored;
   }
-  const base = process.env.FRONTEND_URL || "http://localhost:8080";
-  return `${base}/verify/halal/${certificateId}`;
+  return publicCertificateVerifyUrl(certificateId);
 }
 
 function productVerifyUrl(certificateNumber: string): string {
-  const base = process.env.FRONTEND_URL || "http://localhost:8080";
-  return `${base}/verify/halal-product/${encodeURIComponent(certificateNumber)}`;
+  return publicCertificateVerifyUrl(certificateNumber);
 }
 
 async function resolveActiveTemplate(params: {

@@ -11,6 +11,8 @@ import {
   submitManualPayment,
   approveManualPayment,
   downloadCertificate,
+  previewRecognitionCertificate,
+  regenerateRecognitionCertificate,
 } from "./institution-recognition.controller.js";
 
 const router = Router();
@@ -25,6 +27,12 @@ router.post(
   requireAuth,
   hasAnyPermission("majlis.institutions.write"),
   createRecognition
+);
+router.post(
+  "/institutions/:institutionId/recognitions/preview",
+  requireAuth,
+  hasAnyPermission("majlis.institutions.write"),
+  previewRecognitionCertificate
 );
 router.get(
   "/institutions/:institutionId/recognitions",
@@ -62,6 +70,12 @@ router.get(
   requireAuth,
   hasAnyPermission("majlis.institutions.read", "majlis.institutions.write", "majlis.institutions.approve"),
   downloadCertificate
+);
+router.post(
+  "/recognitions/:recognitionId/regenerate",
+  requireAuth,
+  hasAnyPermission("majlis.institutions.write"),
+  regenerateRecognitionCertificate
 );
 
 export default router;

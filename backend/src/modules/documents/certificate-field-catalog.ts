@@ -48,6 +48,16 @@ const HALAL_PRODUCT_FIELDS: CertificateCatalogField[] = [
   { key: "qrCode", label: "Verification QR", type: "qrcode" },
 ];
 
+const MOSQUE_INSTITUTION_FIELDS: CertificateCatalogField[] = [
+  { key: "certificateNumber", label: "Certificate number", type: "text", sampleValue: "IRR-2026-00001" },
+  { key: "zoneCity", label: "Zone / City", type: "text", sampleValue: "East Shewa" },
+  { key: "districtSubcity", label: "District / Sub-City", type: "text", sampleValue: "Adama" },
+  { key: "kebele", label: "Kebele", type: "text", sampleValue: "Ganda 05" },
+  { key: "mosqueName", label: "Mosque name", type: "text", sampleValue: "Al-Huda Mosque" },
+  { key: "issueDate", label: "Date", type: "date" },
+  { key: "qrCode", label: "Verification QR", type: "qrcode" },
+];
+
 export function getCertificateFieldCatalog(
   certificateType: HalalCertificateTemplateType
 ): CertificateCatalogField[] {
@@ -56,6 +66,8 @@ export function getCertificateFieldCatalog(
       return HALAL_BUSINESS_FIELDS;
     case "HALAL_PRODUCT":
       return HALAL_PRODUCT_FIELDS;
+    case "MOSQUE_INSTITUTION":
+      return MOSQUE_INSTITUTION_FIELDS;
     default:
       return [];
   }
@@ -81,8 +93,10 @@ export async function buildSampleCertificateData(
     } else if (f.type === "qrcode") {
       data[f.key] =
         certificateType === "HALAL_BUSINESS"
-          ? `${base}/verify/halal/HAL-2026-0001`
-          : `${base}/verify/halal-product/HAL-P-2026-00001`;
+          ? `${base}/verify/HAL-2026-0001`
+          : certificateType === "HALAL_PRODUCT"
+            ? `${base}/verify/HAL-P-2026-00001`
+            : `${base}/verify/IRR-2026-00001`;
     } else if (f.type === "image") {
       data[f.key] = "";
     } else {
@@ -164,6 +178,34 @@ export function halalProductCertificateData(params: {
     authorizedRepresentative: params.authorizedRepresentative,
     notes: params.notes?.trim() ?? "",
     issuedAt: fmt(params.issuedAt),
+    qrCode: params.verifyUrl,
+  };
+}
+
+function fmtDateDMY(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/** Map mosque institution recognition issuance params to layout field keys */
+export function mosqueInstitutionCertificateData(params: {
+  certificateNumber: string;
+  zoneCityAdmin: string;
+  districtSubcity: string;
+  gandaKebele: string;
+  institutionNameOnCert: string;
+  issueDate: Date;
+  verifyUrl: string;
+}): Record<string, string> {
+  return {
+    certificateNumber: params.certificateNumber,
+    zoneCity: params.zoneCityAdmin,
+    districtSubcity: params.districtSubcity,
+    kebele: params.gandaKebele,
+    mosqueName: params.institutionNameOnCert,
+    issueDate: fmtDateDMY(params.issueDate),
     qrCode: params.verifyUrl,
   };
 }

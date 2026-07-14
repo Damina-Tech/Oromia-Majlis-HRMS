@@ -9,6 +9,8 @@ import {
   getMember,
   getMyMember,
   updateMyMember,
+  syncMeAsMember,
+  syncUserAsMember,
   updateMember,
   updateMemberProfile,
   deleteMember,
@@ -26,15 +28,34 @@ import {
   verifyCertificate,
   listPayments,
   getAnalytics,
+  registerMembershipChapaInit,
+  registerMembershipChapaCallback,
+  completeRegistrationChapa,
+  getRegistrationDraftStatus,
+  registerMembershipManual,
 } from "./membership.controller.js";
+import { resolveOromiaGeographyHandler } from "../institutions/institution.controller.js";
 import { uploadMembershipFile } from "../../lib/upload.js";
 
 const router = Router();
 
 // Public (no auth)
 router.get("/regions", listRegions);
+router.post("/geography/resolve", resolveOromiaGeographyHandler);
 router.get("/plans/active", listPlansPublic);
 router.post("/members", uploadMembershipFile.single("profilePhoto"), createMember);
+router.post("/register/chapa-init", uploadMembershipFile.single("profilePhoto"), registerMembershipChapaInit);
+router.post(
+  "/register/manual",
+  uploadMembershipFile.fields([
+    { name: "receipt", maxCount: 1 },
+    { name: "profilePhoto", maxCount: 1 },
+  ]),
+  registerMembershipManual
+);
+router.get("/register/draft/:token/chapa-callback", registerMembershipChapaCallback);
+router.post("/register/draft/:token/complete-chapa", completeRegistrationChapa);
+router.get("/register/draft/:token/status", getRegistrationDraftStatus);
 router.post("/subscriptions", createSubscription);
 router.get("/subscriptions/:id/payment/chapa-callback", chapaCallback);
 router.post("/subscriptions/:id/payment/chapa-init", initChapaPayment);
@@ -47,8 +68,10 @@ router.get("/certificates/by-id/:certificateId/download", downloadCertificatePub
 // Protected: admin / representative
 router.get("/plans", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), listPlans);
 router.get("/members", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), listMembers);
-router.get("/me", requireAuth, hasAnyPermission("majlis.member"), getMyMember);
+router.get("/me", requireAuth, hasAnyPermission("majlis.member", "majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), getMyMember);
 router.patch("/me", requireAuth, hasAnyPermission("majlis.member"), uploadMembershipFile.single("profilePhoto"), updateMyMember);
+router.post("/me/sync-as-member", requireAuth, hasAnyPermission("majlis.membership.admin", "majlis.membership.register"), syncMeAsMember);
+router.post("/users/:userId/sync-as-member", requireAuth, hasAnyPermission("majlis.membership.admin"), syncUserAsMember);
 router.post("/subscriptions/renew", requireAuth, hasAnyPermission("majlis.member"), renewSubscription);
 router.get("/members/:id", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.register", "majlis.membership.admin"), getMember);
 router.patch("/members/:id", requireAuth, hasAnyPermission("majlis.membership.admin"), updateMember);

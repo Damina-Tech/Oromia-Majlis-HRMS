@@ -3,7 +3,14 @@ import QRCode from "qrcode";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import type { InstitutionType } from "@prisma/client";
+import { HalalCertificateTemplateType, type InstitutionType } from "@prisma/client";
+import { mosqueInstitutionCertificateData } from "../documents/certificate-field-catalog.js";
+import { generateCertificatePdfBuffer } from "../documents/certificate-pdf-generator.js";
+import {
+  getActiveCertificateTemplateByCode,
+  getActiveCertificateTemplateByType,
+} from "../documents/certificate-template.service.js";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,20 +22,8 @@ if (!fs.existsSync(certsDir)) {
 
 const fontsDir = path.join(__dirname, "../../../assets/fonts");
 
-function normalizeBaseUrl(raw: string | undefined, fallback: string): string {
-  const candidate = (raw || fallback).trim();
-  const withProtocol = /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
-  try {
-    const u = new URL(withProtocol);
-    return u.origin;
-  } catch {
-    return fallback;
-  }
-}
-
 function verifyUrlFor(certificateNumber: string): string {
-  const base = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
-  return new URL(`/verify/institution-recognition/${encodeURIComponent(certificateNumber)}`, base).toString();
+  return publicCertificateVerifyUrl(certificateNumber);
 }
 
 function fmtDateDMY(d: Date): string {
@@ -79,7 +74,7 @@ function resolveFonts(doc: InstanceType<typeof PDFDocument>): FontSet {
   return { sans, eth, arb };
 }
 
-export async function generateInstitutionRecognitionPdf(params: {
+type RecognitionPdfParams = {
   certificateNumber: string;
   institutionNameOnCert: string;
   institutionType: InstitutionType;
@@ -87,7 +82,74 @@ export async function generateInstitutionRecognitionPdf(params: {
   districtSubcity: string;
   gandaKebele: string;
   issueDate: Date;
-}): Promise<{ pdfPath: string; pdfUrl: string }> {
+};
+
+async function resolveMosqueCertificateTemplate() {
+  const templateCode = process.env.MOSQUE_INSTITUTION_CERT_TEMPLATE_CODE?.trim();
+  if (templateCode) {
+    const byCode = await getActiveCertificateTemplateByCode(templateCode);
+    if (byCode) return byCode;
+  }
+  return getActiveCertificateTemplateByType(HalalCertificateTemplateType.MOSQUE_INSTITUTION);
+}
+
+/** Render mosque recognition PDF into memory using the active document template. */
+export async function renderMosqueRecognitionCertificateBuffer(params: {
+  certificateNumber: string;
+  institutionNameOnCert: string;
+  zoneCityAdmin: string;
+  districtSubcity: string;
+  gandaKebele: string;
+  issueDate: Date;
+}): Promise<Buffer | null> {
+  const template = await resolveMosqueCertificateTemplate();
+  if (!template?.sourceFileUrl || !template.layoutConfig) return null;
+
+  const verifyUrl = verifyUrlFor(params.certificateNumber);
+  const data = mosqueInstitutionCertificateData({
+    certificateNumber: params.certificateNumber,
+    zoneCityAdmin: params.zoneCityAdmin,
+    districtSubcity: params.districtSubcity,
+    gandaKebele: params.gandaKebele,
+    institutionNameOnCert: params.institutionNameOnCert,
+    issueDate: params.issueDate,
+    verifyUrl,
+  });
+
+  return generateCertificatePdfBuffer({
+    sourceFileUrl: template.sourceFileUrl,
+    layoutConfig: template.layoutConfig,
+    data,
+    applyBranding: false,
+  });
+}
+
+async function generateMosqueCertificateFromTemplate(
+  params: RecognitionPdfParams
+): Promise<{ pdfPath: string; pdfUrl: string } | null> {
+  const buffer = await renderMosqueRecognitionCertificateBuffer({
+    certificateNumber: params.certificateNumber,
+    institutionNameOnCert: params.institutionNameOnCert,
+    zoneCityAdmin: params.zoneCityAdmin,
+    districtSubcity: params.districtSubcity,
+    gandaKebele: params.gandaKebele,
+    issueDate: params.issueDate,
+  });
+  if (!buffer) return null;
+
+  const fileName = `IRR-${params.certificateNumber.replace(/[^A-Za-z0-9-]/g, "_")}-${Date.now()}.pdf`;
+  const filePath = path.join(certsDir, fileName);
+  fs.writeFileSync(filePath, buffer);
+
+  return {
+    pdfPath: filePath,
+    pdfUrl: `/uploads/institution-recognitions/certificates/${fileName}`,
+  };
+}
+
+async function generateLegacyInstitutionRecognitionPdf(
+  params: RecognitionPdfParams
+): Promise<{ pdfPath: string; pdfUrl: string }> {
   const {
     certificateNumber,
     institutionNameOnCert,
@@ -130,7 +192,6 @@ export async function generateInstitutionRecognitionPdf(params: {
     doc.rect(0, 0, pageW, pageH).fill(CREAM);
     doc.restore();
 
-    // Ornamental border
     doc.save();
     doc.lineWidth(5).strokeColor(GOLD).rect(14, 14, pageW - 28, pageH - 28).stroke();
     doc.lineWidth(2).rect(24, 24, pageW - 48, pageH - 48).stroke();
@@ -142,7 +203,6 @@ export async function generateInstitutionRecognitionPdf(params: {
     const innerW = innerRight - innerLeft;
     let y = 38;
 
-    // Header — multilingual council name
     doc.font(fonts.sans).fontSize(8).fillColor(GREEN);
     doc.text("Mana Maaree Waliigala Dhimmoota Islaamummaa Naannoo Oromiyaa", innerLeft, y, { width: innerW * 0.28, align: "left" });
     doc.font(fonts.eth).text("የኦሮሚያ ክልል እስልምና ጉዳዮች ጠቅላይ ም/ቤት", innerLeft, y + 22, { width: innerW * 0.32, align: "left" });
@@ -156,7 +216,6 @@ export async function generateInstitutionRecognitionPdf(params: {
       align: "right",
     });
 
-    // Center emblem placeholder (circle)
     const cx = pageW / 2;
     doc.save();
     doc.circle(cx, y + 28, 22).fillAndStroke("#e8f5e9", GREEN);
@@ -174,7 +233,6 @@ export async function generateInstitutionRecognitionPdf(params: {
       align: "center",
     });
 
-    // Serial box
     y += 36;
     const serialX = innerRight - 118;
     doc.roundedRect(serialX, y - 4, 110, 36, 10).strokeColor(MAROON).lineWidth(1).stroke();
@@ -193,7 +251,6 @@ export async function generateInstitutionRecognitionPdf(params: {
     const typeEn = typeLabelEn(institutionType);
     const dmy = fmtDateDMY(issueDate);
 
-    // Left column — Oromo / English
     let ly = bodyTop;
     doc.font(fonts.sans).fontSize(9).fillColor("#111827");
     doc.text(`Godina / Bulchiinsa Magaalaa: ${zoneCityAdmin}`, leftColX, ly, { width: colW });
@@ -214,7 +271,6 @@ export async function generateInstitutionRecognitionPdf(params: {
     ly += 40;
     doc.font(fonts.sans).fontSize(9).text(`Guyyaa / Date: ${dmy}`, leftColX, ly, { width: colW });
 
-    // Right column — Arabic
     let ry = bodyTop;
     doc.font(fonts.arb).fontSize(10).fillColor("#111827");
     doc.text(`المسجد / المؤسسة: ${institutionNameOnCert}`, rightColX, ry, { width: colW, align: "right" });
@@ -235,7 +291,6 @@ export async function generateInstitutionRecognitionPdf(params: {
     ry += 44;
     doc.font(fonts.arb).fontSize(9).text(`تاريخ الإصدار: ${dmy}`, rightColX, ry, { width: colW, align: "right" });
 
-    // Footer — seal + signature
     const footY = pageH - 100;
     doc.save();
     doc.circle(cx, footY, 28).strokeColor("#6b21a8").lineWidth(2).stroke();
@@ -268,4 +323,14 @@ export async function generateInstitutionRecognitionPdf(params: {
     });
     stream.on("error", reject);
   });
+}
+
+export async function generateInstitutionRecognitionPdf(
+  params: RecognitionPdfParams
+): Promise<{ pdfPath: string; pdfUrl: string }> {
+  if (params.institutionType === "MOSQUE") {
+    const fromTemplate = await generateMosqueCertificateFromTemplate(params);
+    if (fromTemplate) return fromTemplate;
+  }
+  return generateLegacyInstitutionRecognitionPdf(params);
 }

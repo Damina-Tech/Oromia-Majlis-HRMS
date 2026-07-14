@@ -1917,7 +1917,7 @@ export default function HalalMyApplicationDetailPage() {
                               {c.certificateNumber ? (
                                 <Button variant="ghost" size="sm" className="shrink-0 h-8 text-xs" asChild>
                                   <a
-                                    href={`/verify/halal-competency/${encodeURIComponent(c.certificateNumber)}`}
+                                    href={`/verify/${encodeURIComponent(c.certificateNumber)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                   >
@@ -2311,7 +2311,7 @@ export default function HalalMyApplicationDetailPage() {
                 const c = link.competencyCertificate;
                 const verifyUrl =
                   c.certificateNumber != null && String(c.certificateNumber).trim()
-                    ? `/verify/halal-competency/${encodeURIComponent(String(c.certificateNumber).trim())}`
+                    ? `/verify/${encodeURIComponent(String(c.certificateNumber).trim())}`
                     : null;
                 return (
                   <li

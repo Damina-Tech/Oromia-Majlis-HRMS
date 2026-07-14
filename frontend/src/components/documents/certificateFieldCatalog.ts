@@ -1,4 +1,4 @@
-export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT";
+export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT" | "MOSQUE_INSTITUTION";
 
 export type CertificateCatalogField = {
   key: string;
@@ -29,6 +29,18 @@ export type CertificateLayoutConfig = {
 
 export const PDF_PAGE_WIDTH = 595.28;
 export const PDF_PAGE_HEIGHT = 841.89;
+export const PDF_PAGE_LANDSCAPE_WIDTH = 841.89;
+export const PDF_PAGE_LANDSCAPE_HEIGHT = 595.28;
+
+export function getCertificatePageDimensions(certificateType?: string | null): {
+  width: number;
+  height: number;
+} {
+  if (certificateType === "MOSQUE_INSTITUTION") {
+    return { width: PDF_PAGE_LANDSCAPE_WIDTH, height: PDF_PAGE_LANDSCAPE_HEIGHT };
+  }
+  return { width: PDF_PAGE_WIDTH, height: PDF_PAGE_HEIGHT };
+}
 
 export const DEFAULT_FIELD_SIZE: Record<string, { width: number; height: number; fontSize?: number }> = {
   text: { width: 220, height: 28, fontSize: 12 },

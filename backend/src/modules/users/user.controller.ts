@@ -281,9 +281,13 @@ export async function createUser(req: Request, res: Response) {
       if (employee.userId) {
         return res.status(400).json({ message: "Employee already has a user account" });
       }
-      // Check if employee email matches user email
-      if (employee.email !== dto.email) {
-        return res.status(400).json({ message: "Employee email must match user email" });
+      // Prefer matching emails, but allow admin to link for leave/attendance access
+      const userEmail = (dto.email || "").trim().toLowerCase();
+      const employeeEmail = (employee.email || "").trim().toLowerCase();
+      if (userEmail && employeeEmail && userEmail !== employeeEmail) {
+        console.warn(
+          `Creating user ${userEmail} linked to employee ${employee.id} (${employeeEmail}) with different emails`
+        );
       }
     }
 
@@ -431,10 +435,13 @@ export async function updateUser(req: Request, res: Response) {
         if (employee.userId && employee.userId !== id) {
           return res.status(400).json({ message: "Employee already has a user account" });
         }
-        // Check if employee email matches user email (or new email if provided)
-        const userEmail = dto.email || existingUser.email;
-        if (employee.email !== userEmail) {
-          return res.status(400).json({ message: "Employee email must match user email" });
+        // Email match is preferred but not required for admin linking existing accounts
+        const userEmail = (dto.email || existingUser.email || "").trim().toLowerCase();
+        const employeeEmail = (employee.email || "").trim().toLowerCase();
+        if (userEmail && employeeEmail && userEmail !== employeeEmail) {
+          console.warn(
+            `Linking user ${id} (${userEmail}) to employee ${employee.id} (${employeeEmail}) with different emails`
+          );
         }
       }
     }

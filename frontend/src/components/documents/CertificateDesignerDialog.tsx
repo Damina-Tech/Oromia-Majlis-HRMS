@@ -21,8 +21,7 @@ import {
   type CertificateLayoutConfig,
   type CertificateLayoutField,
   DEFAULT_FIELD_SIZE,
-  PDF_PAGE_HEIGHT,
-  PDF_PAGE_WIDTH,
+  getCertificatePageDimensions,
 } from "./certificateFieldCatalog";
 import {
   getCertificateFieldCatalog,
@@ -34,8 +33,6 @@ import {
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const DISPLAY_SCALE = 0.72;
-const CANVAS_W = PDF_PAGE_WIDTH * DISPLAY_SCALE;
-const CANVAS_H = PDF_PAGE_HEIGHT * DISPLAY_SCALE;
 
 type FabricFieldObject = fabric.Object & {
   fieldKey?: string;
@@ -162,6 +159,10 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
   /** Remount canvas DOM when dialog opens or template file changes (avoids Fabric insertBefore errors). */
   const [canvasMountKey, setCanvasMountKey] = useState(0);
 
+  const pageDims = getCertificatePageDimensions(template.certificateType);
+  const canvasW = (template.layoutConfig?.pageWidth ?? pageDims.width) * DISPLAY_SCALE;
+  const canvasH = (template.layoutConfig?.pageHeight ?? pageDims.height) * DISPLAY_SCALE;
+
   useEffect(() => {
     if (!open || !template.certificateType) {
       setCatalog([]);
@@ -207,8 +208,8 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       fabricRef.current = null;
 
       const canvas = new fabric.Canvas(el, {
-        width: CANVAS_W,
-        height: CANVAS_H,
+        width: canvasW,
+        height: canvasH,
         selection: true,
         preserveObjectStacking: true,
       });
@@ -229,8 +230,8 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
           selectable: false,
           evented: false,
         });
-        const scaleX = CANVAS_W / (img.width || CANVAS_W);
-        const scaleY = CANVAS_H / (img.height || CANVAS_H);
+        const scaleX = canvasW / (img.width || canvasW);
+        const scaleY = canvasH / (img.height || canvasH);
         img.scale(Math.min(scaleX, scaleY));
 
         canvas.setBackgroundImage(img, () => {
@@ -274,7 +275,7 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       disposeFabricCanvas(fabricRef.current);
       fabricRef.current = null;
     };
-  }, [open, canvasMountKey, template.sourceFileUrl, template.layoutConfig]);
+  }, [open, canvasMountKey, template.sourceFileUrl, template.layoutConfig, canvasW, canvasH]);
 
   const syncPlacedKeys = () => {
     const canvas = fabricRef.current;
@@ -335,8 +336,8 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
     });
     return {
       version: 1,
-      pageWidth: PDF_PAGE_WIDTH,
-      pageHeight: PDF_PAGE_HEIGHT,
+      pageWidth: template.layoutConfig?.pageWidth ?? pageDims.width,
+      pageHeight: template.layoutConfig?.pageHeight ?? pageDims.height,
       fields,
     };
   };
@@ -387,8 +388,8 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
         <DialogHeader>
           <DialogTitle>Certificate designer — {template.name}</DialogTitle>
           <DialogDescription>
-            Drag fields onto the template. Positions are saved as JSON and used by pdf-lib when Halal certificates are
-            issued (no hardcoded layout).
+            Drag fields onto the template. Positions are saved as JSON and used by pdf-lib when certificates are issued
+            (Halal business/product and mosque institution recognition).
           </DialogDescription>
         </DialogHeader>
 
@@ -427,7 +428,7 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
                 </div>
               )}
               <div key={canvasMountKey} className="inline-block">
-                <canvas ref={canvasElRef} width={CANVAS_W} height={CANVAS_H} />
+                <canvas ref={canvasElRef} width={canvasW} height={canvasH} />
               </div>
             </div>
           </div>

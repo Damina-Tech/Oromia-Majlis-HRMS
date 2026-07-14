@@ -69,12 +69,13 @@ import {
 } from "@/services/tasks";
 
 export default function TimesheetPage() {
-  const { user } = useAuth();
+  const { user, refreshUserData } = useAuth();
   
   // State
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -114,6 +115,20 @@ export default function TimesheetPage() {
   const canCreate = user?.permissions?.includes("timesheet.create");
   const canView = user?.permissions?.includes("timesheet.view");
 
+  useEffect(() => {
+    if (employeeId || !user) return;
+    let cancelled = false;
+    setSessionSyncing(true);
+    refreshUserData()
+      .catch(() => false)
+      .finally(() => {
+        if (!cancelled) setSessionSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, user?.id]);
+
   // Update current time every second
   useEffect(() => {
     const interval = setInterval(() => {
@@ -127,10 +142,10 @@ export default function TimesheetPage() {
     if (employeeId && canView) {
       loadTimesheets();
       loadTasks();
-    } else {
+    } else if (!sessionSyncing) {
       setLoading(false);
     }
-  }, [employeeId, canView]);
+  }, [employeeId, canView, sessionSyncing]);
 
   const loadTimesheets = async () => {
     try {
@@ -320,7 +335,7 @@ export default function TimesheetPage() {
   };
 
   // Show loading state
-  if (loading) {
+  if (loading || sessionSyncing) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -349,11 +364,23 @@ export default function TimesheetPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Session Update Required</h3>
+          <h3 className="text-lg font-semibold mb-2">Employee profile required</h3>
           <p className="text-gray-600 mb-4">
-            Your session needs to be updated to access timesheet features. Please log out and log back in.
+            Your account is signed in, but it is not linked to an employee record.
           </p>
-          <Button onClick={() => window.location.href = "/login"}>Go to Login</Button>
+          <div className="flex justify-center gap-2">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setSessionSyncing(true);
+                await refreshUserData();
+                setSessionSyncing(false);
+              }}
+            >
+              Refresh session
+            </Button>
+            <Button onClick={() => (window.location.href = "/login")}>Go to Login</Button>
+          </div>
         </div>
       </div>
     );

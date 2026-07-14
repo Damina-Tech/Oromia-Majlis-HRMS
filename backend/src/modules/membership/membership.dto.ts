@@ -21,6 +21,12 @@ export const CreateSubscriptionDto = z.object({
   planId: z.string(),
 });
 
+export const RegisterMembershipDto = CreateMemberDto.extend({
+  planId: z.string().min(1, "Plan is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  feeAmount: z.coerce.number().positive().optional(),
+});
+
 export const RenewSubscriptionDto = z.object({
   planId: z.string(),
 });
@@ -52,6 +58,14 @@ export const ConfirmManualPaymentDto = z.object({
 
 export const UpdateMemberDto = z.object({
   userId: z.string().nullable().optional(),
+});
+
+/** Create/link a Member profile from an existing system user account. */
+export const SyncAccountAsMemberDto = z.object({
+  category: z.nativeEnum(MemberCategory),
+  phone: z.string().min(9, "Valid phone is required").optional().or(z.literal("")),
+  categoryData: z.record(z.string(), z.any()).optional(),
+  userId: z.string().optional(), // admin syncing another staff user
 });
 
 export const UpdateMyMemberDto = z.object({

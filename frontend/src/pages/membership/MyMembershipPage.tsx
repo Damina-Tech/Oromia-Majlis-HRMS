@@ -42,6 +42,8 @@ import {
   Upload,
   Pencil,
   Eye,
+  UserPlus,
+  Link2,
 } from "lucide-react";
 import { membershipApi, type MembershipPlan, type MembershipPayment, type MemberCategory } from "@/services/membership";
 import api from "@/services/api";
@@ -49,6 +51,9 @@ import { API_BASE_URL, resolveFileUrl, resolveAvatarUrl } from "@/config/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { listUsers, type User as SystemUser } from "@/services/users";
+import { Link } from "react-router-dom";
 
 const CATEGORY_LABELS: Record<string, string> = {
   REGULAR_MEMBER: "Regular Member",
@@ -136,6 +141,23 @@ function certificateStatusBadgeClass(status: "ACTIVE" | "EXPIRED" | "UNKNOWN") {
 
 export default function MyMembershipPage() {
   const queryClient = useQueryClient();
+  const { user, hasPermission, isSuperAdmin, refreshUserData } = useAuth();
+  const canManageMembership =
+    isSuperAdmin() ||
+    hasPermission("majlis.membership.admin") ||
+    hasPermission("majlis.membership.register");
+  const isMembershipAdmin = isSuperAdmin() || hasPermission("majlis.membership.admin");
+  const isStaffUser =
+    canManageMembership ||
+    hasPermission("majlis.membership.view") ||
+    (!!user && !user.roles?.includes("MEMBER"));
+
+  const [syncCategory, setSyncCategory] = useState<MemberCategory | "">("");
+  const [syncPhone, setSyncPhone] = useState("");
+  const [staffUserId, setStaffUserId] = useState("");
+  const [staffCategory, setStaffCategory] = useState<MemberCategory | "">("");
+  const [staffPhone, setStaffPhone] = useState("");
+
   const [renewPlanId, setRenewPlanId] = useState<string>("");
   const [showManualForm, setShowManualForm] = useState(false);
   const [showRenewModal, setShowRenewModal] = useState(false);
@@ -170,6 +192,46 @@ export default function MyMembershipPage() {
     queryKey: ["membership-me"],
     queryFn: () => membershipApi.members.getMe(),
     retry: false,
+  });
+
+  const { data: staffUsersData, isLoading: staffUsersLoading } = useQuery({
+    queryKey: ["users-for-member-sync"],
+    queryFn: () => listUsers({ limit: 100, status: "ACTIVE", pageSize: 100 }),
+    enabled: isMembershipAdmin && (!!error || !member),
+  });
+
+  const syncMeMutation = useMutation({
+    mutationFn: () =>
+      membershipApi.members.syncMeAsMember({
+        category: syncCategory as MemberCategory,
+        phone: syncPhone.trim() || undefined,
+      }),
+    onSuccess: async () => {
+      await refreshUserData();
+      queryClient.invalidateQueries({ queryKey: ["membership-me"] });
+      toast.success("Your account is now synced with a member profile.");
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to sync as member");
+    },
+  });
+
+  const syncStaffMutation = useMutation({
+    mutationFn: () =>
+      membershipApi.members.syncUserAsMember(staffUserId, {
+        category: staffCategory as MemberCategory,
+        phone: staffPhone.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setStaffUserId("");
+      setStaffCategory("");
+      setStaffPhone("");
+      queryClient.invalidateQueries({ queryKey: ["users-for-member-sync"] });
+      toast.success("Staff account synced to a member profile.");
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to sync staff as member");
+    },
   });
 
   const { data: plans = [] } = useQuery({
@@ -399,21 +461,170 @@ export default function MyMembershipPage() {
   }
 
   if (error || !member) {
+    const staffOptions: SystemUser[] = (staffUsersData?.items ?? []).filter(
+      (u) => u.id !== user?.id && u._isUserAccount !== false
+    );
+
     return (
-      <div className="p-4 sm:p-6 max-w-xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6">
         <Card className="border-indigo-200/50 dark:border-indigo-800/30">
           <CardHeader>
             <CardTitle>My Membership</CardTitle>
             <CardDescription>
-              No member profile is linked to your account. If you have registered for Majlis membership, ask an administrator to link your account to your member record.
+              {canManageMembership
+                ? "Your system account is not linked to a Majlis member profile yet. Sync it below to use membership features."
+                : isStaffUser
+                  ? "Your system account is not linked to a Majlis member profile. Ask a membership administrator to sync your account."
+                  : "No member profile is linked to your account. If you have registered for Majlis membership, ask an administrator to link your account to your member record."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button variant="outline" asChild>
-              <a href="/register/membership" target="_blank" rel="noopener noreferrer">
-                Register for membership <ExternalLink className="h-4 w-4 ml-2" />
-              </a>
-            </Button>
+          <CardContent className="space-y-6">
+            {canManageMembership ? (
+              <div className="space-y-4 rounded-lg border border-indigo-200/60 dark:border-indigo-800/40 p-4 bg-indigo-50/40 dark:bg-indigo-950/20">
+                <div className="flex items-center gap-2 font-medium text-indigo-900 dark:text-indigo-100">
+                  <UserPlus className="h-4 w-4" />
+                  Register yourself as a member
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Creates a member profile from your system account and links them together.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>Category</Label>
+                    <Select
+                      value={syncCategory}
+                      onValueChange={(v) => setSyncCategory(v as MemberCategory)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Phone</Label>
+                    <Input
+                      value={syncPhone}
+                      onChange={(e) => setSyncPhone(e.target.value)}
+                      placeholder="09xxxxxxxx (required if not on employee profile)"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    if (!syncCategory) {
+                      toast.error("Please select a category");
+                      return;
+                    }
+                    syncMeMutation.mutate();
+                  }}
+                  disabled={syncMeMutation.isPending}
+                >
+                  {syncMeMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Link2 className="h-4 w-4 mr-2" />
+                  )}
+                  Sync my account as member
+                </Button>
+              </div>
+            ) : isStaffUser ? (
+              <p className="text-sm text-muted-foreground">
+                Contact a membership administrator to sync your system profile to a member record (with the correct category).
+              </p>
+            ) : (
+              <Button variant="outline" asChild>
+                <a href="/register/membership" target="_blank" rel="noopener noreferrer">
+                  Register for membership <ExternalLink className="h-4 w-4 ml-2" />
+                </a>
+              </Button>
+            )}
+
+            {isMembershipAdmin && (
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-center gap-2 font-medium">
+                  <Link2 className="h-4 w-4" />
+                  Sync a staff user as member
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Select a system user and category to create and link a member profile for them.
+                </p>
+                <div className="grid gap-3">
+                  <div className="grid gap-2">
+                    <Label>Staff user</Label>
+                    <Select value={staffUserId} onValueChange={setStaffUserId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder={staffUsersLoading ? "Loading users…" : "Select staff user"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {staffOptions.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.firstName} {u.lastName} ({u.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label>Category</Label>
+                      <Select
+                        value={staffCategory}
+                        onValueChange={(v) => setStaffCategory(v as MemberCategory)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIES.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Phone</Label>
+                      <Input
+                        value={staffPhone}
+                        onChange={(e) => setStaffPhone(e.target.value)}
+                        placeholder="09xxxxxxxx (if needed)"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      if (!staffUserId) {
+                        toast.error("Please select a staff user");
+                        return;
+                      }
+                      if (!staffCategory) {
+                        toast.error("Please select a category");
+                        return;
+                      }
+                      syncStaffMutation.mutate();
+                    }}
+                    disabled={syncStaffMutation.isPending}
+                  >
+                    {syncStaffMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    Sync staff account
+                  </Button>
+                </div>
+                <Button variant="link" className="px-0" asChild>
+                  <Link to="/majlis/membership/members">Go to members list</Link>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -489,7 +700,7 @@ export default function MyMembershipPage() {
 
   const verifyUrl =
     typeof window !== "undefined" && previewCert?.certificateId
-      ? `${window.location.origin}/verify/membership/${previewCert.certificateId}`
+      ? `${window.location.origin}/verify/${encodeURIComponent(previewCert.certificateId)}`
       : "";
 
   const certDaysLeft = previewCert ? daysUntil(previewCert.expiresAt) : null;

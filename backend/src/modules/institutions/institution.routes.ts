@@ -15,6 +15,7 @@ import {
   createZone,
   createWoreda,
   createKebele,
+  resolveOromiaGeographyHandler,
 } from "./institution.controller.js";
 
 const router = Router();
@@ -22,6 +23,7 @@ const router = Router();
 // Geographic hierarchy routes
 router.post("/regions", createRegion);
 router.get("/regions", listRegions);
+router.post("/geography/resolve", resolveOromiaGeographyHandler);
 router.post("/zones", createZone);
 router.post("/woredas", createWoreda);
 router.post("/kebeles", createKebele);

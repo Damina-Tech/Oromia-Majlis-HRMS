@@ -54,13 +54,14 @@ import {
 } from '@/components/ui/popover';
 
 const AttendancePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUserData } = useAuth();
   const [currentLocation, setCurrentLocation] = useState<string>('');
   const [todayAttendance, setTodayAttendance] = useState<Attendance | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [workTimer, setWorkTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<Attendance[]>([]);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
@@ -74,6 +75,21 @@ const AttendancePage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const employeeId = user?.employeeId;
+
+  // Rebuild employeeId from backend if local session is stale.
+  useEffect(() => {
+    if (employeeId || !user) return;
+    let cancelled = false;
+    setSessionSyncing(true);
+    refreshUserData()
+      .catch(() => false)
+      .finally(() => {
+        if (!cancelled) setSessionSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, user?.id]);
 
   // Get current location
   useEffect(() => {
@@ -97,10 +113,10 @@ const AttendancePage: React.FC = () => {
   useEffect(() => {
     if (employeeId) {
       loadData();
-    } else {
+    } else if (!sessionSyncing) {
       setLoading(false);
     }
-  }, [employeeId, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter]);
+  }, [employeeId, sessionSyncing, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter]);
 
   // Timer effect
   useEffect(() => {
@@ -340,7 +356,7 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (loading || sessionSyncing) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -356,20 +372,32 @@ const AttendancePage: React.FC = () => {
             <div className="flex flex-col items-center text-center space-y-4">
               <AlertCircle className="h-12 w-12 text-orange-500" />
               <div>
-                <h3 className="text-lg font-semibold mb-2">Session Update Required</h3>
+                <h3 className="text-lg font-semibold mb-2">Employee profile required</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Please log out and log back in to access the attendance system.
+                  Your account is signed in, but it is not linked to an employee record. Attendance needs that link.
                 </p>
               </div>
-              <Button
-                onClick={() => {
-                  localStorage.clear();
-                  window.location.href = '/login';
-                }}
-                variant="default"
-              >
-                Logout and Login Again
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setSessionSyncing(true);
+                    await refreshUserData();
+                    setSessionSyncing(false);
+                  }}
+                >
+                  Refresh session
+                </Button>
+                <Button
+                  onClick={() => {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                  }}
+                  variant="default"
+                >
+                  Logout
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

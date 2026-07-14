@@ -1832,6 +1832,7 @@ enum DocumentTemplateEngine {
 enum HalalCertificateTemplateType {
   HALAL_BUSINESS
   HALAL_PRODUCT
+  MOSQUE_INSTITUTION
 }
 
 enum AnnouncementType {
@@ -3035,5 +3036,40 @@ model MembershipCertificate {
 
   @@index([certificateId])
   @@index([memberId])
+  @@index([expiresAt])
+}
+
+enum MembershipRegistrationDraftStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model MembershipRegistrationDraft {
+  id              String                            @id @default(cuid())
+  planId          String
+  passwordHash    String
+  fullName        String
+  phone           String
+  email           String?
+  dateOfBirth     DateTime?
+  gender          String?
+  regionId        String?
+  zoneId          String?
+  woredaId        String?
+  addressLine     String?
+  profilePhotoUrl String?
+  nationalId      String?
+  category        MemberCategory
+  categoryData    Json?
+  chapaTxRef      String?
+  subscriptionId  String?
+  status          MembershipRegistrationDraftStatus @default(PENDING)
+  expiresAt       DateTime
+  createdAt       DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
+
+  @@index([chapaTxRef])
+  @@index([status])
   @@index([expiresAt])
 }

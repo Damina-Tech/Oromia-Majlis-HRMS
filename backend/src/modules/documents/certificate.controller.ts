@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
-import { HalalCertificateTemplateType, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { HalalCertificateTemplateTypeEnum } from "./document.dto.js";
 
 const prisma = new PrismaClient();
 import {
@@ -21,12 +22,12 @@ const PreviewCertificateDto = z.object({
  */
 export async function getCertificateFieldCatalogHandler(req: Request, res: Response) {
   try {
-    const type = req.params.certificateType as HalalCertificateTemplateType;
-    if (!["HALAL_BUSINESS", "HALAL_PRODUCT"].includes(type)) {
+    const parsed = HalalCertificateTemplateTypeEnum.safeParse(req.params.certificateType);
+    if (!parsed.success) {
       return res.status(400).json({ message: "Invalid certificate type" });
     }
-    const fields = getCertificateFieldCatalog(type);
-    return res.json({ certificateType: type, fields });
+    const fields = getCertificateFieldCatalog(parsed.data);
+    return res.json({ certificateType: parsed.data, fields });
   } catch (e: any) {
     return res.status(500).json({ message: e.message || "Failed to load field catalog" });
   }

@@ -51,16 +51,13 @@ import {
 import InstitutionMap from "@/components/institutions/InstitutionMap";
 import {
   institutionsApi,
-  regionsApi,
   type Institution,
   type InstitutionType,
   type InstitutionStatus,
   type OwnershipStatus,
-  type Region,
-  type Zone,
-  type Woreda,
-  type Kebele,
 } from "@/services/institutions";
+import OromiaLocationPicker from "@/components/location/OromiaLocationPicker";
+import { resolveOromiaLocationIds } from "@/services/oromia-location";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function MajlisInstitutionsPage() {
@@ -328,9 +325,8 @@ function CreateInstitutionForm({
     longitude: "",
     yearEstablished: new Date().getFullYear(),
     ownershipStatus: "MAJLIS_OWNED" as OwnershipStatus,
-    regionId: "",
-    zoneId: "",
-    woredaId: "",
+    oromiaZone: "",
+    oromiaDistrict: "",
     kebeleName: "",
     // Type-specific data
     mosqueData: {
@@ -369,18 +365,9 @@ function CreateInstitutionForm({
     },
   });
 
-  // Fetch regions with nested zones, woredas, and kebeles
-  const { data: regions } = useQuery({
-    queryKey: ["regions"],
-    queryFn: () => regionsApi.list(),
-  });
-
-  // Get selected region, zone (for cascading dropdowns)
-  const selectedRegion = regions?.find((r) => r.id === formData.regionId);
-  const selectedZone = selectedRegion?.zones?.find((z) => z.id === formData.zoneId);
-
   // GPS location state
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get current GPS location
   const handleGetCurrentLocation = () => {
@@ -425,82 +412,79 @@ function CreateInstitutionForm({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData: any = {
-      name: formData.name,
-      type: formData.type,
-      status: formData.status,
-      address: formData.address || undefined,
-      latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-      longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-      yearEstablished: formData.yearEstablished,
-      ownershipStatus: formData.ownershipStatus,
-      regionId: formData.regionId || undefined,
-      zoneId: formData.zoneId || undefined,
-      woredaId: formData.woredaId || undefined,
-      kebeleName: formData.kebeleName || undefined,
-    };
-
-    if (formData.type === "MOSQUE") {
-      submitData.mosqueData = {
-        ...formData.mosqueData,
-        capacity: formData.mosqueData.capacity || undefined,
-        utilities: {
-          water: formData.mosqueData.utilities.water || undefined,
-          electricity: formData.mosqueData.utilities.electricity || undefined,
-        },
-      };
-    } else if (formData.type === "MADRASAH") {
-      submitData.madrasahData = {
-        ...formData.madrasahData,
-        gradeLevels: formData.madrasahData.gradeLevels,
-        students: {
-          male: formData.madrasahData.students.male || undefined,
-          female: formData.madrasahData.students.female || undefined,
-        },
-        teachers: {
-          islamic: formData.madrasahData.teachers.islamic || undefined,
-          science: formData.madrasahData.teachers.science || undefined,
-        },
-        classrooms: formData.madrasahData.classrooms || undefined,
-      };
-    } else if (formData.type === "MARKAZ") {
-      submitData.markazData = {
-        ...formData.markazData,
-        disciplines: formData.markazData.disciplines,
-        studyLevels: formData.markazData.studyLevels,
-        students: formData.markazData.students || undefined,
-        scholars: formData.markazData.scholars || undefined,
-      };
+    if (!formData.oromiaZone.trim() || !formData.oromiaDistrict.trim()) {
+      toast.error("Please select zone and district");
+      return;
     }
 
-    onSubmit(submitData);
-  };
+    setIsSubmitting(true);
+    try {
+      const { regionId, zoneId, woredaId } = await resolveOromiaLocationIds(
+        formData.oromiaZone,
+        formData.oromiaDistrict,
+        "institutions"
+      );
 
-  // Reset cascading dropdowns when parent changes
-  const handleRegionChange = (regionId: string) => {
-    setFormData({
-      ...formData,
-      regionId,
-      zoneId: "",
-      woredaId: "",
-    });
-  };
+      const submitData: any = {
+        name: formData.name,
+        type: formData.type,
+        status: formData.status,
+        address: formData.address || undefined,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
+        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+        yearEstablished: formData.yearEstablished,
+        ownershipStatus: formData.ownershipStatus,
+        regionId,
+        zoneId,
+        woredaId,
+        kebeleName: formData.kebeleName || undefined,
+      };
 
-  const handleZoneChange = (zoneId: string) => {
-    setFormData({
-      ...formData,
-      zoneId,
-      woredaId: "",
-    });
-  };
+      if (formData.type === "MOSQUE") {
+        submitData.mosqueData = {
+          ...formData.mosqueData,
+          capacity: formData.mosqueData.capacity || undefined,
+          utilities: {
+            water: formData.mosqueData.utilities.water || undefined,
+            electricity: formData.mosqueData.utilities.electricity || undefined,
+          },
+        };
+      } else if (formData.type === "MADRASAH") {
+        submitData.madrasahData = {
+          ...formData.madrasahData,
+          gradeLevels: formData.madrasahData.gradeLevels,
+          students: {
+            male: formData.madrasahData.students.male || undefined,
+            female: formData.madrasahData.students.female || undefined,
+          },
+          teachers: {
+            islamic: formData.madrasahData.teachers.islamic || undefined,
+            science: formData.madrasahData.teachers.science || undefined,
+          },
+          classrooms: formData.madrasahData.classrooms || undefined,
+        };
+      } else if (formData.type === "MARKAZ") {
+        submitData.markazData = {
+          ...formData.markazData,
+          disciplines: formData.markazData.disciplines,
+          studyLevels: formData.markazData.studyLevels,
+          students: formData.markazData.students || undefined,
+          scholars: formData.markazData.scholars || undefined,
+        };
+      }
 
-  const handleWoredaChange = (woredaId: string) => {
-    setFormData({
-      ...formData,
-      woredaId,
-    });
+      onSubmit(submitData);
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message ?? "Failed to resolve location");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -649,70 +633,26 @@ function CreateInstitutionForm({
               )}
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label>Region</Label>
-              <Select value={formData.regionId} onValueChange={handleRegionChange}>
-                <SelectTrigger className="border-gray-300 focus:border-blue-500">
-                  <SelectValue placeholder="Select Region" />
-                </SelectTrigger>
-                <SelectContent>
-                  {regions?.map((region) => (
-                    <SelectItem key={region.id} value={region.id}>
-                      {region.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Zone</Label>
-              <Select
-                value={formData.zoneId}
-                onValueChange={handleZoneChange}
-                disabled={!formData.regionId}
-              >
-                <SelectTrigger className="border-gray-300 focus:border-blue-500">
-                  <SelectValue placeholder="Select Zone" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedRegion?.zones?.map((zone) => (
-                    <SelectItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Woreda</Label>
-              <Select
-                value={formData.woredaId}
-                onValueChange={handleWoredaChange}
-                disabled={!formData.zoneId}
-              >
-                <SelectTrigger className="border-gray-300 focus:border-blue-500">
-                  <SelectValue placeholder="Select Woreda" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedZone?.woredas?.map((woreda) => (
-                    <SelectItem key={woreda.id} value={woreda.id}>
-                      {woreda.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Kebele (Optional – enter manually)</Label>
-              <Input
-                value={formData.kebeleName}
-                onChange={(e) => setFormData({ ...formData, kebeleName: e.target.value })}
-                placeholder="e.g. Kebele 01, Bole, etc."
-                className="border-gray-300 focus:border-blue-500"
-              />
-            </div>
-          </div>
+          <OromiaLocationPicker
+            required
+            value={{
+              zone: formData.oromiaZone,
+              district: formData.oromiaDistrict,
+              kebele: formData.kebeleName,
+            }}
+            onChange={(loc) =>
+              setFormData({
+                ...formData,
+                oromiaZone: loc.zone,
+                oromiaDistrict: loc.district,
+                kebeleName: loc.kebele ?? "",
+              })
+            }
+            showKebele
+            kebeleLabel="Kebele (optional)"
+            kebelePlaceholder="e.g. Kebele 01, Bole, etc."
+            districtLabel="District / Woreda"
+          />
           <div>
             <Label>Area (Optional)</Label>
             <Textarea
@@ -1172,9 +1112,17 @@ function CreateInstitutionForm({
         </Button>
         <Button
           type="submit"
+          disabled={isSubmitting}
           className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
         >
-          Create Institution
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            "Create Institution"
+          )}
         </Button>
       </div>
     </form>

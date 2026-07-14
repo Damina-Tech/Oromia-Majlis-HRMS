@@ -289,8 +289,9 @@ export default function UsersPage() {
       setSubmitting(true);
       setError("");
       const payload: UpdateUserPayload = {
-        // Only send editable fields: password and roleIds
         roleIds: userForm.roleIds,
+        // Allow linking/unlinking employee from an existing user account
+        employeeId: userForm.employeeId ? userForm.employeeId : null,
       };
       if (userForm.password) {
         payload.password = userForm.password;
@@ -1290,14 +1291,37 @@ export default function UsersPage() {
             </div>
             <div>
               <Label htmlFor="edit-employee">Employee</Label>
-              <Input
-                id="edit-employee"
-                value={selectedUser?.employee 
-                  ? `${selectedUser.employee.firstName} ${selectedUser.employee.lastName} (${selectedUser.employee.employeeCode})`
-                  : "Not linked"}
-                readOnly
-                className="bg-gray-50 cursor-not-allowed"
-              />
+              <Select
+                value={userForm.employeeId || "__none__"}
+                onValueChange={(value) =>
+                  setUserForm({ ...userForm, employeeId: value === "__none__" ? "" : value })
+                }
+              >
+                <SelectTrigger id="edit-employee">
+                  <SelectValue placeholder="Select employee to link" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Not linked</SelectItem>
+                  {employees
+                    .filter(
+                      (emp) =>
+                        !emp.userId ||
+                        emp.userId === selectedUser?.id ||
+                        emp.id === userForm.employeeId
+                    )
+                    .map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.firstName} {emp.lastName} ({emp.employeeCode}) — {emp.email}
+                        {emp.userId === selectedUser?.id || emp.id === selectedUser?.employee?.id
+                          ? " (linked)"
+                          : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Link this user to an employee so Leave, Attendance, and Timesheet work. Prefer matching emails when possible.
+              </p>
             </div>
             <div>
               <Label htmlFor="edit-status">Status</Label>

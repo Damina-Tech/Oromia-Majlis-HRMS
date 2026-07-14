@@ -20,7 +20,11 @@ export const DocumentTemplateStatusEnum = z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]
 
 export const DocumentTemplateEngineEnum = z.enum(["HTML_MERGE", "PDF_CERTIFICATE"]);
 
-export const HalalCertificateTemplateTypeEnum = z.enum(["HALAL_BUSINESS", "HALAL_PRODUCT"]);
+export const HalalCertificateTemplateTypeEnum = z.enum([
+  "HALAL_BUSINESS",
+  "HALAL_PRODUCT",
+  "MOSQUE_INSTITUTION",
+]);
 
 // Create Document Template DTO
 export const CreateDocumentTemplateDto = z

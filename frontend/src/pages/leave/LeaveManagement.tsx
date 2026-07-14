@@ -70,13 +70,14 @@ import {
 } from '@/components/ui/popover';
 
 const LeaveManagement: React.FC = () => {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, refreshUserData } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [leaveType, setLeaveType] = useState<LeaveType | ''>('');
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -119,6 +120,21 @@ const LeaveManagement: React.FC = () => {
 
   const employeeId = user?.employeeId;
 
+  // If employeeId is missing from local session, rebuild from backend (no forced logout).
+  useEffect(() => {
+    if (employeeId || !user) return;
+    let cancelled = false;
+    setSessionSyncing(true);
+    refreshUserData()
+      .catch(() => false)
+      .finally(() => {
+        if (!cancelled) setSessionSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, user?.id]);
+
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -133,10 +149,10 @@ const LeaveManagement: React.FC = () => {
   useEffect(() => {
     if (employeeId) {
       loadData();
-    } else {
+    } else if (!sessionSyncing) {
       setLoading(false);
     }
-  }, [employeeId, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter, typeFilter]);
+  }, [employeeId, sessionSyncing, dateFilter, customStartDate, customEndDate, customSingleDate, customDateType, statusFilter, typeFilter]);
 
   // Calculate date range based on filter
   const getDateRange = (): { startDate?: string; endDate?: string } => {
@@ -492,7 +508,7 @@ const LeaveManagement: React.FC = () => {
     return 0;
   };
 
-  if (loading) {
+  if (loading || sessionSyncing) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -508,29 +524,37 @@ const LeaveManagement: React.FC = () => {
             <div className="flex flex-col items-center text-center space-y-4">
               <AlertCircle className="h-12 w-12 text-orange-500" />
               <div>
-                <h3 className="text-lg font-semibold mb-2">Session Update Required</h3>
+                <h3 className="text-lg font-semibold mb-2">Employee profile required</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Please log out and log back in to access the leave management system.
+                  Your account is signed in, but it is not linked to an employee record. Leave features need that link.
                 </p>
                 <Alert variant="default" className="mb-4">
                   <AlertDescription className="text-left">
-                    <strong>Why is this needed?</strong>
-                    <p className="mt-2">
-                      Your session was created before employee linking was enabled. 
-                      Simply logging out and back in will update your session with the required information.
-                    </p>
+                    Ask an admin to link your user account to an employee profile in User Management, then click Refresh session.
                   </AlertDescription>
                 </Alert>
               </div>
-              <Button 
-                onClick={() => {
-                  localStorage.clear();
-                  window.location.href = '/login';
-                }}
-                variant="default"
-              >
-                Logout and Login Again
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setSessionSyncing(true);
+                    await refreshUserData();
+                    setSessionSyncing(false);
+                  }}
+                >
+                  Refresh session
+                </Button>
+                <Button
+                  onClick={() => {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                  }}
+                  variant="default"
+                >
+                  Logout
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

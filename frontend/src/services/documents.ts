@@ -2,7 +2,7 @@ import api from "./api";
 
 // Types
 export type DocumentTemplateEngine = "HTML_MERGE" | "PDF_CERTIFICATE";
-export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT";
+export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT" | "MOSQUE_INSTITUTION";
 
 export interface CertificateLayoutField {
   key: string;

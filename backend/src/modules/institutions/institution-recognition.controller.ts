@@ -1,14 +1,18 @@
 import { Request, Response } from "express";
 import * as fs from "fs";
 import * as path from "path";
+import { z } from "zod";
 import {
   PrismaClient,
   InstitutionRecognitionStatus,
   InstitutionRecognitionPaymentMethod,
   InstitutionAuditAction,
 } from "@prisma/client";
-import { CreateInstitutionRecognitionDto } from "./institution-recognition.dto.js";
-import { generateInstitutionRecognitionPdf } from "./institution-recognition-pdf-generator.js";
+import { CreateInstitutionRecognitionDto, PreviewInstitutionRecognitionDto } from "./institution-recognition.dto.js";
+import {
+  generateInstitutionRecognitionPdf,
+  renderMosqueRecognitionCertificateBuffer,
+} from "./institution-recognition-pdf-generator.js";
 
 const prisma = new PrismaClient();
 
@@ -278,11 +282,12 @@ export async function createRecognition(req: Request, res: Response) {
     });
 
     res.status(201).json(recognition);
-  } catch (e: any) {
-    if (e.name === "ZodError") {
-      return res.status(400).json({ message: e.errors?.[0]?.message ?? "Invalid input" });
+  } catch (e: unknown) {
+    if (e instanceof z.ZodError) {
+      return res.status(400).json({ message: e.issues[0]?.message ?? "Invalid input" });
     }
-    res.status(400).json({ message: e.message || "Failed to create recognition" });
+    const message = e instanceof Error ? e.message : "Failed to create recognition";
+    res.status(400).json({ message });
   }
 }
 
@@ -497,5 +502,86 @@ export async function downloadCertificate(req: Request, res: Response) {
     res.download(abs, `institution-recognition-${rec.certificateNumber ?? recognitionId}.pdf`);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Download failed" });
+  }
+}
+
+/** Preview mosque recognition PDF using the active document template (draft fields). */
+export async function previewRecognitionCertificate(req: Request, res: Response) {
+  try {
+    const { institutionId } = req.params;
+    const body = PreviewInstitutionRecognitionDto.parse(req.body);
+
+    const institution = await prisma.institution.findUnique({ where: { id: institutionId } });
+    if (!institution) return res.status(404).json({ message: "Institution not found" });
+    if (institution.type !== "MOSQUE") {
+      return res.status(400).json({ message: "Template preview is only available for mosque institutions" });
+    }
+
+    const buffer = await renderMosqueRecognitionCertificateBuffer({
+      certificateNumber: "IRR-PREVIEW",
+      institutionNameOnCert: body.institutionNameOnCert,
+      zoneCityAdmin: body.zoneCityAdmin,
+      districtSubcity: body.districtSubcity,
+      gandaKebele: body.gandaKebele,
+      issueDate: body.issueDate,
+    });
+
+    if (!buffer) {
+      return res.status(400).json({
+        message:
+          "No active mosque certificate template found. Configure one under Documents → Certificate templates.",
+      });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'inline; filename="mosque-recognition-preview.pdf"');
+    return res.send(buffer);
+  } catch (e: unknown) {
+    if (e instanceof z.ZodError) {
+      return res.status(400).json({ message: e.issues[0]?.message ?? "Invalid input" });
+    }
+    const message = e instanceof Error ? e.message : "Failed to generate preview";
+    return res.status(400).json({ message });
+  }
+}
+
+/** Re-render a completed mosque recognition PDF with the current active template. */
+export async function regenerateRecognitionCertificate(req: Request, res: Response) {
+  try {
+    const { recognitionId } = req.params;
+    const rec = await prisma.institutionRecognition.findUnique({
+      where: { id: recognitionId },
+      include: { institution: true },
+    });
+    if (!rec) return res.status(404).json({ message: "Recognition not found" });
+    if (rec.status !== InstitutionRecognitionStatus.COMPLETED) {
+      return res.status(400).json({ message: "Certificate has not been issued yet" });
+    }
+    if (rec.institution.type !== "MOSQUE") {
+      return res.status(400).json({ message: "Template regeneration applies to mosque institutions only" });
+    }
+    if (!rec.certificateNumber) {
+      return res.status(400).json({ message: "Certificate number missing" });
+    }
+
+    const { pdfUrl } = await generateInstitutionRecognitionPdf({
+      certificateNumber: rec.certificateNumber,
+      institutionNameOnCert: rec.institutionNameOnCert,
+      institutionType: rec.institution.type,
+      zoneCityAdmin: rec.zoneCityAdmin,
+      districtSubcity: rec.districtSubcity,
+      gandaKebele: rec.gandaKebele,
+      issueDate: rec.issueDate,
+    });
+
+    const updated = await prisma.institutionRecognition.update({
+      where: { id: recognitionId },
+      data: { pdfUrl },
+      include: { institution: true },
+    });
+
+    return res.json(updated);
+  } catch (e: any) {
+    return res.status(400).json({ message: e.message || "Failed to regenerate certificate" });
   }
 }

@@ -7,14 +7,24 @@ import {
   MemberCategory,
 } from "@prisma/client";
 import { z } from "zod";
-import { CreateMemberDto, CreateSubscriptionDto, RenewSubscriptionDto, ListMembersQuery, ListSubscriptionsQuery, ListPaymentsQuery, ConfirmManualPaymentDto, UpdateMemberDto, UpdateMyMemberDto } from "./membership.dto.js";
+import { CreateMemberDto, CreateSubscriptionDto, RenewSubscriptionDto, ListMembersQuery, ListSubscriptionsQuery, ListPaymentsQuery, ConfirmManualPaymentDto, UpdateMemberDto, UpdateMyMemberDto, SyncAccountAsMemberDto } from "./membership.dto.js";
 import { paginate } from "../../lib/paginate.js";
+import { membershipDeleteErrorMessage } from "../../lib/prisma-errors.js";
 import { generateMembershipCertificatePDF } from "./membership-certificate-generator.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { NotificationService } from "../notifications/notification.service.js";
 import { NotificationModule, NotificationType } from "@prisma/client";
 import { sendMembershipCertificateReadySms } from "./membership-sms.js";
+import { applyHardcodedPlanFees, resolvePlanFeeAmount } from "./membership-plans.constants.js";
+import {
+  parseRegistrationMultipart,
+  hashRegistrationPassword,
+  registerMembershipManual as submitManualRegistration,
+  draftExpiresAt,
+  tryCompleteChapaRegistrationDraft,
+} from "./membership-registration.service.js";
+import { MembershipRegistrationDraftStatus } from "@prisma/client";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,7 +114,7 @@ export async function listPlans(req: Request, res: Response) {
       where,
       orderBy: { durationMonths: "asc" },
     });
-    res.json(plans);
+    res.json(applyHardcodedPlanFees(plans));
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to list plans" });
   }
@@ -117,7 +127,7 @@ export async function listPlansPublic(req: Request, res: Response) {
       where: { isActive: true },
       orderBy: { durationMonths: "asc" },
     });
-    res.json(plans);
+    res.json(applyHardcodedPlanFees(plans));
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to list plans" });
   }
@@ -288,6 +298,142 @@ export async function getMyMember(req: Request, res: Response) {
   }
 }
 
+async function ensureMemberRole(userId: string) {
+  const memberRole = await prisma.role.findUnique({ where: { name: "MEMBER" } });
+  if (!memberRole) return;
+  const existing = await prisma.userRole.findFirst({
+    where: { userId, roleId: memberRole.id },
+  });
+  if (!existing) {
+    await prisma.userRole.create({ data: { userId, roleId: memberRole.id } });
+  }
+}
+
+async function createMemberProfileForUser(
+  targetUserId: string,
+  input: { category: MemberCategory; phone?: string; categoryData?: Record<string, unknown> },
+  registeredById?: string | null
+) {
+  const alreadyLinked = await prisma.member.findUnique({ where: { userId: targetUserId } });
+  if (alreadyLinked) {
+    throw new Error("This account already has a linked member profile");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    include: { employee: true },
+  });
+  if (!user) throw new Error("User not found");
+
+  const phone =
+    (input.phone && input.phone.trim()) ||
+    user.employee?.phone?.trim() ||
+    "";
+  if (!phone || phone.length < 9) {
+    throw new Error("A valid phone number is required to create a member profile");
+  }
+
+  const phoneTaken = await prisma.member.findUnique({ where: { phone } });
+  if (phoneTaken) {
+    throw new Error("A member with this phone number already exists");
+  }
+
+  const fullName = `${user.firstName} ${user.lastName}`.trim() || user.email;
+  const member = await prisma.member.create({
+    data: {
+      fullName,
+      phone,
+      email: user.email,
+      gender: user.employee?.gender || undefined,
+      dateOfBirth: user.employee?.dateOfBirth || undefined,
+      addressLine: user.employee?.address || undefined,
+      profilePhotoUrl: user.avatarUrl || user.employee?.avatarUrl || undefined,
+      category: input.category,
+      categoryData: (input.categoryData as any) ?? {},
+      userId: targetUserId,
+      registeredById: registeredById || undefined,
+    },
+    include: {
+      region: true,
+      zone: true,
+      woreda: true,
+      subscriptions: {
+        include: {
+          plan: true,
+          certificate: true,
+          payments: { orderBy: { paidAt: "desc" }, take: 10 },
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+
+  await ensureMemberRole(targetUserId);
+
+  await NotificationService.sendNotification({
+    module: NotificationModule.MEMBERSHIP,
+    type: NotificationType.INFO,
+    title: "Staff synced as member",
+    message: `${member.fullName} was synced to a Majlis member profile (${member.category.replace(/_/g, " ")})`,
+    resourceType: "Member",
+    resourceId: member.id,
+    targets: { roleNames: ["ADMIN"] },
+  });
+
+  return member;
+}
+
+/** Current user (typically admin) creates and links a member profile from their system account. */
+export async function syncMeAsMember(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const isAdmin =
+      hasMembershipPermission(req, "majlis.membership.admin") ||
+      hasMembershipPermission(req, "majlis.membership.register");
+    if (!isAdmin) {
+      return res.status(403).json({
+        message: "Only membership admins can sync their system account as a member. Ask an administrator to sync your profile.",
+      });
+    }
+
+    const body = SyncAccountAsMemberDto.parse(req.body);
+    const member = await createMemberProfileForUser(
+      userId,
+      { category: body.category, phone: body.phone || undefined, categoryData: body.categoryData },
+      userId
+    );
+    res.status(201).json(member);
+  } catch (e: any) {
+    const message = e?.issues?.[0]?.message ?? e.message ?? "Failed to sync as member";
+    res.status(400).json({ message });
+  }
+}
+
+/** Admin syncs another staff system user into a member profile. */
+export async function syncUserAsMember(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    if (!actorId) return res.status(401).json({ message: "Unauthorized" });
+    if (!hasMembershipPermission(req, "majlis.membership.admin")) {
+      return res.status(403).json({ message: "Only membership admins can sync staff accounts" });
+    }
+
+    const { userId } = req.params;
+    const body = SyncAccountAsMemberDto.parse(req.body);
+    const member = await createMemberProfileForUser(
+      userId,
+      { category: body.category, phone: body.phone || undefined, categoryData: body.categoryData },
+      actorId
+    );
+    res.status(201).json(member);
+  } catch (e: any) {
+    const message = e?.issues?.[0]?.message ?? e.message ?? "Failed to sync staff as member";
+    res.status(400).json({ message });
+  }
+}
+
 // Member: update own profile
 export async function updateMyMember(req: Request, res: Response) {
   try {
@@ -356,14 +502,19 @@ export async function deleteMember(req: Request, res: Response) {
     const userId = member.userId;
 
     await prisma.$transaction(async (tx) => {
+      await tx.member.delete({ where: { id } });
       if (userId) {
         await tx.user.delete({ where: { id: userId } });
       }
-      await tx.member.delete({ where: { id } });
     });
     res.status(204).send();
-  } catch (e: any) {
-    res.status(400).json({ message: e.message || "Failed to delete member" });
+  } catch (e: unknown) {
+    const friendly = membershipDeleteErrorMessage(e);
+    if (friendly) {
+      return res.status(409).json({ message: friendly });
+    }
+    const message = e instanceof Error ? e.message : "Failed to delete member";
+    res.status(400).json({ message: message || "Failed to delete member" });
   }
 }
 
@@ -498,7 +649,7 @@ export async function createSubscription(req: Request, res: Response) {
     const payment = await prisma.membershipPayment.create({
       data: {
         subscriptionId: subscription.id,
-        amount: plan.feeAmount,
+        amount: resolvePlanFeeAmount(plan.planType, (req.body as { feeAmount?: unknown })?.feeAmount),
         currency: "ETB",
         method: MembershipPaymentMethod.CHAPA,
         status: MembershipPaymentStatus.PENDING,
@@ -542,7 +693,7 @@ export async function renewSubscription(req: Request, res: Response) {
     const payment = await prisma.membershipPayment.create({
       data: {
         subscriptionId: subscription.id,
-        amount: plan.feeAmount,
+        amount: resolvePlanFeeAmount(plan.planType, (req.body as { feeAmount?: unknown })?.feeAmount),
         currency: "ETB",
         method: MembershipPaymentMethod.CHAPA,
         status: MembershipPaymentStatus.PENDING,
@@ -611,10 +762,16 @@ export async function initChapaPayment(req: Request, res: Response) {
     const secretKey = process.env.CHAPA_SECRET_KEY;
     if (!secretKey) return res.status(500).json({ message: "Chapa payment is not configured" });
 
-    const amount = Number(sub.plan.feeAmount);
+    const amount = resolvePlanFeeAmount(sub.plan.planType, (req.body as { feeAmount?: unknown })?.feeAmount);
     if (isNaN(amount) || amount <= 0) {
       return res.status(400).json({ message: "Invalid plan amount" });
     }
+
+    await prisma.membershipPayment.update({
+      where: { id: pendingPayment.id },
+      data: { amount },
+    });
+
     const apiBase = normalizeBaseUrl(process.env.APP_BASE_URL, "http://localhost:4000");
     const frontendUrl = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
     const txRef = `majlis-${id}-${Date.now()}`;
@@ -804,7 +961,7 @@ export async function confirmManualPayment(req: Request, res: Response) {
       await prisma.membershipPayment.create({
         data: {
           subscriptionId: id,
-          amount: sub.plan.feeAmount,
+          amount: resolvePlanFeeAmount(sub.plan.planType, (req.body as { feeAmount?: unknown })?.feeAmount),
           currency: "ETB",
           method: MembershipPaymentMethod.MANUAL,
           status: MembershipPaymentStatus.COMPLETED,
@@ -897,7 +1054,7 @@ export async function confirmManualPaymentPublic(req: Request, res: Response) {
       await prisma.membershipPayment.create({
         data: {
           subscriptionId: id,
-          amount: sub.plan.feeAmount,
+          amount: resolvePlanFeeAmount(sub.plan.planType, (req.body as { feeAmount?: unknown })?.feeAmount),
           currency: "ETB",
           method: MembershipPaymentMethod.MANUAL,
           status: MembershipPaymentStatus.PENDING,
@@ -1222,5 +1379,189 @@ export async function getAnalytics(req: Request, res: Response) {
     });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get analytics" });
+  }
+}
+
+// ---------- Public registration (submit only after payment) ----------
+export async function registerMembershipChapaInit(req: Request, res: Response) {
+  try {
+    const data = parseRegistrationMultipart(req as any);
+
+    const existingMember = await prisma.member.findUnique({ where: { phone: data.phone } });
+    if (existingMember) {
+      return res.status(400).json({ message: "A member with this phone number already exists" });
+    }
+    if (!data.email) {
+      return res.status(400).json({ message: "Email is required to create your login account" });
+    }
+    const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "An account with this email already exists. Please sign in." });
+    }
+
+    const plan = await prisma.membershipPlan.findUnique({ where: { id: data.planId } });
+    if (!plan || !plan.isActive) return res.status(404).json({ message: "Plan not found or inactive" });
+
+    const passwordHash = await hashRegistrationPassword(data.password);
+    const draft = await prisma.membershipRegistrationDraft.create({
+      data: {
+        planId: data.planId,
+        passwordHash,
+        fullName: data.fullName,
+        phone: data.phone,
+        email: data.email,
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        regionId: data.regionId,
+        zoneId: data.zoneId,
+        woredaId: data.woredaId,
+        addressLine: data.addressLine,
+        profilePhotoUrl: data.profilePhotoUrl,
+        nationalId: data.nationalId,
+        category: data.category,
+        categoryData: data.categoryData as any,
+        expiresAt: draftExpiresAt(),
+      },
+    });
+
+    const secretKey = process.env.CHAPA_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Chapa payment is not configured" });
+
+    const amount = resolvePlanFeeAmount(plan.planType, data.feeAmount);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: "Invalid plan amount" });
+    }
+
+    const apiBase = normalizeBaseUrl(process.env.APP_BASE_URL, "http://localhost:4000");
+    const frontendUrl = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
+    const txRef = `majlis-reg-${draft.id}-${Date.now()}`;
+    const names = data.fullName.trim().split(" ");
+    const firstName = names[0] || "Member";
+    const lastName = names.slice(1).join(" ") || ".";
+    const phoneDigits = (data.phone || "").replace(/\D/g, "").slice(-9);
+    const phoneNumber = phoneDigits.length >= 9 ? `0${phoneDigits}` : "0911000000";
+
+    const payload = {
+      amount: String(Math.round(amount)),
+      currency: "ETB",
+      email: data.email,
+      first_name: firstName,
+      last_name: lastName,
+      phone_number: phoneNumber,
+      tx_ref: txRef,
+      callback_url: new URL(`/api/v1/membership/register/draft/${draft.id}/chapa-callback`, apiBase).toString(),
+      return_url: `${frontendUrl}/register/membership?step=success&draftToken=${encodeURIComponent(draft.id)}`,
+      customization: {
+        title: "Majlis Member",
+        description: `${data.fullName} - ${plan.name}`,
+      },
+    };
+
+    const resp = await fetch("https://api.chapa.co/v1/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const chapaData = (await resp.json()) as any;
+    if (!chapaData.status || chapaData.status !== "success" || !chapaData.data?.checkout_url) {
+      await prisma.membershipRegistrationDraft.update({
+        where: { id: draft.id },
+        data: { status: MembershipRegistrationDraftStatus.FAILED },
+      });
+      const errMsg =
+        typeof chapaData.message === "string"
+          ? chapaData.message
+          : chapaData.message && typeof chapaData.message === "object"
+            ? (chapaData.message.customization?.title ?? chapaData.message.message ?? JSON.stringify(chapaData.message))
+            : "Failed to initialize Chapa payment. Ensure CHAPA_SECRET_KEY is set and valid.";
+      return res.status(400).json({ message: errMsg });
+    }
+
+    await prisma.membershipRegistrationDraft.update({
+      where: { id: draft.id },
+      data: { chapaTxRef: txRef },
+    });
+
+    res.json({ checkoutUrl: chapaData.data.checkout_url, txRef, draftToken: draft.id });
+  } catch (e: any) {
+    const message = e?.issues?.[0]?.message ?? e.message ?? "Failed to initialize registration payment";
+    res.status(400).json({ message });
+  }
+}
+
+export async function registerMembershipChapaCallback(req: Request, res: Response) {
+  try {
+    const { token } = req.params;
+    const { trx_ref, ref_id, status } = req.query as { trx_ref?: string; ref_id?: string; status?: string };
+    if (!token || !trx_ref || status !== "success") {
+      return res.status(400).send("Invalid callback");
+    }
+
+    await tryCompleteChapaRegistrationDraft(token, { trxRef: trx_ref, refId: ref_id || null });
+    res.status(200).send("OK");
+  } catch (e: any) {
+    console.error("Membership registration Chapa callback error:", e);
+    res.status(500).send("Error");
+  }
+}
+
+export async function completeRegistrationChapa(req: Request, res: Response) {
+  try {
+    const { token } = req.params;
+    const body = (req.body ?? {}) as { trx_ref?: string; ref_id?: string };
+    const query = req.query as { trx_ref?: string; ref_id?: string };
+    const trxRef = body.trx_ref ?? query.trx_ref;
+    const refId = body.ref_id ?? query.ref_id;
+
+    const result = await tryCompleteChapaRegistrationDraft(token, {
+      trxRef: trxRef ?? null,
+      refId: refId ?? null,
+    });
+    res.json(result);
+  } catch (e: any) {
+    const message = e.message || "Failed to complete registration";
+    const pending =
+      /verification failed|not yet|pending/i.test(message) ||
+      message.includes("Payment verification failed");
+    res.status(pending ? 402 : 400).json({ message });
+  }
+}
+
+export async function getRegistrationDraftStatus(req: Request, res: Response) {
+  try {
+    const { token } = req.params;
+    const draft = await prisma.membershipRegistrationDraft.findUnique({ where: { id: token } });
+    if (!draft) return res.status(404).json({ message: "Registration draft not found" });
+    res.json({
+      status: draft.status,
+      subscriptionId: draft.subscriptionId,
+    });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to get registration status" });
+  }
+}
+
+export async function registerMembershipManual(req: Request, res: Response) {
+  try {
+    const data = parseRegistrationMultipart(req as any);
+    const files = (req as any).files as Record<string, Array<{ filename?: string }>> | undefined;
+    const receiptFile = files?.receipt?.[0] ?? (req as any).file;
+    const receiptUrl = receiptFile?.filename ? `/uploads/membership/${receiptFile.filename}` : undefined;
+    const bankName = typeof (req as any).body?.bankName === "string" ? (req as any).body.bankName.trim() || undefined : undefined;
+
+    if (!receiptUrl) {
+      return res.status(400).json({ message: "Payment receipt is required" });
+    }
+
+    const passwordHash = await hashRegistrationPassword(data.password);
+    const subscription = await submitManualRegistration(data, passwordHash, receiptUrl, bankName);
+
+    res.status(201).json(subscription);
+  } catch (e: any) {
+    const message = e?.issues?.[0]?.message ?? e.message ?? "Failed to submit registration";
+    res.status(400).json({ message });
   }
 }

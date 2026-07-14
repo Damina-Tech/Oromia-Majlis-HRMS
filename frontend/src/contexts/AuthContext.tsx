@@ -85,24 +85,37 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
   const refreshUserData = async () => {
     const token = localStorage.getItem('accessToken');
     if (!token) return false;
-    
+
     try {
-      // Try to refresh the token
-      const response = await api.post('/auth/refresh');
+      // Prefer /auth/me: rebuilds session from DB with access token (includes employeeId).
+      // Falls back to cookie-based /auth/refresh when /me is unavailable.
+      let response;
+      try {
+        response = await api.get('/auth/me');
+      } catch (meError: any) {
+        if (meError?.response?.status === 401 || meError?.response?.status === 404) {
+          response = await api.post('/auth/refresh');
+        } else {
+          throw meError;
+        }
+      }
+
       const { accessToken, user: userData } = response.data;
-      
-      const user = mapAuthUser(userData);
-      
+      const nextUser = mapAuthUser(userData);
+
       localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('hrms_user', JSON.stringify(user));
-      setUser(user);
+      localStorage.setItem('hrms_user', JSON.stringify(nextUser));
+      setUser(nextUser);
       return true;
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      // Clear invalid data
-      setUser(null);
-      localStorage.removeItem('hrms_user');
-      localStorage.removeItem('accessToken');
+    } catch (error: any) {
+      console.error('Session sync failed:', error);
+      const status = error?.response?.status;
+      // Only force logout on definitive auth failures — keep local session for network blips.
+      if (status === 401 || status === 403) {
+        setUser(null);
+        localStorage.removeItem('hrms_user');
+        localStorage.removeItem('accessToken');
+      }
       return false;
     }
   };
@@ -123,36 +136,37 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
   };
 
   useEffect(() => {
-    // Check for stored auth token
     const storedUser = localStorage.getItem('hrms_user');
     const storedToken = localStorage.getItem('accessToken');
-    
-    if (storedUser && storedToken) {
-      try {
-        const userData = JSON.parse(storedUser);
-        
-        // If permissions are missing, try to refresh the token
-        if (!userData.permissions || !Array.isArray(userData.permissions) || userData.permissions.length === 0) {
-          console.log('Permissions missing, attempting to refresh token...');
-          refreshUserData().then((success) => {
-            if (!success) {
-              console.warn('Token refresh failed. Please re-login.');
-          localStorage.removeItem('hrms_user');
-          localStorage.removeItem('accessToken');
-            }
-          setIsLoading(false);
-          });
-          return;
-        }
-        
-        setUser(userData);
-      } catch (error) {
-        // Clear invalid stored data
-        localStorage.removeItem('hrms_user');
-        localStorage.removeItem('accessToken');
-      }
+
+    if (!storedUser || !storedToken) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    try {
+      const userData = JSON.parse(storedUser) as User;
+      const needsSync =
+        !userData.permissions ||
+        !Array.isArray(userData.permissions) ||
+        userData.permissions.length === 0 ||
+        !userData.employeeId;
+
+      // Hydrate immediately so UI can render, then sync from backend.
+      setUser(userData);
+
+      if (needsSync) {
+        refreshUserData().finally(() => setIsLoading(false));
+        return;
+      }
+
+      // Still sync in background so roles/permissions/employeeId stay current.
+      refreshUserData().finally(() => setIsLoading(false));
+    } catch {
+      localStorage.removeItem('hrms_user');
+      localStorage.removeItem('accessToken');
+      setIsLoading(false);
+    }
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {

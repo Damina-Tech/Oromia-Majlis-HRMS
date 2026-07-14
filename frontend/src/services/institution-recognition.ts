@@ -56,6 +56,8 @@ export interface CreateInstitutionRecognitionBody {
   };
 }
 
+export type PreviewInstitutionRecognitionBody = Omit<CreateInstitutionRecognitionBody, "questionnaire">;
+
 export const institutionRecognitionApi = {
   list: async (institutionId: string): Promise<{ items: InstitutionRecognition[] }> => {
     const response = await api.get(`${base}/institutions/${institutionId}/recognitions`);
@@ -86,6 +88,16 @@ export const institutionRecognitionApi = {
   /** Authenticated PDF download (Bearer token). Prefer this over opening a bare URL. */
   downloadBlob: async (recognitionId: string): Promise<Blob> => {
     const response = await api.get(`${base}/recognitions/${recognitionId}/download`, { responseType: "blob" });
+    return response.data;
+  },
+  previewBlob: async (institutionId: string, body: PreviewInstitutionRecognitionBody): Promise<Blob> => {
+    const response = await api.post(`${base}/institutions/${institutionId}/recognitions/preview`, body, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+  regenerate: async (recognitionId: string): Promise<InstitutionRecognition> => {
+    const response = await api.post(`${base}/recognitions/${recognitionId}/regenerate`);
     return response.data;
   },
   downloadUrl: (recognitionId: string): string =>

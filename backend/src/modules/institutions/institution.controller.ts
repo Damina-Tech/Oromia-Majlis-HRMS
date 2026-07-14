@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma, InstitutionType, InstitutionStatus, InstitutionAuditAction } from "@prisma/client";
+import { z } from "zod";
 import {
   CreateInstitutionDto,
   UpdateInstitutionDto,
@@ -15,6 +16,7 @@ import {
   CreateKebeleDto,
 } from "./institution.dto.js";
 import { paginate } from "../../lib/paginate.js";
+import { resolveOromiaGeography } from "./oromia-geography.service.js";
 
 const prisma = new PrismaClient();
 
@@ -97,6 +99,25 @@ export async function listRegions(req: Request, res: Response) {
   } catch (error: any) {
     console.error("List regions error:", error);
     res.status(500).json({ message: "Failed to list regions" });
+  }
+}
+
+const ResolveOromiaGeographyDto = z.object({
+  zoneName: z.string().min(1, "Zone is required"),
+  districtName: z.string().min(1, "District is required"),
+});
+
+export async function resolveOromiaGeographyHandler(req: Request, res: Response) {
+  try {
+    const body = ResolveOromiaGeographyDto.parse(req.body);
+    const result = await resolveOromiaGeography(body.zoneName, body.districtName);
+    res.json(result);
+  } catch (e: unknown) {
+    if (e instanceof z.ZodError) {
+      return res.status(400).json({ message: e.issues[0]?.message ?? "Invalid input" });
+    }
+    const message = e instanceof Error ? e.message : "Failed to resolve geography";
+    res.status(400).json({ message });
   }
 }
 

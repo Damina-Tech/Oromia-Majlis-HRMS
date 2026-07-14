@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth, getLoginRedirect } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeProvider";
 import Layout from "./components/layout/Layout";
@@ -80,24 +80,28 @@ import HalalInspectionAssignmentPage from "./pages/halal/HalalInspectionAssignme
 import HalalInspectionCompletePage from "./pages/halal/HalalInspectionCompletePage";
 import HalalMyInspectionsPage from "./pages/halal/HalalMyInspectionsPage";
 import HalalViolationPage from "./pages/halal/HalalViolationPage";
-import VerifyHalalPage from "./pages/halal/VerifyHalalPage";
-import VerifyHalalProductPage from "./pages/halal/VerifyHalalProductPage";
 import HalalProductCertificateNewPage from "./pages/halal/HalalProductCertificateNewPage";
 import HalalProductCertificateDetailPage from "./pages/halal/HalalProductCertificateDetailPage";
 import HalalCompetencyListPage from "./pages/halal/HalalCompetencyListPage";
 import HalalCompetencyNewPage from "./pages/halal/HalalCompetencyNewPage";
 import HalalCompetencyDetailPage from "./pages/halal/HalalCompetencyDetailPage";
-import VerifyHalalCompetencyPage from "./pages/halal/VerifyHalalCompetencyPage";
 import HalalReportsPage from "./pages/halal/HalalReportsPage";
 import MembershipRegisterPage from "./pages/membership/MembershipRegisterPage";
 import MembershipDashboardPage from "./pages/membership/MembershipDashboardPage";
 import MembershipMembersPage from "./pages/membership/MembershipMembersPage";
 import MemberDetailPage from "./pages/membership/MemberDetailPage";
 import MyMembershipPage from "./pages/membership/MyMembershipPage";
-import VerifyMembershipPage from "./pages/membership/VerifyMembershipPage";
-import VerifyInstitutionRecognitionPage from "./pages/majlis/VerifyInstitutionRecognitionPage";
+import VerifyCertificatePage from "./pages/verify/VerifyCertificatePage";
 
 const queryClient = new QueryClient();
+
+/** Redirect legacy typed verify URLs to the unified /verify/:code page. */
+function LegacyVerifyRedirect({ paramKey }: { paramKey: string }) {
+  const params = useParams();
+  const code = params[paramKey];
+  if (!code) return <Navigate to="/verify" replace />;
+  return <Navigate to={`/verify/${encodeURIComponent(code)}`} replace />;
+}
 
 // Protected Route Component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -254,11 +258,20 @@ function AppRoutes() {
       {/* Oromia Majlis auth callback: receives token from fragment/query, stores auth, redirects */}
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-      {/* Public: Halal certificate verification (no auth required) */}
-      <Route path="/verify/halal" element={<VerifyHalalPage />} />
-      <Route path="/verify/halal/:certificateId" element={<VerifyHalalPage />} />
-      <Route path="/verify/halal-product/:certificateNumber" element={<VerifyHalalProductPage />} />
-      <Route path="/verify/halal-competency/:certificateNumber" element={<VerifyHalalCompetencyPage />} />
+      {/* Public: unified certificate verification (+ legacy typed URL redirects) */}
+      <Route path="/verify" element={<VerifyCertificatePage />} />
+      <Route path="/verify/halal" element={<Navigate to="/verify" replace />} />
+      <Route path="/verify/halal/:certificateId" element={<LegacyVerifyRedirect paramKey="certificateId" />} />
+      <Route path="/verify/halal-product/:certificateNumber" element={<LegacyVerifyRedirect paramKey="certificateNumber" />} />
+      <Route path="/verify/halal-competency/:certificateNumber" element={<LegacyVerifyRedirect paramKey="certificateNumber" />} />
+      <Route path="/verify/membership" element={<Navigate to="/verify" replace />} />
+      <Route path="/verify/membership/:certificateId" element={<LegacyVerifyRedirect paramKey="certificateId" />} />
+      <Route path="/verify/institution-recognition" element={<Navigate to="/verify" replace />} />
+      <Route
+        path="/verify/institution-recognition/:certificateNumber"
+        element={<LegacyVerifyRedirect paramKey="certificateNumber" />}
+      />
+      <Route path="/verify/:code" element={<VerifyCertificatePage />} />
 
       {/* Public: Majlis membership registration (redirects to dashboard if already logged in) */}
       <Route
@@ -269,10 +282,6 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
-      <Route path="/verify/membership" element={<VerifyMembershipPage />} />
-      <Route path="/verify/membership/:certificateId" element={<VerifyMembershipPage />} />
-      <Route path="/verify/institution-recognition" element={<VerifyInstitutionRecognitionPage />} />
-      <Route path="/verify/institution-recognition/:certificateNumber" element={<VerifyInstitutionRecognitionPage />} />
 
       {/* Protected Routes */}
       <Route

@@ -128,6 +128,12 @@ export const membershipApi = {
       api.get<PaginatedResponse<Member>>(`${base}/members`, { params }).then((r) => r.data),
     get: (id: string) => api.get<Member>(`${base}/members/${id}`).then((r) => r.data),
     getMe: () => api.get<Member>(`${base}/me`).then((r) => r.data),
+    syncMeAsMember: (data: { category: MemberCategory; phone?: string; categoryData?: Record<string, unknown> }) =>
+      api.post<Member>(`${base}/me/sync-as-member`, data).then((r) => r.data),
+    syncUserAsMember: (
+      userId: string,
+      data: { category: MemberCategory; phone?: string; categoryData?: Record<string, unknown> }
+    ) => api.post<Member>(`${base}/users/${userId}/sync-as-member`, data).then((r) => r.data),
     updateMe: (data: FormData | Record<string, unknown>) => {
       if (data instanceof FormData) {
         return api.patch<Member>(`${base}/me`, data, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
@@ -151,8 +157,12 @@ export const membershipApi = {
     get: (id: string) => api.get<MembershipSubscription>(`${base}/subscriptions/${id}`).then((r) => r.data),
     list: (params?: { page?: number; limit?: number; memberId?: string; status?: string }) =>
       api.get<PaginatedResponse<MembershipSubscription>>(`${base}/subscriptions`, { params }).then((r) => r.data),
-    initChapa: (subscriptionId: string) =>
-      api.post<{ checkoutUrl: string; txRef: string }>(`${base}/subscriptions/${subscriptionId}/payment/chapa-init`).then((r) => r.data),
+    initChapa: (subscriptionId: string, feeAmount?: number) =>
+      api
+        .post<{ checkoutUrl: string; txRef: string }>(`${base}/subscriptions/${subscriptionId}/payment/chapa-init`, {
+          ...(feeAmount != null ? { feeAmount } : {}),
+        })
+        .then((r) => r.data),
     confirmManual: (subscriptionId: string, formData: FormData) =>
       api.post<MembershipSubscription>(`${base}/subscriptions/${subscriptionId}/payment/manual`, formData).then((r) => r.data),
     confirmManualPublic: (subscriptionId: string, formData: FormData) =>
@@ -200,4 +210,34 @@ export const membershipApi = {
   },
   analytics: (params?: { category?: MemberCategory }) =>
     api.get<MembershipAnalytics>(`${base}/analytics`, { params }).then((r) => r.data),
+  register: {
+    chapaInit: (formData: FormData) =>
+      api
+        .post<{ checkoutUrl: string; txRef: string; draftToken: string }>(`${base}/register/chapa-init`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data),
+    manual: (formData: FormData) =>
+      api
+        .post<MembershipSubscription>(`${base}/register/manual`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data),
+    draftStatus: (token: string) =>
+      api
+        .get<{ status: "PENDING" | "COMPLETED" | "FAILED"; subscriptionId?: string | null }>(
+          `${base}/register/draft/${token}/status`
+        )
+        .then((r) => r.data),
+    completeChapa: (
+      token: string,
+      params?: { trx_ref?: string; ref_id?: string }
+    ) =>
+      api
+        .post<{ status: "PENDING" | "COMPLETED" | "FAILED"; subscriptionId: string | null }>(
+          `${base}/register/draft/${token}/complete-chapa`,
+          params ?? {}
+        )
+        .then((r) => r.data),
+  },
 };

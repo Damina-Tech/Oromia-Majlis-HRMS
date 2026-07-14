@@ -18,3 +18,14 @@ export const CreateInstitutionRecognitionDto = z.object({
 });
 
 export type CreateInstitutionRecognitionInput = z.infer<typeof CreateInstitutionRecognitionDto>;
+
+/** Draft certificate fields for mosque template preview (no questionnaire). */
+export const PreviewInstitutionRecognitionDto = CreateInstitutionRecognitionDto.pick({
+  institutionNameOnCert: true,
+  zoneCityAdmin: true,
+  districtSubcity: true,
+  gandaKebele: true,
+  issueDate: true,
+});
+
+export type PreviewInstitutionRecognitionInput = z.infer<typeof PreviewInstitutionRecognitionDto>;

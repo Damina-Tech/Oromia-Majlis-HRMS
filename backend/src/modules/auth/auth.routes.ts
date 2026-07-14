@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { buildEffectivePermissionNames } from "../users/permission-utils.js";
 import { buildAuthSessionForUser } from "./auth-session.js";
 import type { UserDivisionContext } from "../org-divisions/division-access.js";
+import { requireAuth } from "../../middleware/auth.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -268,6 +269,47 @@ router.post("/refresh", async (req, res) => {
     });
   } catch {
     return res.status(401).json({ message: "Invalid refresh" });
+  }
+});
+
+/**
+ * GET /api/v1/auth/me
+ * Rebuild current user session from DB (including employeeId) using access token.
+ * Use this when local session is missing employeeId without forcing logout/login.
+ */
+router.get("/me", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user?.id as string | undefined;
+    if (!userId) return res.status(401).json({ message: "Unauthenticated" });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(401).json({ message: "User missing" });
+
+    const session = await buildAuthSessionForUser(prisma, userId);
+    if (!session) return res.status(401).json({ message: "User inactive" });
+
+    const { roles, permissions, employeeId, isSuperAdmin, divisions, avatarUrl } = session;
+    const tokenExtra = { employeeId, isSuperAdmin, divisions };
+    const accessToken = signAccess(user.id, roles, permissions, tokenExtra);
+
+    res.json({
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles,
+        permissions,
+        employeeId: employeeId ?? null,
+        avatarUrl,
+        isSuperAdmin,
+        divisions,
+      },
+    });
+  } catch (error) {
+    console.error("auth/me failed:", error);
+    return res.status(500).json({ message: "Failed to load session" });
   }
 });
 

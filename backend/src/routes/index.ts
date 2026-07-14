@@ -24,6 +24,7 @@ import institutionRecognitionRoutes from "../modules/institutions/institution-re
 import halalRoutes from "../modules/halal/halal.routes.js";
 import membershipRoutes from "../modules/membership/membership.routes.js";
 import orgDivisionRoutes from "../modules/org-divisions/org-division.routes.js";
+import certificateVerifyRoutes from "../modules/certificates/certificate-verify.routes.js";
 import { uploadDocument, bulkImportEmployees } from "../modules/employees/employee.controller.js";
 import { upload, uploadImport } from "../lib/upload.js";
 
@@ -31,6 +32,8 @@ const router = Router();
 
 // Public routes
 router.use("/v1/auth", authRoutes);
+// Public: unified certificate verification (QR + manual code lookup)
+router.use("/v1/certificates", certificateVerifyRoutes);
 
 // Protected routes with permission-based access
 router.use("/v1/departments", requireAuth, hasAnyPermission("departments.read", "departments.write"), departmentsRoutes);

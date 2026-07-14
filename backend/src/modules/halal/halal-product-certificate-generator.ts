@@ -9,6 +9,7 @@ import {
   halalProductCertificatePdfData,
   type HalalProductCertificatePdfSource,
 } from "./halal-product-certificate-pdf-data.js";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,8 +20,7 @@ if (!fs.existsSync(productCertsDir)) {
 }
 
 function getVerifyUrl(certificateNumber: string): string {
-  const base = process.env.FRONTEND_URL || "http://localhost:8080";
-  return `${base}/verify/halal-product/${certificateNumber}`;
+  return publicCertificateVerifyUrl(certificateNumber);
 }
 
 async function generateHalalProductCertificatePDFLegacy(

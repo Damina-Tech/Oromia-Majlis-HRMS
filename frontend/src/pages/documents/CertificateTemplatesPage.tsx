@@ -47,6 +47,7 @@ import CertificateDesignerDialog from "@/components/documents/CertificateDesigne
 const CERT_TYPE_LABEL: Record<HalalCertificateTemplateType, string> = {
   HALAL_BUSINESS: "Halal business certificate",
   HALAL_PRODUCT: "Halal product certificate",
+  MOSQUE_INSTITUTION: "Mosque institution certificate",
 };
 
 export default function CertificateTemplatesPage() {
@@ -161,14 +162,10 @@ export default function CertificateTemplatesPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Award className="h-7 w-7 text-emerald-600" />
-            Halal certificate templates
+            Certificate templates
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Design PDF layouts for Halal business and product certificates. Field positions are stored as JSON and used at
-            issuance via pdf-lib. Set optional env{" "}
-            <code className="text-xs bg-muted px-1 rounded">HALAL_BUSINESS_CERT_TEMPLATE_CODE</code> /{" "}
-            <code className="text-xs bg-muted px-1 rounded">HALAL_PRODUCT_CERT_TEMPLATE_CODE</code> to pin a template by
-            code; otherwise the newest active template per type is used.
+            Design PDF layouts for Halal business/product certificates and more certificates here.
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -323,6 +320,7 @@ export default function CertificateTemplatesPage() {
                 <SelectContent>
                   <SelectItem value="HALAL_BUSINESS">Halal business certificate</SelectItem>
                   <SelectItem value="HALAL_PRODUCT">Halal product certificate</SelectItem>
+                  <SelectItem value="MOSQUE_INSTITUTION">Mosque institution certificate</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,8 +14,7 @@ if (!fs.existsSync(competencyCertsDir)) {
 }
 
 function getVerifyUrl(certificateNumber: string): string {
-  const base = process.env.FRONTEND_URL || "http://localhost:8080";
-  return `${base}/verify/halal-competency/${encodeURIComponent(certificateNumber)}`;
+  return publicCertificateVerifyUrl(certificateNumber);
 }
 
 export async function generateHalalCompetencyCertificatePDF(params: {

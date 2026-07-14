@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { publicCertificateVerifyUrl } from "../../lib/certificate-verify-url.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,24 +13,12 @@ if (!fs.existsSync(certsDir)) {
   fs.mkdirSync(certsDir, { recursive: true });
 }
 
-function normalizeBaseUrl(raw: string | undefined, fallback: string): string {
-  const candidate = (raw || fallback).trim();
-  const withProtocol = /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
-  try {
-    const u = new URL(withProtocol);
-    return u.origin;
-  } catch {
-    return fallback;
-  }
-}
-
 function fmtDate(d: Date): string {
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function getVerifyUrl(certificateId: string): string {
-  const base = normalizeBaseUrl(process.env.FRONTEND_URL, "http://localhost:8080");
-  return new URL(`/verify/membership/${certificateId}`, base).toString();
+  return publicCertificateVerifyUrl(certificateId);
 }
 
 export async function generateMembershipCertificatePDF(params: {

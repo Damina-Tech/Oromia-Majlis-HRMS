@@ -269,6 +269,19 @@ const SettingsPage: React.FC = () => {
       .map(([key]) => key.toUpperCase());
     return enabled.length ? enabled.join(", ") : "In-app only";
   }, [notificationChannels]);
+
+  const showEmployeesTab = useMemo(() => {
+    if (!user) return false;
+    if (isSuperAdmin()) return true;
+    if (hasPermission("employees.read") || hasPermission("employees.write")) return true;
+    return !user.roles?.includes("MEMBER");
+  }, [user, isSuperAdmin, hasPermission]);
+
+  useEffect(() => {
+    if (!showEmployeesTab && activeTab === "employees") {
+      setActiveTab("account");
+    }
+  }, [showEmployeesTab, activeTab]);
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -314,7 +327,7 @@ const SettingsPage: React.FC = () => {
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
-        <TabsTrigger value="employees">Employees</TabsTrigger>
+          {showEmployeesTab && <TabsTrigger value="employees">Employees</TabsTrigger>}
         </TabsList>
         <TabsContent value="account" className="space-y-6">
           <Card>
@@ -624,6 +637,7 @@ const SettingsPage: React.FC = () => {
             </CardContent>
           </Card>
         </TabsContent>
+        {showEmployeesTab && (
         <TabsContent value="employees" className="space-y-6">
           <Card>
             <CardHeader>
@@ -694,6 +708,7 @@ const SettingsPage: React.FC = () => {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
       </Tabs>
     </div>
   );

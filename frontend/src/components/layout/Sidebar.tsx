@@ -113,13 +113,13 @@ const menuItems = [
   href: '/assets',
   permission: 'assets.view'
 },
-{
-  id: 'expenses',
-  icon: CreditCard,
-  href: '/expenses',
-  permission: 'expense.view',
-  submenu: true,
-},
+// {
+//   id: 'expenses',
+//   icon: CreditCard,
+//   href: '/expenses',
+//   permission: 'expense.view',
+//   submenu: true,
+// },
 {
   id: 'documents',
   icon: FileText,
