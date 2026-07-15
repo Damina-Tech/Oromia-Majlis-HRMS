@@ -19,6 +19,7 @@ import {
   FileText,
   Landmark,
   Package,
+  ShieldCheck,
   Upload,
   Wallet,
 } from "lucide-react";
@@ -62,6 +63,8 @@ function statusBadgeClass(status: HalalProductCertificateStatus): string {
   switch (status) {
     case "ISSUED":
       return "bg-emerald-100 text-emerald-900 border-emerald-200/80 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-800/50";
+    case "AWAITING_DETAILS_APPROVAL":
+      return "bg-sky-100 text-sky-950 border-sky-200/80 dark:bg-sky-950/40 dark:text-sky-100 dark:border-sky-800/50";
     case "PAYMENT_PENDING":
       return "bg-amber-100 text-amber-950 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-100 dark:border-amber-800/50";
     case "CANCELLED":
@@ -84,6 +87,16 @@ function receiptLooksPdf(path: string): boolean {
 
 function receiptLooksImage(path: string): boolean {
   return /\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(path);
+}
+
+function approverLabel(
+  user?: { firstName: string; lastName: string; email: string } | null,
+  at?: string | null
+): string | null {
+  if (!user && !at) return null;
+  const name = user ? `${user.firstName} ${user.lastName}`.trim() : "Staff";
+  const when = at ? new Date(at).toLocaleString() : null;
+  return when ? `${name} · ${when}` : name;
 }
 
 function PaymentReceiptPreview({ relativeUrl }: { relativeUrl: string }) {
@@ -145,8 +158,10 @@ export default function HalalProductCertificateDetailPage() {
   const [manualBank, setManualBank] = useState("");
   const [manualReceipt, setManualReceipt] = useState<File | null>(null);
 
-  const canApproveManual =
+  const canApproveManualPayment =
     hasPermission("halal.admin") || hasPermission("halal.supervisor") || hasPermission("halal.finance");
+  /** Admin may act as supervisor until dedicated supervisor permission is enforced. */
+  const canApproveDetails = hasPermission("halal.admin") || hasPermission("halal.supervisor");
 
   const { data: row, isLoading } = useQuery({
     queryKey: ["halal-product-certificate", id],
@@ -167,11 +182,11 @@ export default function HalalProductCertificateDetailPage() {
 
   const manualMutation = useMutation({
     mutationFn: (data: { bankName: string; receipt: File }) =>
-      halalApi.productCertificates.confirmManualPayment(id!, data),
+       halalApi.productCertificates.confirmManualPayment(id!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["halal-product-certificate", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-product-certificates"] });
-      toast.success("Receipt submitted. Awaiting approval.");
+      toast.success("Receipt submitted. Awaiting admin payment approval.");
       setManualBank("");
       setManualReceipt(null);
     },
@@ -180,18 +195,36 @@ export default function HalalProductCertificateDetailPage() {
 
   const approveManualMutation = useMutation({
     mutationFn: () => halalApi.productCertificates.approveManualPayment(id!),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["halal-product-certificate", id] });
       queryClient.invalidateQueries({ queryKey: ["halal-product-certificates"] });
-      toast.success("Payment approved. Product certificate issued.");
+      if (updated.status === "ISSUED") {
+        toast.success("Payment approved and certificate issued.");
+      } else {
+        toast.success("Payment approved. Supervisor details approval is still required before issuance.");
+      }
     },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve"),
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve payment"),
+  });
+
+  const approveDetailsMutation = useMutation({
+    mutationFn: () => halalApi.productCertificates.approveDetails(id!),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["halal-product-certificate", id] });
+      queryClient.invalidateQueries({ queryKey: ["halal-product-certificates"] });
+      if (updated.status === "ISSUED") {
+        toast.success("Details approved. Product certificate issued.");
+      } else {
+        toast.success("Details approved. Certificate will issue after payment is settled.");
+      }
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? "Failed to approve details"),
   });
 
   useEffect(() => {
     if (searchParams.get("payment") === "chapa" && id) {
       queryClient.invalidateQueries({ queryKey: ["halal-product-certificate", id] });
-      toast.success("Payment successful");
+      toast.success("Payment received. Awaiting details approval before certificate issuance.");
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, id, queryClient, setSearchParams]);
@@ -217,12 +250,14 @@ export default function HalalProductCertificateDetailPage() {
 
   const pc = row as HalalProductCertificate;
   const isPaid = !!pc.feePaidAt;
+  const detailsApproved = !!pc.detailsApprovedAt;
   const fee = HALAL_PRODUCT_CERTIFICATE_FEE_ETB;
   const isApplicantBusinessOwner = Boolean(user?.id && pc.business?.userId === user.id);
+  const isStaffViewer = !isApplicantBusinessOwner && (canApproveManualPayment || canApproveDetails);
 
   const showReceiptPreview =
     !!pc.paymentReceiptUrl &&
-    (isApplicantBusinessOwner || (canApproveManual && !isApplicantBusinessOwner));
+    (isApplicantBusinessOwner || (canApproveManualPayment && !isApplicantBusinessOwner));
 
   const awaitingManualApproval =
     pc.status === "PAYMENT_PENDING" &&
@@ -230,29 +265,36 @@ export default function HalalProductCertificateDetailPage() {
     pc.paymentMethod === "MANUAL" &&
     !!pc.paymentReceiptUrl;
 
+  const showApprovePaymentCard =
+    canApproveManualPayment &&
+    pc.status === "PAYMENT_PENDING" &&
+    pc.paymentMethod === "MANUAL" &&
+    !!pc.paymentReceiptUrl &&
+    !isPaid &&
+    !isApplicantBusinessOwner;
+
+  const showApproveDetailsCard =
+    canApproveDetails &&
+    !detailsApproved &&
+    pc.status !== "ISSUED" &&
+    pc.status !== "CANCELLED" &&
+    !isApplicantBusinessOwner;
+
   let paymentStatusLabel: string;
   let paymentStatusDetail: string | null = null;
   if (isPaid && pc.feePaidAt) {
     paymentStatusLabel = "Paid";
     paymentStatusDetail = new Date(pc.feePaidAt).toLocaleString();
   } else if (awaitingManualApproval) {
-    paymentStatusLabel = "Awaiting approval";
-    paymentStatusDetail = "Finance will verify your bank receipt before issuance.";
+    paymentStatusLabel = "Awaiting admin payment approval";
+    paymentStatusDetail = "Staff must verify your bank receipt before payment is marked settled.";
   } else if (pc.status === "PAYMENT_PENDING") {
     paymentStatusLabel = "Payment required";
-    paymentStatusDetail = `${fee.toLocaleString()} ETB to issue this certificate.`;
+    paymentStatusDetail = `${fee.toLocaleString()} ETB must be paid before issuance.`;
   } else {
     paymentStatusLabel = pc.status === "ISSUED" ? "Complete" : "—";
     paymentStatusDetail = null;
   }
-
-  const showApproveCard =
-    canApproveManual &&
-    pc.status === "PAYMENT_PENDING" &&
-    pc.paymentMethod === "MANUAL" &&
-    pc.paymentReceiptUrl &&
-    !isPaid &&
-    !isApplicantBusinessOwner;
 
   return (
     <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6 pb-12">
@@ -350,6 +392,60 @@ export default function HalalProductCertificateDetailPage() {
         </CardContent>
       </Card>
 
+      {(isStaffViewer || pc.status !== "PAYMENT_PENDING" || isPaid || detailsApproved) && pc.status !== "ISSUED" && (
+        <Card className="shadow-sm border-slate-200/70 dark:border-slate-800/60 overflow-hidden">
+          <CardHeader className="pb-3 border-b bg-muted/20">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-teal-700" />
+              Approval checklist
+            </CardTitle>
+            <CardDescription>
+              Certificate PDF is generated only after payment is settled and details are approved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-start gap-3 rounded-lg border px-3 py-2.5">
+              {isPaid ? (
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <Clock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  1. Admin payment approval
+                  {pc.paymentMethod === "CHAPA" && isPaid ? " (satisfied by Chapa)" : ""}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {isPaid
+                    ? approverLabel(pc.manualPaymentApprovedBy, pc.manualPaymentApprovedAt) ||
+                      (pc.paymentMethod === "CHAPA"
+                        ? "Online payment verified"
+                        : "Payment settled")
+                    : pc.paymentMethod === "MANUAL" && pc.paymentReceiptUrl
+                      ? "Waiting for admin to verify bank receipt"
+                      : "Waiting for payment"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border px-3 py-2.5">
+              {detailsApproved ? (
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <Clock className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">2. Supervisor details approval</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {detailsApproved
+                    ? approverLabel(pc.detailsApprovedBy, pc.detailsApprovedAt) || "Details verified"
+                    : "Verify shipment details are accurate and complete (admin can approve for now)"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="shadow-sm border-teal-200/50 dark:border-teal-900/45 overflow-hidden">
         <CardHeader className="pb-3 border-b border-teal-200/30 dark:border-teal-900/40 bg-teal-50/40 dark:bg-teal-950/25">
           <CardTitle className="text-base flex items-center gap-2 text-teal-900 dark:text-teal-100">
@@ -399,7 +495,7 @@ export default function HalalProductCertificateDetailPage() {
               <Separator />
               <div className="space-y-2">
                 <p className="text-sm font-medium text-foreground">
-                  {showApproveCard ? "Receipt for your review" : "Your uploaded receipt"}
+                  {showApprovePaymentCard ? "Receipt for your review" : "Your uploaded receipt"}
                 </p>
                 <PaymentReceiptPreview relativeUrl={pc.paymentReceiptUrl} />
               </div>
@@ -414,7 +510,19 @@ export default function HalalProductCertificateDetailPage() {
           <div>
             <p className="font-medium">Receipt received</p>
             <p className="text-amber-900/85 dark:text-amber-200/85 mt-1">
-              Your payment is pending verification by staff. You will be able to download the PDF after approval.
+              Waiting for admin to approve your payment, then supervisor details approval before the PDF can be issued.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isApplicantBusinessOwner && isPaid && !detailsApproved && pc.status !== "ISSUED" && (
+        <div className="rounded-xl border border-sky-200/60 bg-sky-50/50 dark:bg-sky-950/20 dark:border-sky-900/40 px-4 py-3 flex gap-3 text-sm text-sky-950 dark:text-sky-100">
+          <Clock className="h-5 w-5 shrink-0 text-sky-600 dark:text-sky-400 mt-0.5" />
+          <div>
+            <p className="font-medium">Payment settled</p>
+            <p className="text-sky-900/85 dark:text-sky-200/85 mt-1">
+              Staff are reviewing your shipment details. The certificate PDF will be available after details approval.
             </p>
           </div>
         </div>
@@ -513,12 +621,12 @@ export default function HalalProductCertificateDetailPage() {
         </Card>
       )}
 
-      {showApproveCard && (
+      {showApprovePaymentCard && (
         <Card className="border-violet-200/60 dark:border-violet-900/45 shadow-sm overflow-hidden">
           <CardHeader className="pb-2 bg-violet-50/50 dark:bg-violet-950/25 border-b border-violet-200/40 dark:border-violet-900/40">
-            <CardTitle className="text-base text-violet-950 dark:text-violet-100">Approve manual payment</CardTitle>
+            <CardTitle className="text-base text-violet-950 dark:text-violet-100">1. Approve manual payment</CardTitle>
             <CardDescription>
-              Confirm the receipt above matches the fee and bank details before issuing the product certificate.
+              Confirm the receipt matches the fee and bank details. This settles payment only — details approval is still required before the PDF is generated.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-5">
@@ -527,13 +635,42 @@ export default function HalalProductCertificateDetailPage() {
               onClick={() => approveManualMutation.mutate()}
               disabled={approveManualMutation.isPending}
             >
-              {approveManualMutation.isPending ? "Approving…" : "Approve and issue certificate"}
+              {approveManualMutation.isPending ? "Approving…" : "Approve payment"}
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {pc.status === "ISSUED" && pc.certificateNumber && pc.pdfUrl && (
+      {showApproveDetailsCard && (
+        <Card className="border-sky-200/60 dark:border-sky-900/45 shadow-sm overflow-hidden">
+          <CardHeader className="pb-2 bg-sky-50/50 dark:bg-sky-950/25 border-b border-sky-200/40 dark:border-sky-900/40">
+            <CardTitle className="text-base text-sky-950 dark:text-sky-100">
+              {isPaid ? "2. Approve certificate details" : "Approve certificate details By Supervisor"}
+            </CardTitle>
+            <CardDescription>
+              Verify shipment fields above are accurate and complete.
+              {!isPaid
+                ? " You can approve details before payment; the certificate is issued only after both steps."
+                : " Approving now will generate and issue the certificate PDF."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-5">
+            <Button
+              className="w-full bg-sky-600 hover:bg-sky-700"
+              onClick={() => approveDetailsMutation.mutate()}
+              disabled={approveDetailsMutation.isPending}
+            >
+              {approveDetailsMutation.isPending
+                ? "Approving…"
+                : isPaid
+                  ? "Approve details & issue certificate"
+                  : "Approve details"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {pc.status === "ISSUED" && pc.certificateNumber && (
         <Card className="border-emerald-200/60 dark:border-emerald-900/40 shadow-sm overflow-hidden bg-gradient-to-br from-emerald-50/30 to-transparent dark:from-emerald-950/20">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-emerald-900 dark:text-emerald-100">

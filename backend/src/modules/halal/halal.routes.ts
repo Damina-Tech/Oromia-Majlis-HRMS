@@ -60,6 +60,7 @@ import {
   productChapaCallback,
   confirmProductManualPayment,
   approveProductManualPayment,
+  approveProductCertificateDetails,
   downloadProductCertificate,
   verifyProductCertificatePublic,
 } from "./halal-product-certificate.controller.js";
@@ -313,6 +314,12 @@ router.post(
   requireAuth,
   hasAnyPermission("halal.admin", "halal.supervisor", "halal.finance"),
   approveProductManualPayment
+);
+router.post(
+  "/product-certificates/:id/details/approve",
+  requireAuth,
+  hasAnyPermission("halal.admin", "halal.supervisor"),
+  approveProductCertificateDetails
 );
 router.get(
   "/product-certificates/:id/download",

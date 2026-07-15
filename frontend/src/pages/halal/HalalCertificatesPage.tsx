@@ -83,16 +83,23 @@ function productCertStatusPresentation(
         "border-red-200/80 bg-red-100 text-red-900 dark:border-red-800/50 dark:bg-red-950/50 dark:text-red-100",
     };
   }
-  if (p.feePaidAt) {
+  if (p.status === "AWAITING_DETAILS_APPROVAL" || (p.feePaidAt && !p.detailsApprovedAt)) {
     return {
-      label: "Paid — issuing",
+      label: "Awaiting details approval",
+      className:
+        "border-sky-200/80 bg-sky-100 text-sky-950 dark:border-sky-800/50 dark:bg-sky-950/40 dark:text-sky-100",
+    };
+  }
+  if (p.detailsApprovedAt && !p.feePaidAt) {
+    return {
+      label: "Details OK — pay required",
       className:
         "border-cyan-200/80 bg-cyan-100 text-cyan-950 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-100",
     };
   }
   if (p.paymentMethod === "MANUAL" && p.paymentReceiptUrl) {
     return {
-      label: "Awaiting approval",
+      label: "Awaiting payment approval",
       className:
         "border-violet-200/80 bg-violet-100 text-violet-950 dark:border-violet-800/50 dark:bg-violet-950/50 dark:text-violet-100",
     };

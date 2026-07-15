@@ -80,6 +80,7 @@ model User {
   halalAuditLogs                   HalalAuditLog[]
   halalPaymentsProcessed           HalalPayment[]          @relation("HalalPaymentProcessedBy")
   halalProductManualPaymentsApproved HalalProductCertificate[] @relation("HalalProductPaymentApprovedBy")
+  halalProductDetailsApproved        HalalProductCertificate[] @relation("HalalProductDetailsApprovedBy")
   halalCompetencyApplications        HalalCompetencyCertificate[] @relation("HalalCompetencyApplicant")
   halalCompetencyTheoryRecorded      HalalCompetencyCertificate[] @relation("HalalCompetencyTheoryBy")
   halalCompetencyTechRecorded        HalalCompetencyCertificate[] @relation("HalalCompetencyTechBy")
@@ -2693,6 +2694,7 @@ model HalalCertificate {
 
 enum HalalProductCertificateStatus {
   PAYMENT_PENDING
+  AWAITING_DETAILS_APPROVAL
   ISSUED
   CANCELLED
 }
@@ -2734,8 +2736,14 @@ model HalalProductCertificate {
   chapaRefId          String?
   pdfUrl              String?
   issuedAt            DateTime?
+  /// Admin (or finance) verified manual bank receipt
   manualPaymentApprovedById String?
   manualPaymentApprovedBy     User?                 @relation("HalalProductPaymentApprovedBy", fields: [manualPaymentApprovedById], references: [id])
+  manualPaymentApprovedAt     DateTime?
+  /// Supervisor verified shipment/certificate details (admin may act until dedicated supervisor role is wired)
+  detailsApprovedById String?
+  detailsApprovedBy   User?                         @relation("HalalProductDetailsApprovedBy", fields: [detailsApprovedById], references: [id])
+  detailsApprovedAt   DateTime?
   createdAt           DateTime                      @default(now())
   updatedAt           DateTime                      @updatedAt
 

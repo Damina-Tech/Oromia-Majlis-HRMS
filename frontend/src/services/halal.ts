@@ -425,7 +425,11 @@ export interface HalalViolation {
   action?: string | null;
 }
 
-export type HalalProductCertificateStatus = "PAYMENT_PENDING" | "ISSUED" | "CANCELLED";
+export type HalalProductCertificateStatus =
+  | "PAYMENT_PENDING"
+  | "AWAITING_DETAILS_APPROVAL"
+  | "ISSUED"
+  | "CANCELLED";
 
 export const HALAL_PRODUCT_CERTIFICATE_FEE_ETB = 3500;
 export const HALAL_COMPETENCY_FEE_ETB = 1000;
@@ -567,6 +571,12 @@ export interface HalalProductCertificate {
   chapaTxRef?: string | null;
   pdfUrl?: string | null;
   issuedAt?: string | null;
+  manualPaymentApprovedById?: string | null;
+  manualPaymentApprovedAt?: string | null;
+  manualPaymentApprovedBy?: { id: string; firstName: string; lastName: string; email: string } | null;
+  detailsApprovedById?: string | null;
+  detailsApprovedAt?: string | null;
+  detailsApprovedBy?: { id: string; firstName: string; lastName: string; email: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -921,6 +931,8 @@ export const halalApi = {
     },
     approveManualPayment: (id: string) =>
       api.post<HalalProductCertificate>(`/halal/product-certificates/${id}/payment/manual/approve`).then((r) => r.data),
+    approveDetails: (id: string) =>
+      api.post<HalalProductCertificate>(`/halal/product-certificates/${id}/details/approve`).then((r) => r.data),
     fetchPdfBlob: async (id: string) => {
       try {
         return await fetchHalalCertificatePdfBlob(`/halal/product-certificates/${id}/download`);

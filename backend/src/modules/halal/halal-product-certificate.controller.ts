@@ -16,6 +16,23 @@ function getUserId(req: Request): string {
   return (req as any).user?.id;
 }
 
+function getPermissions(req: Request): string[] {
+  return ((req as any).user?.permissions as string[] | undefined) ?? [];
+}
+
+/** Until a dedicated supervisor-only gate exists, admin may perform both approvals. */
+function canApproveManualPayment(perms: string[]): boolean {
+  return (
+    perms.includes("halal.admin") ||
+    perms.includes("halal.supervisor") ||
+    perms.includes("halal.finance")
+  );
+}
+
+function canApproveCertificateDetails(perms: string[]): boolean {
+  return perms.includes("halal.admin") || perms.includes("halal.supervisor");
+}
+
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   const raw = (value ?? "").trim();
   if (!raw) return fallback;
@@ -35,24 +52,59 @@ async function generateProductCertificateNumber(): Promise<string> {
   return `HAL-P-${year}-${(count + 1).toString().padStart(5, "0")}`;
 }
 
-async function finalizeProductCertificateIssuance(
-  id: string,
-  paymentMethod: string,
-  extra: { chapaRefId?: string | null }
-) {
+/**
+ * Issue PDF only when payment is settled AND certificate details are approved.
+ * Safe to call repeatedly after either approval step.
+ */
+async function tryIssueProductCertificateIfReady(id: string) {
   const pc = await prisma.halalProductCertificate.findUnique({
     where: { id },
     include: { halalCertificate: { include: { business: true } }, business: true },
   });
   if (!pc) throw new Error("Product certificate request not found");
-  if (pc.status === HalalProductCertificateStatus.ISSUED) return pc;
-  if (pc.status !== HalalProductCertificateStatus.PAYMENT_PENDING) {
-    throw new Error("Invalid status for completion");
+  if (pc.status === HalalProductCertificateStatus.ISSUED) {
+    return prisma.halalProductCertificate.findUnique({
+      where: { id },
+      include: { halalCertificate: true, business: true },
+    });
+  }
+  if (pc.status === HalalProductCertificateStatus.CANCELLED) {
+    throw new Error("Certificate request is cancelled");
   }
 
-  const certNum = await generateProductCertificateNumber();
-  const issuedAt = new Date();
-  let pdfUrl: string | null = null;
+  if (!pc.feePaidAt) {
+    return prisma.halalProductCertificate.findUnique({
+      where: { id },
+      include: {
+        halalCertificate: { select: { id: true, certificateId: true, status: true, expiresAt: true } },
+        business: true,
+      },
+    });
+  }
+
+  if (!pc.detailsApprovedAt) {
+    if (pc.status !== HalalProductCertificateStatus.AWAITING_DETAILS_APPROVAL) {
+      return prisma.halalProductCertificate.update({
+        where: { id },
+        data: { status: HalalProductCertificateStatus.AWAITING_DETAILS_APPROVAL },
+        include: {
+          halalCertificate: { select: { id: true, certificateId: true, status: true, expiresAt: true } },
+          business: true,
+        },
+      });
+    }
+    return prisma.halalProductCertificate.findUnique({
+      where: { id },
+      include: {
+        halalCertificate: { select: { id: true, certificateId: true, status: true, expiresAt: true } },
+        business: true,
+      },
+    });
+  }
+
+  const certNum = pc.certificateNumber ?? (await generateProductCertificateNumber());
+  const issuedAt = pc.issuedAt ?? new Date();
+  let pdfUrl: string | null = pc.pdfUrl;
   try {
     const { halalProductCertificatePdfSourceFromRow } = await import(
       "./halal-product-certificate-pdf-data.js"
@@ -70,9 +122,6 @@ async function finalizeProductCertificateIssuance(
     data: {
       certificateNumber: certNum,
       status: HalalProductCertificateStatus.ISSUED,
-      feePaidAt: issuedAt,
-      paymentMethod,
-      chapaRefId: extra.chapaRefId ?? undefined,
       pdfUrl,
       issuedAt,
     },
@@ -80,16 +129,57 @@ async function finalizeProductCertificateIssuance(
   });
 }
 
+/** Mark payment settled without issuing (unless details already approved). */
+async function markProductCertificatePaid(
+  id: string,
+  paymentMethod: string,
+  extra: {
+    chapaRefId?: string | null;
+    manualPaymentApprovedById?: string | null;
+  } = {}
+) {
+  const pc = await prisma.halalProductCertificate.findUnique({ where: { id } });
+  if (!pc) throw new Error("Product certificate request not found");
+  if (pc.status === HalalProductCertificateStatus.ISSUED) {
+    return prisma.halalProductCertificate.findUnique({
+      where: { id },
+      include: { halalCertificate: true, business: true },
+    });
+  }
+  if (pc.status === HalalProductCertificateStatus.CANCELLED) {
+    throw new Error("Certificate request is cancelled");
+  }
+
+  const now = new Date();
+  await prisma.halalProductCertificate.update({
+    where: { id },
+    data: {
+      feePaidAt: pc.feePaidAt ?? now,
+      paymentMethod,
+      chapaRefId: extra.chapaRefId ?? undefined,
+      manualPaymentApprovedById: extra.manualPaymentApprovedById ?? undefined,
+      manualPaymentApprovedAt: extra.manualPaymentApprovedById
+        ? pc.manualPaymentApprovedAt ?? now
+        : undefined,
+      status: pc.detailsApprovedAt
+        ? pc.status
+        : HalalProductCertificateStatus.AWAITING_DETAILS_APPROVAL,
+    },
+  });
+
+  return tryIssueProductCertificateIfReady(id);
+}
+
 function canAccessProductCert(
   req: Request,
   businessUserId: string
 ): { ok: boolean; isStaff: boolean } {
-  const perms = (req as any).user?.permissions as string[] | undefined;
+  const perms = getPermissions(req);
   const uid = getUserId(req);
   const isStaff =
-    perms?.includes("halal.admin") ||
-    perms?.includes("halal.supervisor") ||
-    perms?.includes("halal.audit");
+    perms.includes("halal.admin") ||
+    perms.includes("halal.supervisor") ||
+    perms.includes("halal.audit");
   if (isStaff) return { ok: true, isStaff: true };
   if (uid === businessUserId) return { ok: true, isStaff: false };
   return { ok: false, isStaff: false };
@@ -159,13 +249,13 @@ export async function createProductCertificate(req: Request, res: Response) {
 export async function listProductCertificates(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
-    const perms = (req as any).user?.permissions as string[] | undefined;
+    const perms = getPermissions(req);
     const isStaff =
-      perms?.includes("halal.admin") ||
-      perms?.includes("halal.supervisor") ||
-      perms?.includes("halal.inspector") ||
-      perms?.includes("halal.audit") ||
-      perms?.includes("halal.committee");
+      perms.includes("halal.admin") ||
+      perms.includes("halal.supervisor") ||
+      perms.includes("halal.inspector") ||
+      perms.includes("halal.audit") ||
+      perms.includes("halal.committee");
     const q = ListHalalProductCertificatesQuery.parse(req.query);
     const where: Prisma.HalalProductCertificateWhereInput = {};
     if (!isStaff) {
@@ -199,6 +289,8 @@ export async function getProductCertificate(req: Request, res: Response) {
       include: {
         halalCertificate: { select: { id: true, certificateId: true, status: true, expiresAt: true } },
         business: true,
+        manualPaymentApprovedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        detailsApprovedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
     if (!row) return res.status(404).json({ message: "Not found" });
@@ -213,8 +305,8 @@ export async function getProductCertificate(req: Request, res: Response) {
 export async function initProductChapaPayment(req: Request, res: Response) {
   try {
     const userId = getUserId(req);
-    const perms = (req as any).user?.permissions as string[] | undefined;
-    const isAdmin = perms?.includes("halal.admin") || perms?.includes("halal.supervisor");
+    const perms = getPermissions(req);
+    const isAdmin = perms.includes("halal.admin") || perms.includes("halal.supervisor");
     const { id } = req.params;
     const pc = await prisma.halalProductCertificate.findUnique({
       where: { id },
@@ -222,7 +314,10 @@ export async function initProductChapaPayment(req: Request, res: Response) {
     });
     if (!pc) return res.status(404).json({ message: "Not found" });
     if (pc.business.userId !== userId && !isAdmin) return res.status(403).json({ message: "Access denied" });
-    if (pc.status !== HalalProductCertificateStatus.PAYMENT_PENDING) {
+    if (
+      pc.status !== HalalProductCertificateStatus.PAYMENT_PENDING &&
+      pc.status !== HalalProductCertificateStatus.AWAITING_DETAILS_APPROVAL
+    ) {
       return res.status(400).json({ message: "Payment already completed or invalid status" });
     }
     if (pc.feePaidAt) return res.status(400).json({ message: "Already paid" });
@@ -312,7 +407,7 @@ export async function productChapaCallback(req: Request, res: Response) {
     if (verifyData.status !== "success" || verifyData.data?.status !== "success") {
       return res.status(400).send("Verification failed");
     }
-    await finalizeProductCertificateIssuance(id, "CHAPA", { chapaRefId: ref_id || null });
+    await markProductCertificatePaid(id, "CHAPA", { chapaRefId: ref_id || null });
     res.status(200).send("OK");
   } catch (e: any) {
     res.status(500).send("Error");
@@ -351,27 +446,72 @@ export async function confirmProductManualPayment(req: Request, res: Response) {
   }
 }
 
+/** Admin / finance: verify manual bank receipt → settle payment (does not issue until details approved). */
 export async function approveProductManualPayment(req: Request, res: Response) {
   try {
     const actorId = getUserId(req);
+    const perms = getPermissions(req);
+    if (!canApproveManualPayment(perms)) {
+      return res.status(403).json({ message: "Not allowed to approve manual payments" });
+    }
     const { id } = req.params;
     const pc = await prisma.halalProductCertificate.findUnique({ where: { id } });
     if (!pc) return res.status(404).json({ message: "Not found" });
-    if (pc.status !== HalalProductCertificateStatus.PAYMENT_PENDING || pc.feePaidAt) {
+    if (pc.feePaidAt) {
+      return res.status(400).json({ message: "Payment is already settled for this request" });
+    }
+    if (pc.status !== HalalProductCertificateStatus.PAYMENT_PENDING) {
       return res.status(400).json({ message: "No pending manual payment for this request" });
     }
     if (pc.paymentMethod !== "MANUAL" || !pc.paymentReceiptUrl) {
       return res.status(400).json({ message: "No manual receipt on file" });
     }
-    const updated =     await finalizeProductCertificateIssuance(id, "MANUAL", {});
-    const full = await prisma.halalProductCertificate.update({
-      where: { id },
-      data: { manualPaymentApprovedById: actorId },
-      include: { halalCertificate: true, business: true },
+    const updated = await markProductCertificatePaid(id, "MANUAL", {
+      manualPaymentApprovedById: actorId,
     });
-    res.json(full);
+    res.json(updated);
   } catch (e: any) {
     res.status(400).json({ message: e.message || "Failed to approve payment" });
+  }
+}
+
+/**
+ * Supervisor (or admin for now): verify shipment/certificate details.
+ * Issues PDF once payment is also settled.
+ */
+export async function approveProductCertificateDetails(req: Request, res: Response) {
+  try {
+    const actorId = getUserId(req);
+    const perms = getPermissions(req);
+    if (!canApproveCertificateDetails(perms)) {
+      return res.status(403).json({ message: "Not allowed to approve certificate details" });
+    }
+    const { id } = req.params;
+    const pc = await prisma.halalProductCertificate.findUnique({ where: { id } });
+    if (!pc) return res.status(404).json({ message: "Not found" });
+    if (pc.status === HalalProductCertificateStatus.ISSUED) {
+      return res.status(400).json({ message: "Certificate is already issued" });
+    }
+    if (pc.status === HalalProductCertificateStatus.CANCELLED) {
+      return res.status(400).json({ message: "Certificate request is cancelled" });
+    }
+    if (pc.detailsApprovedAt) {
+      return res.status(400).json({ message: "Certificate details are already approved" });
+    }
+
+    const now = new Date();
+    await prisma.halalProductCertificate.update({
+      where: { id },
+      data: {
+        detailsApprovedById: actorId,
+        detailsApprovedAt: now,
+      },
+    });
+
+    const updated = await tryIssueProductCertificateIfReady(id);
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ message: e.message || "Failed to approve certificate details" });
   }
 }
 
@@ -387,7 +527,10 @@ export async function downloadProductCertificate(req: Request, res: Response) {
     const { ok } = canAccessProductCert(req, row.business.userId);
     if (!ok) return res.status(403).json({ message: "Access denied" });
     if (row.status !== HalalProductCertificateStatus.ISSUED || !row.certificateNumber) {
-      return res.status(404).json({ message: "Certificate PDF not available" });
+      return res.status(404).json({
+        message:
+          "Certificate PDF not available yet. Payment and details approval must both be completed.",
+      });
     }
 
     const { renderProductHalalCertificatePdfBuffer } = await import("./halal-certificate-render.service.js");
