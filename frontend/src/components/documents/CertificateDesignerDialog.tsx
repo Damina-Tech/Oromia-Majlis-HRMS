@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fabric } from "fabric";
 import * as pdfjsLib from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,9 @@ import {
   type HalalCertificateTemplateType,
 } from "@/services/documents";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+ // Serve worker from /public as .js so nginx always uses application/javascript
+// (some servers omit .mjs MIME; X-Content-Type-Options: nosniff then breaks pdf.js).
+pdfjsLib.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.js`;
 
 const DISPLAY_SCALE = 0.72;
 
