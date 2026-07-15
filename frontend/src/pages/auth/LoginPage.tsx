@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, getLoginRedirect } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,15 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { Building2, Chrome, Facebook, Loader2, Mail, AlertCircle } from 'lucide-react';
-import { forgotPassword, loginWithGoogle, loginWithFacebook } from '@/services/auth';
+import { Building2, Chrome, Facebook, Loader2, Mail, AlertCircle, Lock } from 'lucide-react';
+import { forgotPassword } from '@/services/auth';
+
+function formatLockCountdown(totalSeconds: number): string {
+  const seconds = Math.max(0, totalSeconds);
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -27,18 +34,46 @@ const LoginPage: React.FC = () => {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [lockedUntilMs, setLockedUntilMs] = useState<number | null>(null);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get('redirect');
 
+  const isLocked = lockedUntilMs != null && lockSecondsLeft > 0;
+
+  useEffect(() => {
+    if (lockedUntilMs == null) {
+      setLockSecondsLeft(0);
+      return;
+    }
+
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((lockedUntilMs - Date.now()) / 1000));
+      setLockSecondsLeft(left);
+      if (left <= 0) {
+        setLockedUntilMs(null);
+        setRemainingAttempts(null);
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [lockedUntilMs]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     setIsLoading(true);
 
     try {
       const result = await login(email, password);
       if (result.success) {
+        setRemainingAttempts(null);
+        setLockedUntilMs(null);
         const currentUser = JSON.parse(localStorage.getItem('hrms_user') || '{}');
         const redirectTo = getLoginRedirect(currentUser, redirectParam || undefined);
         toast({
@@ -46,10 +81,27 @@ const LoginPage: React.FC = () => {
           description: "Welcome to the system dashboard!"
         });
         navigate(redirectTo);
-      } else {
+      } else if (result.code === "ACCOUNT_LOCKED") {
+        const untilMs = result.lockedUntil
+          ? Date.parse(result.lockedUntil)
+          : Date.now() + (result.retryAfterSeconds ?? 15 * 60) * 1000;
+        setLockedUntilMs(Number.isFinite(untilMs) ? untilMs : Date.now() + 15 * 60 * 1000);
+        setRemainingAttempts(0);
         toast({
-          title: result.code === "ACCOUNT_LOCKED" ? "Account temporarily locked" : "Login Failed",
-          description: result.message || "Invalid email or password. Please check your credentials.",
+          title: "Account temporarily locked",
+          description: result.message || "Too many failed login attempts. Please try again later.",
+          variant: "destructive"
+        });
+      } else {
+        if (typeof result.remainingAttempts === "number") {
+          setRemainingAttempts(result.remainingAttempts);
+        }
+        toast({
+          title: "Login Failed",
+          description:
+            typeof result.remainingAttempts === "number"
+              ? `Invalid email or password. ${result.remainingAttempts} attempt${result.remainingAttempts === 1 ? "" : "s"} remaining.`
+              : result.message || "Invalid email or password. Please check your credentials.",
           variant: "destructive"
         });
       }
@@ -192,6 +244,36 @@ const LoginPage: React.FC = () => {
             </div> */}
 
             <form onSubmit={handleLogin} className="space-y-4" data-id="1x51ohzy6" data-path="src/pages/LoginPage.tsx">
+              {isLocked && (
+                <Alert variant="destructive">
+                  <Lock className="h-4 w-4" />
+                  <AlertDescription>
+                    Account temporarily locked after too many failed attempts.
+                    Try again in <span className="font-semibold tabular-nums">{formatLockCountdown(lockSecondsLeft)}</span>
+                    {lockSecondsLeft >= 60
+                      ? ` (about ${Math.ceil(lockSecondsLeft / 60)} min)`
+                      : ""}.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!isLocked && remainingAttempts != null && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Invalid email or password.{" "}
+                    <span className="font-semibold">
+                      {remainingAttempts} attempt{remainingAttempts === 1 ? "" : "s"} remaining
+                    </span>
+                    {remainingAttempts === 0
+                      ? "."
+                      : remainingAttempts === 1
+                        ? " before your account is locked."
+                        : "."}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2" data-id="oc9bic79t" data-path="src/pages/LoginPage.tsx">
                 <Label htmlFor="email" data-id="ak6ipegz9" data-path="src/pages/LoginPage.tsx">Email</Label>
                 <Input
@@ -200,7 +282,9 @@ const LoginPage: React.FC = () => {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required data-id="8xsfc7dqu" data-path="src/pages/LoginPage.tsx" />
+                  required
+                  disabled={isLocked}
+                  data-id="8xsfc7dqu" data-path="src/pages/LoginPage.tsx" />
 
               </div>
 
@@ -221,20 +305,23 @@ const LoginPage: React.FC = () => {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required data-id="rmlfit5na" data-path="src/pages/LoginPage.tsx" />
+                  required
+                  disabled={isLocked}
+                  data-id="rmlfit5na" data-path="src/pages/LoginPage.tsx" />
               </div>
 
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                disabled={isLoading} data-id="dgejjhlyd" data-path="src/pages/LoginPage.tsx">
+                disabled={isLoading || isLocked} data-id="dgejjhlyd" data-path="src/pages/LoginPage.tsx">
 
                 {isLoading ?
                 <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" data-id="634u1we1q" data-path="src/pages/LoginPage.tsx" />
                     Signing in...
                   </> :
-
+                isLocked ?
+                `Locked — try again in ${formatLockCountdown(lockSecondsLeft)}` :
                 'Sign In'
                 }
               </Button>

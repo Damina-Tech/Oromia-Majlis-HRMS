@@ -50,9 +50,18 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
   return "/dashboard";
 }
 
+export type LoginResult = {
+  success: boolean;
+  message?: string;
+  code?: string;
+  remainingAttempts?: number;
+  lockedUntil?: string;
+  retryAfterSeconds?: number;
+};
+
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; code?: string }>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   register: (payload: {
     email: string;
     password: string;
@@ -180,10 +189,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     }
   }, []);
 
-  const login = async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; message?: string; code?: string }> => {
+  const login = async (email: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
 
     try {
@@ -195,12 +201,21 @@ export const AuthProvider: React.FC<{children: React.ReactNode;}> = ({ children 
     } catch (error: any) {
       console.error('Login failed:', error);
       setIsLoading(false);
-      const msg = error?.response?.data?.message;
-      const code = error?.response?.data?.code;
+      const data = error?.response?.data;
+      const msg = data?.message;
+      const code = data?.code;
+      const remainingAttempts =
+        typeof data?.remainingAttempts === "number" ? data.remainingAttempts : undefined;
+      const lockedUntil = typeof data?.lockedUntil === "string" ? data.lockedUntil : undefined;
+      const retryAfterSeconds =
+        typeof data?.retryAfterSeconds === "number" ? data.retryAfterSeconds : undefined;
       return {
         success: false,
         message: typeof msg === "string" ? msg : "Invalid email or password. Please check your credentials.",
         code: typeof code === "string" ? code : undefined,
+        remainingAttempts,
+        lockedUntil,
+        retryAfterSeconds,
       };
     }
   };
