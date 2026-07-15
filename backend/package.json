@@ -12,6 +12,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:migrate:safe": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
+    "seed:cert-templates": "tsx scripts/seed-mosque-cert-template.ts",
     "deploy": "npm install --production && npm install --include=dev && npm run prisma:generate && npm run prisma:migrate:deploy && npm run build"
   },
   "keywords": [],

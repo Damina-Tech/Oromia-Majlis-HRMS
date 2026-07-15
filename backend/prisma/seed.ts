@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { seedPermissionsAndRoleMappings } from "./permission-seed.shared";
 import { seedOrgDivisionsAndAdmins } from "./org-division-seed.shared";
 import { seedMosqueInstitutionCertificateTemplate } from "../src/modules/institutions/mosque-institution-certificate-seed.js";
+import { seedHalalCertificateTemplates } from "../src/modules/halal/halal-certificate-template-seed.js";
 
 const prisma = new PrismaClient();
 const NEW_SEED_EMAIL_DOMAIN = "oriasc.org";
@@ -1449,6 +1450,7 @@ async function seedDocumentTemplates() {
   console.log("✅ Created 3 document templates");
 
   await seedMosqueInstitutionCertificateTemplate(prisma, adminUser.id);
+  await seedHalalCertificateTemplates(prisma, adminUser.id);
 
   // Generate sample documents for some employees
   if (adminUser) {

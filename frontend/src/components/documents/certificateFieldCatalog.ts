@@ -31,6 +31,9 @@ export const PDF_PAGE_WIDTH = 595.28;
 export const PDF_PAGE_HEIGHT = 841.89;
 export const PDF_PAGE_LANDSCAPE_WIDTH = 841.89;
 export const PDF_PAGE_LANDSCAPE_HEIGHT = 595.28;
+/** US Letter — matches official Halal business / product certificate PDFs */
+export const PDF_LETTER_WIDTH = 612;
+export const PDF_LETTER_HEIGHT = 792;
 
 export function getCertificatePageDimensions(certificateType?: string | null): {
   width: number;
@@ -38,6 +41,9 @@ export function getCertificatePageDimensions(certificateType?: string | null): {
 } {
   if (certificateType === "MOSQUE_INSTITUTION") {
     return { width: PDF_PAGE_LANDSCAPE_WIDTH, height: PDF_PAGE_LANDSCAPE_HEIGHT };
+  }
+  if (certificateType === "HALAL_BUSINESS" || certificateType === "HALAL_PRODUCT") {
+    return { width: PDF_LETTER_WIDTH, height: PDF_LETTER_HEIGHT };
   }
   return { width: PDF_PAGE_WIDTH, height: PDF_PAGE_HEIGHT };
 }

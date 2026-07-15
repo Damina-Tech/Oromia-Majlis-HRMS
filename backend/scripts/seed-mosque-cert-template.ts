@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { seedMosqueInstitutionCertificateTemplate } from "../src/modules/institutions/mosque-institution-certificate-seed.js";
+import { seedHalalCertificateTemplates } from "../src/modules/halal/halal-certificate-template-seed.js";
 
 const prisma = new PrismaClient();
 
@@ -12,6 +13,7 @@ async function main() {
     process.exit(1);
   }
   await seedMosqueInstitutionCertificateTemplate(prisma, admin.id);
+  await seedHalalCertificateTemplates(prisma, admin.id);
 }
 
 main()
