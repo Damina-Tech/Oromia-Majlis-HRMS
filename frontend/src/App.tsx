@@ -37,7 +37,6 @@ import TimesheetPage from "./pages/timesheet/TimesheetPage";
 import AssetManagementPage from "./pages/assets/AssetManagementPage";
 import AssetDashboardPage from "./pages/assets/AssetDashboardPage";
 import DocumentTemplatesPage from "./pages/documents/DocumentTemplatesPage";
-import CertificateTemplatesPage from "./pages/documents/CertificateTemplatesPage";
 import DocumentGenerationPage from "./pages/documents/DocumentGenerationPage";
 import DocumentSettingsPage from "./pages/documents/DocumentSettingsPage";
 import DocumentRequestsPage from "./pages/documents/DocumentRequestsPage";
@@ -460,7 +459,7 @@ function AppRoutes() {
           />
           <Route
             path="documents/certificate-templates"
-            element={<CertificateTemplatesPage />}
+            element={<Navigate to="/documents/templates" replace />}
           />
           <Route
             path="documents/generate"

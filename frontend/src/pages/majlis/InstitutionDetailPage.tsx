@@ -546,7 +546,7 @@ export default function InstitutionDetailPage() {
                             ) : (
                               <p className="text-amber-800 dark:text-amber-200">
                                 No active mosque template found.{" "}
-                                <Link to="/documents/certificate-templates" className="underline font-medium">
+                                <Link to="/documents/templates" className="underline font-medium">
                                   Configure one in Documents
                                 </Link>{" "}
                                 before issuing.

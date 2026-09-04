@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fabric } from "fabric";
 import * as pdfjsLib from "pdfjs-dist";
 import {
@@ -13,23 +13,26 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, Trash2, Eye } from "lucide-react";
+import { Loader2, Save, Trash2, Eye, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { resolveFileUrl } from "@/config/api";
 import {
   type CertificateLayoutConfig,
   type CertificateLayoutField,
+  type CertificateLayoutPage,
   DEFAULT_FIELD_SIZE,
   getCertificatePageDimensions,
+  resolveLayoutPages,
 } from "./certificateFieldCatalog";
 import {
   getCertificateFieldCatalog,
   previewCertificatePdf,
+  uploadTemplateSourceFile,
   type DocumentTemplate,
   type HalalCertificateTemplateType,
 } from "@/services/documents";
 
- // Serve worker from /public as .js so nginx always uses application/javascript
+// Serve worker from /public as .js so nginx always uses application/javascript
 // (some servers omit .mjs MIME; X-Content-Type-Options: nosniff then breaks pdf.js).
 pdfjsLib.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.js`;
 
@@ -139,6 +142,27 @@ function disposeFabricCanvas(canvas: fabric.Canvas | null) {
   }
 }
 
+function readCanvasFields(canvas: fabric.Canvas): CertificateLayoutField[] {
+  const fields: CertificateLayoutField[] = [];
+  canvas.getObjects().forEach((obj) => {
+    const fo = obj as FabricFieldObject;
+    if (!fo.fieldKey) return;
+    const bound = fo.getBoundingRect(true);
+    fields.push({
+      key: fo.fieldKey,
+      label: fo.fieldLabel ?? fo.fieldKey,
+      type: fo.fieldType ?? "text",
+      x: Math.round(bound.left / DISPLAY_SCALE),
+      y: Math.round(bound.top / DISPLAY_SCALE),
+      width: Math.round(bound.width / DISPLAY_SCALE),
+      height: Math.round(bound.height / DISPLAY_SCALE),
+      fontSize: fo.fieldType === "qrcode" ? undefined : 12,
+      align: "left",
+    });
+  });
+  return fields;
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -151,18 +175,31 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const initTokenRef = useRef(0);
   const catalogRef = useRef<CatalogField[]>([]);
+  const pagesRef = useRef<CertificateLayoutPage[]>([]);
+  const pageIndexRef = useRef(0);
+  const pageBgInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [uploadingBg, setUploadingBg] = useState(false);
   const [catalog, setCatalog] = useState<CatalogField[]>([]);
   const [placedKeys, setPlacedKeys] = useState<Set<string>>(new Set());
-  /** Remount canvas DOM when dialog opens or template file changes (avoids Fabric insertBefore errors). */
+  const [pages, setPages] = useState<CertificateLayoutPage[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  /** Remount canvas DOM when dialog opens or page/background changes. */
   const [canvasMountKey, setCanvasMountKey] = useState(0);
 
   const pageDims = getCertificatePageDimensions(template.certificateType);
   const canvasW = (template.layoutConfig?.pageWidth ?? pageDims.width) * DISPLAY_SCALE;
   const canvasH = (template.layoutConfig?.pageHeight ?? pageDims.height) * DISPLAY_SCALE;
+  const isMultipage = pages.length > 1;
+  const activePage = pages[pageIndex];
+  const activeBgUrl = activePage?.sourceFileUrl || template.sourceFileUrl || null;
+
+  pagesRef.current = pages;
+  pageIndexRef.current = pageIndex;
+  catalogRef.current = catalog;
 
   useEffect(() => {
     if (!open || !template.certificateType) {
@@ -182,16 +219,37 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
     };
   }, [open, template.certificateType]);
 
-  catalogRef.current = catalog;
+  useEffect(() => {
+    if (!open) return;
+    const resolved = resolveLayoutPages(template.layoutConfig ?? null, template.sourceFileUrl);
+    setPages(resolved);
+    setPageIndex(0);
+    pageIndexRef.current = 0;
+    pagesRef.current = resolved;
+    setCanvasMountKey((k) => k + 1);
+  }, [open, template.id, template.sourceFileUrl, template.layoutConfig]);
+
+  const syncPlacedKeysFromPages = useCallback((nextPages: CertificateLayoutPage[]) => {
+    const keys = new Set<string>();
+    nextPages.forEach((p) => p.fields.forEach((f) => keys.add(f.key)));
+    setPlacedKeys(keys);
+  }, []);
+
+  const flushActivePageFields = useCallback((): CertificateLayoutPage[] => {
+    const canvas = fabricRef.current;
+    const current = pagesRef.current;
+    const idx = pageIndexRef.current;
+    if (!canvas || !current[idx]) return current;
+    const fields = readCanvasFields(canvas);
+    const next = current.map((p, i) => (i === idx ? { ...p, fields } : p));
+    pagesRef.current = next;
+    setPages(next);
+    syncPlacedKeysFromPages(next);
+    return next;
+  }, [syncPlacedKeysFromPages]);
 
   useEffect(() => {
-    if (open && template.sourceFileUrl) {
-      setCanvasMountKey((k) => k + 1);
-    }
-  }, [open, template.id, template.sourceFileUrl]);
-
-  useEffect(() => {
-    if (!open || !template.sourceFileUrl) {
+    if (!open || !activeBgUrl) {
       disposeFabricCanvas(fabricRef.current);
       fabricRef.current = null;
       return;
@@ -202,6 +260,7 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
     if (!el) return;
 
     let cancelled = false;
+    const pageSnapshot = pagesRef.current[pageIndexRef.current];
 
     const run = async () => {
       setLoading(true);
@@ -217,7 +276,7 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       fabricRef.current = canvas;
 
       try {
-        const resolved = resolveFileUrl(template.sourceFileUrl!);
+        const resolved = resolveFileUrl(activeBgUrl);
         if (!resolved) throw new Error("Invalid template file URL");
         const bgUrl = await loadBackgroundImageUrl(resolved);
         if (cancelled || token !== initTokenRef.current) return;
@@ -240,20 +299,16 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
           canvas.requestRenderAll();
         });
 
-        const layout = template.layoutConfig;
-        if (layout?.fields?.length) {
-          for (const f of layout.fields) {
-            const cat: CatalogField = catalogRef.current.find((c) => c.key === f.key) ?? {
-              key: f.key,
-              label: f.label,
-              type: f.type,
-            };
-            canvas.add(createFieldObject(cat, f));
-          }
-          setPlacedKeys(new Set(layout.fields.map((f) => f.key)));
-        } else {
-          setPlacedKeys(new Set());
+        const fields = pageSnapshot?.fields ?? [];
+        for (const f of fields) {
+          const cat: CatalogField = catalogRef.current.find((c) => c.key === f.key) ?? {
+            key: f.key,
+            label: f.label,
+            type: f.type,
+          };
+          canvas.add(createFieldObject(cat, f));
         }
+        syncPlacedKeysFromPages(pagesRef.current);
       } catch (e: unknown) {
         if (!cancelled && token === initTokenRef.current) {
           const msg = e instanceof Error ? e.message : "Failed to load designer";
@@ -276,24 +331,21 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       disposeFabricCanvas(fabricRef.current);
       fabricRef.current = null;
     };
-  }, [open, canvasMountKey, template.sourceFileUrl, template.layoutConfig, canvasW, canvasH]);
+  }, [open, canvasMountKey, activeBgUrl, canvasW, canvasH, syncPlacedKeysFromPages]);
 
-  const syncPlacedKeys = () => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const keys = new Set<string>();
-    canvas.getObjects().forEach((obj) => {
-      const fo = obj as FabricFieldObject;
-      if (fo.fieldKey) keys.add(fo.fieldKey);
-    });
-    setPlacedKeys(keys);
+  const switchPage = (nextIndex: number) => {
+    if (nextIndex === pageIndex || nextIndex < 0 || nextIndex >= pages.length) return;
+    flushActivePageFields();
+    setPageIndex(nextIndex);
+    pageIndexRef.current = nextIndex;
+    setCanvasMountKey((k) => k + 1);
   };
 
   const addField = (field: CatalogField) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     if (placedKeys.has(field.key)) {
-      toast.info("Field already on canvas — select and drag to reposition");
+      toast.info("Field already placed on this template — switch pages or select and drag to reposition");
       return;
     }
     const offset = canvas.getObjects().length * 12;
@@ -301,7 +353,7 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
     canvas.add(obj);
     canvas.setActiveObject(obj);
     canvas.requestRenderAll();
-    syncPlacedKeys();
+    flushActivePageFields();
   };
 
   const removeSelected = () => {
@@ -312,40 +364,47 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       canvas.remove(active);
       canvas.discardActiveObject();
       canvas.requestRenderAll();
-      syncPlacedKeys();
+      flushActivePageFields();
     }
   };
 
   const buildLayoutConfig = (): CertificateLayoutConfig => {
-    const canvas = fabricRef.current!;
-    const fields: CertificateLayoutField[] = [];
-    canvas.getObjects().forEach((obj) => {
-      const fo = obj as FabricFieldObject;
-      if (!fo.fieldKey) return;
-      const bound = fo.getBoundingRect(true);
-      fields.push({
-        key: fo.fieldKey,
-        label: fo.fieldLabel ?? fo.fieldKey,
-        type: fo.fieldType ?? "text",
-        x: Math.round(bound.left / DISPLAY_SCALE),
-        y: Math.round(bound.top / DISPLAY_SCALE),
-        width: Math.round(bound.width / DISPLAY_SCALE),
-        height: Math.round(bound.height / DISPLAY_SCALE),
-        fontSize: fo.fieldType === "qrcode" ? undefined : 12,
-        align: "left",
-      });
-    });
+    const nextPages = flushActivePageFields();
+    const multipage = nextPages.length > 1 || template.certificateType === "MEMBERSHIP_ID";
     return {
       version: 1,
       pageWidth: template.layoutConfig?.pageWidth ?? pageDims.width,
       pageHeight: template.layoutConfig?.pageHeight ?? pageDims.height,
-      fields,
+      fields: multipage ? [] : nextPages[0]?.fields ?? [],
+      pages: multipage ? nextPages : undefined,
     };
+  };
+
+  const handleUploadPageBackground = async (file: File) => {
+    setUploadingBg(true);
+    try {
+      const { url } = await uploadTemplateSourceFile(file);
+      const flushed = flushActivePageFields();
+      const next = flushed.map((p, i) => (i === pageIndexRef.current ? { ...p, sourceFileUrl: url } : p));
+      pagesRef.current = next;
+      setPages(next);
+      setCanvasMountKey((k) => k + 1);
+      toast.success(`${activePage?.label || "Page"} background uploaded — save layout to persist`);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg ?? "Upload failed");
+    } finally {
+      setUploadingBg(false);
+    }
   };
 
   const handleSave = async () => {
     const layout = buildLayoutConfig();
-    if (layout.fields.length === 0) {
+    const total = layout.pages?.reduce((n, p) => n + p.fields.length, 0) ?? layout.fields.length;
+    if (total === 0) {
       toast.error("Place at least one field on the template");
       return;
     }
@@ -355,9 +414,10 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       toast.success("Layout saved");
       onOpenChange(false);
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "response" in e
-        ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined;
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
       toast.error(msg ?? "Failed to save layout");
     } finally {
       setSaving(false);
@@ -374,9 +434,10 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "response" in e
-        ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined;
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
       toast.error(msg ?? "Preview failed — save layout and ensure template file is valid");
     } finally {
       setPreviewing(false);
@@ -389,61 +450,117 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
         <DialogHeader>
           <DialogTitle>Certificate designer — {template.name}</DialogTitle>
           <DialogDescription>
-            Drag fields onto the template. Positions are saved as JSON and used by pdf-lib when certificates are issued
-            (Halal business/product and mosque institution recognition).
+            Drag fields onto the template. Positions are saved as JSON and used when certificates are issued.
+            {isMultipage ? " Switch Front/Back to edit each page of the membership ID card." : ""}
           </DialogDescription>
         </DialogHeader>
 
-        {!template.sourceFileUrl ? (
-          <p className="text-sm text-amber-700 px-1">Upload a PDF or image template before using the designer.</p>
-        ) : (
-          <div className="flex flex-col lg:flex-row gap-4 min-h-0 flex-1 overflow-hidden">
-            <div className="lg:w-52 shrink-0 space-y-2 overflow-y-auto max-h-[60vh]">
-              <p className="text-xs font-semibold text-muted-foreground uppercase">Available fields</p>
-              {catalog.map((f) => (
-                <Button
-                  key={f.key}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start text-left h-auto py-2"
-                  onClick={() => addField(f)}
-                  disabled={loading}
-                >
-                  <span className="truncate">{f.label}</span>
-                  <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">
-                    {f.type}
-                  </Badge>
-                </Button>
-              ))}
-              <Button type="button" variant="ghost" size="sm" className="w-full text-red-600" onClick={removeSelected}>
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                Remove selected
-              </Button>
-            </div>
+        {!activeBgUrl ? (
+          <p className="text-sm text-amber-700 px-1">
+            Upload a PDF or image background for this page before using the designer.
+          </p>
+        ) : null}
 
-            <div className="flex-1 min-w-0 overflow-auto flex justify-center bg-muted/40 rounded-lg p-3 relative min-h-[480px]">
-              {loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
+        <div className="flex flex-col lg:flex-row gap-4 min-h-0 flex-1 overflow-hidden">
+          <div className="lg:w-56 shrink-0 space-y-2 overflow-y-auto max-h-[60vh]">
+            {isMultipage && (
+              <div className="flex gap-1 mb-2">
+                {pages.map((p, i) => (
+                  <Button
+                    key={p.key}
+                    type="button"
+                    size="sm"
+                    variant={i === pageIndex ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => switchPage(i)}
+                    disabled={loading}
+                  >
+                    {p.label || p.key}
+                  </Button>
+                ))}
+              </div>
+            )}
+
+            <input
+              ref={pageBgInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void handleUploadPageBackground(f);
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={uploadingBg || loading}
+              onClick={() => pageBgInputRef.current?.click()}
+            >
+              {uploadingBg ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : (
+                <Upload className="h-3.5 w-3.5 mr-1" />
               )}
+              Upload {activePage?.label || "page"} background
+            </Button>
+
+            <p className="text-xs font-semibold text-muted-foreground uppercase pt-2">Available fields</p>
+            {catalog.map((f) => (
+              <Button
+                key={f.key}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start text-left h-auto py-2"
+                onClick={() => addField(f)}
+                disabled={loading || !activeBgUrl || placedKeys.has(f.key)}
+              >
+                <span className="truncate">{f.label}</span>
+                <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">
+                  {f.type}
+                </Badge>
+              </Button>
+            ))}
+            <Button type="button" variant="ghost" size="sm" className="w-full text-red-600" onClick={removeSelected}>
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Remove selected
+            </Button>
+          </div>
+
+          <div className="flex-1 min-w-0 overflow-auto flex justify-center bg-muted/40 rounded-lg p-3 relative min-h-[360px]">
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
+            {activeBgUrl ? (
               <div key={canvasMountKey} className="inline-block">
                 <canvas ref={canvasElRef} width={canvasW} height={canvasH} />
               </div>
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground self-center">No background for this page yet.</p>
+            )}
           </div>
-        )}
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" variant="outline" disabled={previewing || saving || loading} onClick={() => void handlePreview()}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={previewing || saving || loading || !activeBgUrl}
+            onClick={() => void handlePreview()}
+          >
             {previewing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
             Preview PDF
           </Button>
-          <Button type="button" disabled={saving || loading || !template.sourceFileUrl} onClick={() => void handleSave()}>
+          <Button type="button" disabled={saving || loading || !activeBgUrl} onClick={() => void handleSave()}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save layout
           </Button>

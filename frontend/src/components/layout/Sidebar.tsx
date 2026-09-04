@@ -348,7 +348,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   if (hasPermission('documents.view') || hasPermission('documents.manage')) {
     if (hasPermission('documents.manage')) {
       documentSubmenuItems.push({ titleKey: 'docTemplates', href: '/documents/templates', permission: 'documents.view' });
-      documentSubmenuItems.push({ titleKey: 'docCertificateTemplates', href: '/documents/certificate-templates', permission: 'documents.view' });
       documentSubmenuItems.push({ titleKey: 'docGenerate', href: '/documents/generate', permission: 'documents.view' });
     }
     documentSubmenuItems.push({ titleKey: 'docRequests', href: '/documents/requests', permission: 'documents.view' });

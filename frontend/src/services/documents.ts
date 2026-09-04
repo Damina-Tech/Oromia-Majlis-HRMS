@@ -2,7 +2,11 @@ import api from "./api";
 
 // Types
 export type DocumentTemplateEngine = "HTML_MERGE" | "PDF_CERTIFICATE";
-export type HalalCertificateTemplateType = "HALAL_BUSINESS" | "HALAL_PRODUCT" | "MOSQUE_INSTITUTION";
+export type HalalCertificateTemplateType =
+  | "HALAL_BUSINESS"
+  | "HALAL_PRODUCT"
+  | "MOSQUE_INSTITUTION"
+  | "MEMBERSHIP_ID";
 
 export interface CertificateLayoutField {
   key: string;
@@ -18,11 +22,19 @@ export interface CertificateLayoutField {
   color?: string;
 }
 
+export interface CertificateLayoutPage {
+  key: string;
+  label?: string;
+  sourceFileUrl?: string | null;
+  fields: CertificateLayoutField[];
+}
+
 export interface CertificateLayoutConfig {
   version: 1;
   pageWidth: number;
   pageHeight: number;
   fields: CertificateLayoutField[];
+  pages?: CertificateLayoutPage[];
 }
 
 export interface DocumentTemplate {
@@ -179,6 +191,8 @@ export const listTemplates = async (params?: {
   code?: string;
   templateEngine?: DocumentTemplateEngine;
   certificateType?: HalalCertificateTemplateType;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 }) => {
   const response = await api.get("/documents/templates", { params });
   return response.data;
