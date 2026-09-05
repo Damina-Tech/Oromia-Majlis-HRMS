@@ -1,7 +1,7 @@
 import { HalalCertificateTemplateType, DocumentTemplateEngine } from "@prisma/client";
 import prisma from "../../db/client.js";
 
-import { parseLayoutConfig } from "./certificate-layout.types.js";
+import { layoutHasConfiguredFields } from "./certificate-layout.types.js";
 import { generateCertificatePdfFromLayout } from "./certificate-pdf-generator.js";
 
 export async function getActiveCertificateTemplateByCode(code: string) {
@@ -14,8 +14,7 @@ export async function getActiveCertificateTemplateByCode(code: string) {
     },
   });
   if (!template?.sourceFileUrl?.trim()) return null;
-  const layout = parseLayoutConfig(template.layoutConfig);
-  if (!layout?.fields?.length) return null;
+  if (!layoutHasConfiguredFields(template.layoutConfig)) return null;
   return template;
 }
 
@@ -30,8 +29,7 @@ export async function getActiveCertificateTemplateByType(certificateType: HalalC
     orderBy: { updatedAt: "desc" },
   });
   if (!template?.sourceFileUrl?.trim()) return null;
-  const layout = parseLayoutConfig(template.layoutConfig);
-  if (!layout?.fields?.length) return null;
+  if (!layoutHasConfiguredFields(template.layoutConfig)) return null;
   return template;
 }
 

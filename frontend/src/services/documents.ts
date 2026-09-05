@@ -171,12 +171,35 @@ export const getCertificateFieldCatalog = async (certificateType: HalalCertifica
 };
 
 export const previewCertificatePdf = async (templateId: string): Promise<Blob> => {
-  const response = await api.post(
-    "/documents/certificates/preview",
-    { templateId },
-    { responseType: "blob" }
-  );
-  return response.data as Blob;
+  try {
+    const response = await api.post(
+      "/documents/certificates/preview",
+      { templateId },
+      { responseType: "blob" }
+    );
+    return response.data as Blob;
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: Blob | { message?: string } } };
+    const data = ax.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text();
+        const parsed = JSON.parse(text) as { message?: string };
+        if (parsed?.message) {
+          throw Object.assign(new Error(parsed.message), {
+            response: { data: { message: parsed.message } },
+          });
+        }
+      } catch (inner) {
+        if (inner instanceof Error && (inner as { response?: unknown }).response) throw inner;
+      }
+    } else if (data && typeof data === "object" && "message" in data && data.message) {
+      throw Object.assign(new Error(String(data.message)), {
+        response: { data: { message: data.message } },
+      });
+    }
+    throw err;
+  }
 };
 
 export const listTemplates = async (params?: {

@@ -17,6 +17,7 @@ import { generatePDFFromHTML, generateDocumentFileName } from "./pdf-generator.j
 import { paginate } from "../../utils/pagination.js";
 import { sendGeneratedDocument } from "./email-service.js";
 import { NotificationService } from "../notifications/notification.service.js";
+import { layoutHasConfiguredFields } from "./certificate-layout.types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -305,8 +306,7 @@ export async function updateTemplate(req: Request, res: Response) {
       }
       const layout =
         data.layoutConfig !== undefined ? data.layoutConfig : (existing.layoutConfig as object | null);
-      const fields = layout && typeof layout === "object" && "fields" in layout ? (layout as { fields?: unknown[] }).fields : null;
-      if (!fields?.length) {
+      if (!layoutHasConfiguredFields(layout)) {
         return res.status(400).json({
           message: "Save field positions in the certificate designer before activating.",
         });

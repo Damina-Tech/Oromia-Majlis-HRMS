@@ -5,6 +5,7 @@ import * as path from "path";
 import { resolveUploadPath, uploadsRoot } from "../../lib/uploads-path.js";
 import {
   parseLayoutConfig,
+  resolveLayoutPages,
   type CertificateLayoutConfig,
   type CertificateLayoutField,
 } from "./certificate-layout.types.js";
@@ -50,12 +51,18 @@ async function drawField(
   fontBold: PDFFont
 ): Promise<void> {
   const trimmed = value?.trim() ?? "";
-  if (!trimmed && field.type !== "qrcode" && field.type !== "image") return;
+  if (!trimmed) return;
 
   const pageWidth = page.getWidth();
 
   if (field.type === "image") {
-    const imgPath = resolveUploadPath(trimmed);
+    let imgPath: string;
+    try {
+      imgPath = resolveUploadPath(trimmed);
+    } catch {
+      return;
+    }
+    if (!fs.existsSync(imgPath)) return;
     const bytes = fs.readFileSync(imgPath);
     const ext = path.extname(imgPath).toLowerCase();
     const embedded =
@@ -64,9 +71,7 @@ async function drawField(
         : ext === ".jpg" || ext === ".jpeg"
           ? await pdfDoc.embedJpg(bytes)
           : null;
-    if (!embedded) {
-      throw new Error(`Unsupported image for certificate field ${field.key}: ${trimmed}`);
-    }
+    if (!embedded) return;
     const y = pdfYFromTop(pageHeight, field);
     page.drawImage(embedded, {
       x: field.x,
@@ -123,19 +128,27 @@ async function drawField(
   }
 }
 
-async function loadPdfWithBackground(
+async function embedBackgroundOnPage(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
   sourcePath: string,
   layout: CertificateLayoutConfig
-): Promise<PDFDocument> {
+): Promise<void> {
   const ext = path.extname(sourcePath).toLowerCase();
+  const bytes = fs.readFileSync(sourcePath);
+
   if (ext === ".pdf") {
-    const bytes = fs.readFileSync(sourcePath);
-    return PDFDocument.load(bytes);
+    const bgDoc = await PDFDocument.load(bytes);
+    const [embeddedPage] = await pdfDoc.embedPdf(bgDoc, [0]);
+    page.drawPage(embeddedPage, {
+      x: 0,
+      y: 0,
+      width: layout.pageWidth,
+      height: layout.pageHeight,
+    });
+    return;
   }
 
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([layout.pageWidth, layout.pageHeight]);
-  const bytes = fs.readFileSync(sourcePath);
   const embedded =
     ext === ".png"
       ? await pdfDoc.embedPng(bytes)
@@ -151,11 +164,11 @@ async function loadPdfWithBackground(
     width: layout.pageWidth,
     height: layout.pageHeight,
   });
-  return pdfDoc;
 }
 
 /**
  * Generate a certificate PDF from a template file + saved layout JSON (no hardcoded positions).
+ * Supports single-page (`fields`) and multipage (`pages`, e.g. membership ID front/back).
  */
 export async function generateCertificatePdfFromLayout(params: {
   sourceFileUrl: string;
@@ -164,22 +177,34 @@ export async function generateCertificatePdfFromLayout(params: {
   outputFilePath: string;
 }): Promise<void> {
   const layout = parseLayoutConfig(params.layoutConfig);
-  if (!layout?.fields?.length) {
+  if (!layout) {
+    throw new Error("Certificate template has invalid layout configuration");
+  }
+
+  const pagesConfig = resolveLayoutPages(layout, params.sourceFileUrl);
+  const hasAnyFields = pagesConfig.some((p) => p.fields?.length);
+  if (!hasAnyFields) {
     throw new Error("Certificate template has no layout fields configured");
   }
 
-  const sourcePath = resolveUploadPath(params.sourceFileUrl);
-
-  const pdfDoc = await loadPdfWithBackground(sourcePath, layout);
-  const pages = pdfDoc.getPages();
-  const page = pages[0];
-  const pageHeight = page.getHeight();
+  const pdfDoc = await PDFDocument.create();
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  for (const field of layout.fields) {
-    const value = params.data[field.key] ?? "";
-    await drawField(pdfDoc, page, field, value, pageHeight, fontRegular, fontBold);
+  for (const pageCfg of pagesConfig) {
+    const sourceUrl = pageCfg.sourceFileUrl || params.sourceFileUrl;
+    if (!sourceUrl) {
+      throw new Error(`Missing background file for page "${pageCfg.key}"`);
+    }
+    const sourcePath = resolveUploadPath(sourceUrl);
+    const page = pdfDoc.addPage([layout.pageWidth, layout.pageHeight]);
+    await embedBackgroundOnPage(pdfDoc, page, sourcePath, layout);
+    const pageHeight = page.getHeight();
+
+    for (const field of pageCfg.fields) {
+      const value = params.data[field.key] ?? "";
+      await drawField(pdfDoc, page, field, value, pageHeight, fontRegular, fontBold);
+    }
   }
 
   const outDir = path.dirname(params.outputFilePath);

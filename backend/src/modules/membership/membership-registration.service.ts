@@ -184,7 +184,17 @@ async function createUserForMember(
 
 async function issueCertificate(
   subscriptionId: string,
-  member: { id: string; fullName: string; category: MemberCategory; profilePhotoUrl: string | null },
+  member: {
+    id: string;
+    fullName: string;
+    phone: string;
+    category: MemberCategory;
+    categoryData?: unknown;
+    profilePhotoUrl: string | null;
+    addressLine?: string | null;
+    zone?: { name: string } | null;
+    woreda?: { name: string } | null;
+  },
   expiresAt: Date
 ) {
   const certificateId = await nextCertificateId();
@@ -200,6 +210,16 @@ async function issueCertificate(
     issuedAt: now,
     expiresAt,
     photoPath,
+    member: {
+      fullName: member.fullName,
+      phone: member.phone,
+      category: member.category,
+      categoryData: (member.categoryData as Record<string, unknown> | null) ?? null,
+      profilePhotoUrl: member.profilePhotoUrl,
+      addressLine: member.addressLine,
+      zone: member.zone,
+      woreda: member.woreda,
+    },
   });
 
   await prisma.membershipCertificate.create({
@@ -348,7 +368,12 @@ export async function finalizeChapaRegistrationFromDraft(draftId: string, chapaR
     draft.passwordHash
   );
 
-  await issueCertificate(subscription.id, member, newEndDate);
+  const memberForCert = await prisma.member.findUnique({
+    where: { id: member.id },
+    include: { zone: true, woreda: true },
+  });
+  if (!memberForCert) throw new Error("Member not found after registration");
+  await issueCertificate(subscription.id, memberForCert, newEndDate);
 
   await prisma.membershipRegistrationDraft.update({
     where: { id: draftId },

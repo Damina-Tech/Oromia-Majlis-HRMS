@@ -1838,6 +1838,7 @@ enum HalalCertificateTemplateType {
   HALAL_BUSINESS
   HALAL_PRODUCT
   MOSQUE_INSTITUTION
+  MEMBERSHIP_ID
 }
 
 enum AnnouncementType {

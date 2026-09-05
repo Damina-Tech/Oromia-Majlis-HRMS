@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, User, CreditCard, Award, Banknote, Loader2, Pencil, ExternalLink, Eye } from "lucide-react";
+import { ArrowLeft, User, CreditCard, Award, Banknote, Loader2, Pencil, ExternalLink, Eye, RefreshCw } from "lucide-react";
 import { membershipApi, type MembershipPayment, type MemberCategory } from "@/services/membership";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -137,6 +137,17 @@ export default function MemberDetailPage() {
     },
     onError: (e: any) => {
       toast.error(e.response?.data?.message ?? "Failed to confirm payment");
+    },
+  });
+
+  const regenerateCertificateMutation = useMutation({
+    mutationFn: (certificateId: string) => membershipApi.certificates.regenerate(certificateId),
+    onSuccess: () => {
+      toast.success("Membership ID regenerated from the active template");
+      queryClient.invalidateQueries({ queryKey: ["membership-member", id] });
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message ?? "Failed to regenerate membership ID");
     },
   });
 
@@ -488,14 +499,46 @@ export default function MemberDetailPage() {
                               </Button>
                             )}
                             {row.sub.certificate && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => window.open(`${API_BASE_URL}/api/v1/membership/certificates/by-id/${row.sub.certificate!.certificateId}/download`, "_blank")}
-                              >
-                                <Award className="h-4 w-4 mr-1" />
-                                Cert
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    window.open(
+                                      `${API_BASE_URL}/api/v1/membership/certificates/by-id/${row.sub.certificate!.certificateId}/download`,
+                                      "_blank"
+                                    )
+                                  }
+                                >
+                                  <Award className="h-4 w-4 mr-1" />
+                                  Cert
+                                </Button>
+                                {canConfirmManual && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="px-2"
+                                    disabled={
+                                      regenerateCertificateMutation.isPending &&
+                                      regenerateCertificateMutation.variables ===
+                                        row.sub.certificate!.certificateId
+                                    }
+                                    title="Regenerate membership ID from the active Document template"
+                                    aria-label="Regenerate membership ID"
+                                    onClick={() =>
+                                      regenerateCertificateMutation.mutate(row.sub.certificate!.certificateId)
+                                    }
+                                  >
+                                    {regenerateCertificateMutation.isPending &&
+                                    regenerateCertificateMutation.variables ===
+                                      row.sub.certificate!.certificateId ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </TableCell>

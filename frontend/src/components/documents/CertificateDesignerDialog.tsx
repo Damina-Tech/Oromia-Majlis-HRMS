@@ -435,9 +435,11 @@ export default function CertificateDesignerDialog({ open, onOpenChange, template
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e: unknown) {
       const msg =
-        e && typeof e === "object" && "response" in e
-          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
+        e instanceof Error
+          ? e.message
+          : e && typeof e === "object" && "response" in e
+            ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+            : undefined;
       toast.error(msg ?? "Preview failed — save layout and ensure template file is valid");
     } finally {
       setPreviewing(false);

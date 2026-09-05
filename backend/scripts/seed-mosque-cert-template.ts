@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { seedMosqueInstitutionCertificateTemplate } from "../src/modules/institutions/mosque-institution-certificate-seed.js";
 import { seedHalalCertificateTemplates } from "../src/modules/halal/halal-certificate-template-seed.js";
+import { seedMembershipIdCertificateTemplate } from "../src/modules/membership/membership-id-certificate-seed.js";
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,7 @@ async function main() {
   }
   await seedMosqueInstitutionCertificateTemplate(prisma, admin.id);
   await seedHalalCertificateTemplates(prisma, admin.id);
+  await seedMembershipIdCertificateTemplate(prisma, admin.id);
 }
 
 main()

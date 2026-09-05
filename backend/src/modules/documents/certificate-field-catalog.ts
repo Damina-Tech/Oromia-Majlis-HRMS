@@ -58,6 +58,24 @@ const MOSQUE_INSTITUTION_FIELDS: CertificateCatalogField[] = [
   { key: "qrCode", label: "Verification QR", type: "qrcode" },
 ];
 
+const MEMBERSHIP_ID_FIELDS: CertificateCatalogField[] = [
+  { key: "photo", label: "Member photo", type: "image" },
+  { key: "certificateId", label: "Lakk ID / Certificate ID", type: "text", sampleValue: "MAJ-2026-0001" },
+  { key: "fullName", label: "Full name", type: "text", sampleValue: "Ahmed Hassan Ali" },
+  { key: "position", label: "Position / job role", type: "text", sampleValue: "Teacher" },
+  { key: "membershipRole", label: "Membership role", type: "text", sampleValue: "Regular Member" },
+  { key: "phone", label: "Phone number", type: "text", sampleValue: "0912345678" },
+  { key: "issuedAt", label: "Issued date", type: "date" },
+  { key: "expiresAt", label: "Expiry date", type: "date" },
+  { key: "zone", label: "Zone / City", type: "text", sampleValue: "East Shewa" },
+  { key: "cityDistrict", label: "City / District (Aanaa)", type: "text", sampleValue: "Adama" },
+  { key: "kebele", label: "Kebele (Ganda)", type: "text", sampleValue: "Ganda 05" },
+  { key: "mosque", label: "Mosque", type: "text", sampleValue: "Al-Huda Mosque" },
+  { key: "signature", label: "Signature (uploaded asset)", type: "image" },
+  { key: "seal", label: "Stamp / seal (uploaded asset)", type: "image" },
+  { key: "qrCode", label: "Verification QR", type: "qrcode" },
+];
+
 export function getCertificateFieldCatalog(
   certificateType: HalalCertificateTemplateType
 ): CertificateCatalogField[] {
@@ -68,6 +86,8 @@ export function getCertificateFieldCatalog(
       return HALAL_PRODUCT_FIELDS;
     case "MOSQUE_INSTITUTION":
       return MOSQUE_INSTITUTION_FIELDS;
+    case "MEMBERSHIP_ID":
+      return MEMBERSHIP_ID_FIELDS;
     default:
       return [];
   }
@@ -96,7 +116,9 @@ export async function buildSampleCertificateData(
           ? `${base}/verify/HAL-2026-0001`
           : certificateType === "HALAL_PRODUCT"
             ? `${base}/verify/HAL-P-2026-00001`
-            : `${base}/verify/IRR-2026-00001`;
+            : certificateType === "MEMBERSHIP_ID"
+              ? `${base}/verify/MAJ-2026-0001`
+              : `${base}/verify/IRR-2026-00001`;
     } else if (f.type === "image") {
       data[f.key] = "";
     } else {
@@ -206,6 +228,73 @@ export function mosqueInstitutionCertificateData(params: {
     kebele: params.gandaKebele,
     mosqueName: params.institutionNameOnCert,
     issueDate: fmtDateDMY(params.issueDate),
+    qrCode: params.verifyUrl,
+  };
+}
+
+const MEMBERSHIP_CATEGORY_LABELS: Record<string, string> = {
+  REGULAR_MEMBER: "Regular Member",
+  BUSINESS_OWNER: "Business Owner",
+  YOUTH_WOMEN_COUNCIL: "Youth / Women Council",
+  FARMER: "Farmer",
+  ELDER_MOTHER: "Elder / Mother",
+};
+
+function pickCategoryDataString(data: Record<string, unknown> | null | undefined, keys: string[]): string {
+  if (!data) return "";
+  for (const key of keys) {
+    const v = data[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (Array.isArray(v) && v.length) return v.map(String).filter(Boolean).join(", ");
+  }
+  return "";
+}
+
+/** Map membership ID card issuance params to layout field keys */
+export function membershipIdCertificateData(params: {
+  certificateId: string;
+  fullName: string;
+  phone: string;
+  category: string;
+  categoryData?: Record<string, unknown> | null;
+  zoneName?: string | null;
+  woredaName?: string | null;
+  addressLine?: string | null;
+  profilePhotoUrl?: string | null;
+  issuedAt: Date;
+  expiresAt: Date;
+  verifyUrl: string;
+}): Record<string, string> {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const cd = params.categoryData ?? {};
+  const position = pickCategoryDataString(cd, [
+    "position",
+    "jobTitle",
+    "gaeeHojii",
+    "teachingLocation",
+    "communityRole",
+    "businessType",
+    "leadershipExperience",
+    "academicQualification",
+  ]);
+  const mosque = pickCategoryDataString(cd, ["mosque", "mosqueName", "masjiida", "placeOfStudy"]);
+  const kebele =
+    pickCategoryDataString(cd, ["kebele", "ganda", "gandaKebele"]) || (params.addressLine ?? "").trim();
+
+  return {
+    certificateId: params.certificateId,
+    fullName: params.fullName,
+    position,
+    membershipRole: MEMBERSHIP_CATEGORY_LABELS[params.category] ?? params.category.replace(/_/g, " "),
+    phone: params.phone,
+    issuedAt: fmt(params.issuedAt),
+    expiresAt: fmt(params.expiresAt),
+    zone: (params.zoneName ?? "").trim(),
+    cityDistrict: (params.woredaName ?? "").trim(),
+    kebele,
+    mosque,
+    photo: params.profilePhotoUrl?.trim() ?? "",
     qrCode: params.verifyUrl,
   };
 }

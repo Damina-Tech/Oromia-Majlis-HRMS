@@ -12,6 +12,7 @@ import { paginate } from "../../lib/paginate.js";
 import { membershipDeleteErrorMessage } from "../../lib/prisma-errors.js";
 import { generateMembershipCertificatePDF } from "./membership-certificate-generator.js";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { NotificationService } from "../notifications/notification.service.js";
 import { NotificationModule, NotificationType } from "@prisma/client";
@@ -835,7 +836,10 @@ export async function chapaCallback(req: Request, res: Response) {
     }
     const sub = await prisma.membershipSubscription.findUnique({
       where: { id },
-      include: { member: true, plan: true },
+      include: {
+        member: { include: { zone: true, woreda: true } },
+        plan: true,
+      },
     });
     if (!sub || sub.chapaTxRef !== trx_ref) {
       return res.status(404).send("Subscription not found");
@@ -886,6 +890,16 @@ export async function chapaCallback(req: Request, res: Response) {
       issuedAt: now,
       expiresAt: newEndDate,
       photoPath,
+      member: {
+        fullName: sub.member.fullName,
+        phone: sub.member.phone,
+        category: sub.member.category,
+        categoryData: (sub.member.categoryData as Record<string, unknown> | null) ?? null,
+        profilePhotoUrl: sub.member.profilePhotoUrl,
+        addressLine: sub.member.addressLine,
+        zone: sub.member.zone,
+        woreda: sub.member.woreda,
+      },
     });
 
     await prisma.membershipCertificate.create({
@@ -933,7 +947,10 @@ export async function confirmManualPayment(req: Request, res: Response) {
     const { id } = req.params;
     const sub = await prisma.membershipSubscription.findUnique({
       where: { id },
-      include: { member: true, plan: true },
+      include: {
+        member: { include: { zone: true, woreda: true } },
+        plan: true,
+      },
     });
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
     if (sub.status !== MembershipSubscriptionStatus.PENDING_PAYMENT) {
@@ -995,6 +1012,16 @@ export async function confirmManualPayment(req: Request, res: Response) {
       issuedAt: now,
       expiresAt: newEndDate,
       photoPath,
+      member: {
+        fullName: sub.member.fullName,
+        phone: sub.member.phone,
+        category: sub.member.category,
+        categoryData: (sub.member.categoryData as Record<string, unknown> | null) ?? null,
+        profilePhotoUrl: sub.member.profilePhotoUrl,
+        addressLine: sub.member.addressLine,
+        zone: sub.member.zone,
+        woreda: sub.member.woreda,
+      },
     });
     await prisma.membershipCertificate.create({
       data: {
@@ -1142,6 +1169,81 @@ export async function completeMembershipAccount(req: Request, res: Response) {
 }
 
 // ---------- Certificates ----------
+export async function regenerateCertificate(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    const canRegenerate =
+      hasMembershipPermission(req, "majlis.membership.admin") ||
+      hasMembershipPermission(req, "majlis.membership.register");
+    if (!userId || !canRegenerate) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const { id } = req.params;
+    const cert = await prisma.membershipCertificate.findFirst({
+      where: { OR: [{ id }, { certificateId: id }] },
+      include: {
+        member: { include: { zone: true, woreda: true } },
+        subscription: true,
+      },
+    });
+    if (!cert) return res.status(404).json({ message: "Certificate not found" });
+
+    const photoPath = cert.member.profilePhotoUrl
+      ? path.join(
+          process.cwd(),
+          cert.member.profilePhotoUrl.startsWith("/")
+            ? cert.member.profilePhotoUrl.slice(1)
+            : cert.member.profilePhotoUrl
+        )
+      : null;
+
+    const { pdfUrl } = await generateMembershipCertificatePDF({
+      certificateId: cert.certificateId,
+      fullName: cert.member.fullName,
+      category: cert.member.category,
+      issuedAt: cert.issuedAt,
+      expiresAt: cert.expiresAt,
+      photoPath,
+      member: {
+        fullName: cert.member.fullName,
+        phone: cert.member.phone,
+        category: cert.member.category,
+        categoryData: (cert.member.categoryData as Record<string, unknown> | null) ?? null,
+        profilePhotoUrl: cert.member.profilePhotoUrl,
+        addressLine: cert.member.addressLine,
+        zone: cert.member.zone,
+        woreda: cert.member.woreda,
+      },
+    });
+
+    // Best-effort cleanup of previous PDF file
+    if (cert.pdfUrl && cert.pdfUrl !== pdfUrl) {
+      try {
+        const oldRel = cert.pdfUrl.startsWith("/") ? cert.pdfUrl.slice(1) : cert.pdfUrl;
+        const oldPath = path.join(process.cwd(), oldRel);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch {
+        /* ignore cleanup errors */
+      }
+    }
+
+    const updated = await prisma.membershipCertificate.update({
+      where: { id: cert.id },
+      data: { pdfUrl },
+      include: {
+        member: { select: { id: true, fullName: true, phone: true, category: true } },
+        subscription: { select: { id: true, status: true } },
+      },
+    });
+
+    return res.json(updated);
+  } catch (e: any) {
+    console.error("Regenerate membership certificate error:", e);
+    return res.status(400).json({ message: e?.message || "Failed to regenerate certificate" });
+  }
+}
+
 export async function downloadCertificate(req: Request, res: Response) {
   try {
     const { id } = req.params;

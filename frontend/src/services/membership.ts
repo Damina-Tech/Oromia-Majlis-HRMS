@@ -172,6 +172,16 @@ export const membershipApi = {
   },
   certificates: {
     downloadUrl: (certificateIdOrId: string) => `${API_BASE_URL}/api/v1${base}/certificates/${certificateIdOrId}/download`,
+    regenerate: (certificateIdOrId: string) =>
+      api
+        .post<{
+          id: string;
+          certificateId: string;
+          pdfUrl: string | null;
+          issuedAt: string;
+          expiresAt: string;
+        }>(`${base}/certificates/${certificateIdOrId}/regenerate`)
+        .then((r) => r.data),
     verify: (certificateId: string) =>
       api.get<{
         valid: boolean;

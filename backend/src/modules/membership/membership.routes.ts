@@ -25,6 +25,7 @@ import {
   completeMembershipAccount,
   downloadCertificate,
   downloadCertificatePublic,
+  regenerateCertificate,
   verifyCertificate,
   listPayments,
   getAnalytics,
@@ -86,6 +87,12 @@ router.post(
   confirmManualPayment
 );
 router.get("/certificates/:id/download", requireAuth, downloadCertificate);
+router.post(
+  "/certificates/:id/regenerate",
+  requireAuth,
+  hasAnyPermission("majlis.membership.admin", "majlis.membership.register"),
+  regenerateCertificate
+);
 router.get("/payments", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.admin"), listPayments);
 router.get("/analytics", requireAuth, hasAnyPermission("majlis.membership.view", "majlis.membership.admin"), getAnalytics);
 

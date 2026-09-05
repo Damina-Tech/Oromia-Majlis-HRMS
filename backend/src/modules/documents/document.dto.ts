@@ -24,6 +24,7 @@ export const HalalCertificateTemplateTypeEnum = z.enum([
   "HALAL_BUSINESS",
   "HALAL_PRODUCT",
   "MOSQUE_INSTITUTION",
+  "MEMBERSHIP_ID",
 ]);
 
 // Create Document Template DTO

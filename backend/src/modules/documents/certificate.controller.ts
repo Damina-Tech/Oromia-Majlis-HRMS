@@ -10,7 +10,7 @@ import {
 } from "./certificate-field-catalog.js";
 import { CertificateLayoutConfigSchema } from "./certificate-layout.types.js";
 import { generateCertificatePdfBuffer } from "./certificate-pdf-generator.js";
-import { parseLayoutConfig } from "./certificate-layout.types.js";
+import { layoutHasConfiguredFields, parseLayoutConfig } from "./certificate-layout.types.js";
 
 const PreviewCertificateDto = z.object({
   templateId: z.string().min(1),
@@ -45,7 +45,7 @@ export async function previewCertificatePdf(req: Request, res: Response) {
       return res.status(400).json({ message: "Upload a PDF or image template first" });
     }
     const layout = parseLayoutConfig(template.layoutConfig);
-    if (!layout?.fields?.length) {
+    if (!layoutHasConfiguredFields(layout)) {
       return res.status(400).json({ message: "Open the certificate designer and place at least one field" });
     }
 
