@@ -219,8 +219,16 @@ export function mosqueInstitutionCertificateData(params: {
   gandaKebele: string;
   institutionNameOnCert: string;
   issueDate: Date;
+  expiresAt?: Date;
   verifyUrl: string;
 }): Record<string, string> {
+  const expires =
+    params.expiresAt ??
+    (() => {
+      const d = new Date(params.issueDate);
+      d.setFullYear(d.getFullYear() + 2);
+      return d;
+    })();
   return {
     certificateNumber: params.certificateNumber,
     zoneCity: params.zoneCityAdmin,
@@ -228,6 +236,7 @@ export function mosqueInstitutionCertificateData(params: {
     kebele: params.gandaKebele,
     mosqueName: params.institutionNameOnCert,
     issueDate: fmtDateDMY(params.issueDate),
+    expiresAt: fmtDateDMY(expires),
     qrCode: params.verifyUrl,
   };
 }

@@ -2315,6 +2315,8 @@ model InstitutionRecognition {
   certificateNumber         String?                            @unique
   pdfUrl                    String?
   issuedAt                  DateTime?
+  /** Certificate validity end (issueDate + 2 years for mosque recognition). */
+  expiresAt                 DateTime?
 
   paymentMethod             InstitutionRecognitionPaymentMethod?
   chapaTxRef                String?
@@ -2333,6 +2335,7 @@ model InstitutionRecognition {
 
   @@index([institutionId])
   @@index([status])
+  @@index([expiresAt])
 }
 
 // Institution HR Assignment

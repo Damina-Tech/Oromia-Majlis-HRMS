@@ -82,6 +82,7 @@ type RecognitionPdfParams = {
   districtSubcity: string;
   gandaKebele: string;
   issueDate: Date;
+  expiresAt?: Date;
 };
 
 async function resolveMosqueCertificateTemplate() {
@@ -101,11 +102,19 @@ export async function renderMosqueRecognitionCertificateBuffer(params: {
   districtSubcity: string;
   gandaKebele: string;
   issueDate: Date;
+  expiresAt?: Date;
 }): Promise<Buffer | null> {
   const template = await resolveMosqueCertificateTemplate();
   if (!template?.sourceFileUrl || !template.layoutConfig) return null;
 
   const verifyUrl = verifyUrlFor(params.certificateNumber);
+  const expiresAt =
+    params.expiresAt ??
+    (() => {
+      const d = new Date(params.issueDate);
+      d.setFullYear(d.getFullYear() + 2);
+      return d;
+    })();
   const data = mosqueInstitutionCertificateData({
     certificateNumber: params.certificateNumber,
     zoneCityAdmin: params.zoneCityAdmin,
@@ -113,6 +122,7 @@ export async function renderMosqueRecognitionCertificateBuffer(params: {
     gandaKebele: params.gandaKebele,
     institutionNameOnCert: params.institutionNameOnCert,
     issueDate: params.issueDate,
+    expiresAt,
     verifyUrl,
   });
 
@@ -134,6 +144,7 @@ async function generateMosqueCertificateFromTemplate(
     districtSubcity: params.districtSubcity,
     gandaKebele: params.gandaKebele,
     issueDate: params.issueDate,
+    expiresAt: params.expiresAt,
   });
   if (!buffer) return null;
 

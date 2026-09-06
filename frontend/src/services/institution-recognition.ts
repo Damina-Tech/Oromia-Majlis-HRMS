@@ -6,6 +6,9 @@ const base = "/institution-recognitions";
 /** Fixed fee charged by the backend for recognition certificates (ETB). */
 export const INSTITUTION_RECOGNITION_FEE_ETB = 10_000;
 
+/** Recognition certificates are valid for two years from the issue date. */
+export const INSTITUTION_RECOGNITION_VALIDITY_YEARS = 2;
+
 export type InstitutionRecognitionStatus =
   | "PENDING_PAYMENT"
   | "MANUAL_PENDING_APPROVAL"
@@ -13,6 +16,8 @@ export type InstitutionRecognitionStatus =
   | "CANCELLED";
 
 export type InstitutionRecognitionPaymentMethod = "CHAPA" | "MANUAL";
+
+export type RecognitionCertificateLifecycle = "pending" | "active" | "expired" | "cancelled";
 
 export interface InstitutionRecognition {
   id: string;
@@ -32,6 +37,7 @@ export interface InstitutionRecognition {
   certificateNumber?: string | null;
   pdfUrl?: string | null;
   issuedAt?: string | null;
+  expiresAt?: string | null;
   paymentMethod?: InstitutionRecognitionPaymentMethod | null;
   chapaTxRef?: string | null;
   paymentReceiptUrl?: string | null;
@@ -41,6 +47,50 @@ export interface InstitutionRecognition {
   updatedAt: string;
   createdBy?: { id: string; firstName: string; lastName: string };
   manualPaymentApprovedBy?: { id: string; firstName: string; lastName: string } | null;
+}
+
+export function recognitionExpiresAt(rec: Pick<InstitutionRecognition, "issueDate" | "expiresAt">): Date {
+  if (rec.expiresAt) return new Date(rec.expiresAt);
+  const d = new Date(rec.issueDate);
+  d.setFullYear(d.getFullYear() + INSTITUTION_RECOGNITION_VALIDITY_YEARS);
+  return d;
+}
+
+export function recognitionCertificateLifecycle(
+  rec: InstitutionRecognition,
+  now = new Date()
+): RecognitionCertificateLifecycle {
+  if (rec.status === "CANCELLED") return "cancelled";
+  if (rec.status === "PENDING_PAYMENT" || rec.status === "MANUAL_PENDING_APPROVAL") return "pending";
+  if (rec.status === "COMPLETED") {
+    return recognitionExpiresAt(rec) > now ? "active" : "expired";
+  }
+  return "cancelled";
+}
+
+export function findActiveRecognition(
+  items: InstitutionRecognition[] | undefined,
+  now = new Date()
+): InstitutionRecognition | null {
+  if (!items?.length) return null;
+  return (
+    items.find((r) => recognitionCertificateLifecycle(r, now) === "active") ?? null
+  );
+}
+
+export function findLatestExpiredRecognition(
+  items: InstitutionRecognition[] | undefined,
+  now = new Date()
+): InstitutionRecognition | null {
+  if (!items?.length) return null;
+  const expired = items
+    .filter((r) => recognitionCertificateLifecycle(r, now) === "expired")
+    .sort((a, b) => recognitionExpiresAt(b).getTime() - recognitionExpiresAt(a).getTime());
+  return expired[0] ?? null;
+}
+
+export function hasPendingRecognition(items: InstitutionRecognition[] | undefined): boolean {
+  return !!items?.some((r) => recognitionCertificateLifecycle(r) === "pending");
 }
 
 export interface CreateInstitutionRecognitionBody {
@@ -98,6 +148,10 @@ export const institutionRecognitionApi = {
   },
   regenerate: async (recognitionId: string): Promise<InstitutionRecognition> => {
     const response = await api.post(`${base}/recognitions/${recognitionId}/regenerate`);
+    return response.data;
+  },
+  delete: async (recognitionId: string): Promise<{ message: string; id: string }> => {
+    const response = await api.delete(`${base}/recognitions/${recognitionId}`);
     return response.data;
   },
   downloadUrl: (recognitionId: string): string =>

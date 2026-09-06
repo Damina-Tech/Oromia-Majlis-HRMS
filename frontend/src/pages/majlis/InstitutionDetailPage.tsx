@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,7 @@ import {
   Banknote,
   Eye,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import {
   institutionsApi,
@@ -71,6 +73,12 @@ import {
   type InstitutionRecognition,
   type PreviewInstitutionRecognitionBody,
   INSTITUTION_RECOGNITION_FEE_ETB,
+  INSTITUTION_RECOGNITION_VALIDITY_YEARS,
+  recognitionCertificateLifecycle,
+  recognitionExpiresAt,
+  findActiveRecognition,
+  findLatestExpiredRecognition,
+  hasPendingRecognition,
 } from "@/services/institution-recognition";
 import { listTemplates } from "@/services/documents";
 import { resolveFileUrl } from "@/config/api";
@@ -81,6 +89,36 @@ import GoogleMapEmbed from "@/components/institutions/GoogleMapEmbed";
 import { MAJLIS_MANUAL_PAYMENT_BANKS } from "@/constants/majlis-banks";
 
 type StatusBadgeConfig = Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className: string }>;
+
+function formatCertDate(value: string | Date): string {
+  return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+function recognitionLifecycleBadge(rec: InstitutionRecognition) {
+  const life = recognitionCertificateLifecycle(rec);
+  if (life === "active") {
+    return {
+      label: "Active",
+      className: "bg-emerald-100 text-emerald-900 border-emerald-200",
+    };
+  }
+  if (life === "expired") {
+    return {
+      label: "Expired — renew eligible",
+      className: "bg-rose-100 text-rose-900 border-rose-200",
+    };
+  }
+  if (life === "pending") {
+    return {
+      label: rec.status.replace(/_/g, " "),
+      className:
+        rec.status === "MANUAL_PENDING_APPROVAL"
+          ? "bg-amber-100 text-amber-900 border-amber-200"
+          : "bg-sky-100 text-sky-900 border-sky-200",
+    };
+  }
+  return { label: "Cancelled", className: "" };
+}
 
 function openPdfBlob(blob: Blob, filename: string, mode: "download" | "view") {
   const url = URL.createObjectURL(blob);
@@ -136,7 +174,7 @@ export default function InstitutionDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { hasPermission } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
   const [recognitionOpen, setRecognitionOpen] = useState(false);
   const [recognitionStep, setRecognitionStep] = useState<1 | 2>(1);
@@ -147,6 +185,7 @@ export default function InstitutionDetailPage() {
   /** True when the dialog was opened from "Complete payment" (existing PENDING_PAYMENT row). */
   const [recognitionOpenedForPaymentResume, setRecognitionOpenedForPaymentResume] = useState(false);
   const [previewingRecognition, setPreviewingRecognition] = useState(false);
+  const [deleteRecognitionTarget, setDeleteRecognitionTarget] = useState<InstitutionRecognition | null>(null);
   const [recognitionForm, setRecognitionForm] = useState({
     institutionNameOnCert: "",
     zoneCityAdmin: "",
@@ -161,6 +200,7 @@ export default function InstitutionDetailPage() {
   const canGiveRecognition = hasPermission("majlis.institutions.write");
   const canApproveManual =
     hasPermission("majlis.institutions.approve") || hasPermission("majlis.membership.admin");
+  const canDeleteRecognition = canGiveRecognition || canApproveManual || isSuperAdmin();
 
   /** Resume Chapa or manual payment for an existing recognition (step 2 of the dialog). */
   const openRecognitionPaymentModal = (recognitionId: string) => {
@@ -197,6 +237,46 @@ export default function InstitutionDetailPage() {
   });
 
   const isMosqueInstitution = institution?.type === "MOSQUE";
+  const recognitionItems = recognitionList?.items ?? [];
+  const activeRecognition = findActiveRecognition(recognitionItems);
+  const latestExpiredRecognition = findLatestExpiredRecognition(recognitionItems);
+  const pendingRecognitionExists = hasPendingRecognition(recognitionItems);
+  const canRenewMosqueCert =
+    isMosqueInstitution &&
+    !!latestExpiredRecognition &&
+    !activeRecognition &&
+    !pendingRecognitionExists;
+  const mosqueIssueDisabled =
+    isMosqueInstitution && (!!activeRecognition || pendingRecognitionExists);
+  const mosqueIssueDisabledReason = activeRecognition
+    ? `Active certificate ${activeRecognition.certificateNumber ?? ""} is valid until ${formatCertDate(recognitionExpiresAt(activeRecognition))}. Renew after expiry (${INSTITUTION_RECOGNITION_VALIDITY_YEARS}-year validity).`
+    : pendingRecognitionExists
+      ? "Complete or cancel the pending recognition payment first."
+      : undefined;
+
+  const openRecognitionIssueDialog = (mode: "issue" | "renew") => {
+    setRecognitionOpenedForPaymentResume(false);
+    setRecognitionStep(1);
+    setCreatedRecognitionId(null);
+    setManualBankId("");
+    setManualFile(null);
+    const prefillFrom =
+      mode === "renew"
+        ? latestExpiredRecognition
+        : recognitionItems.find((r) => r.status === "COMPLETED") ?? null;
+    setRecognitionForm({
+      institutionNameOnCert: prefillFrom?.institutionNameOnCert || institution?.name || "",
+      zoneCityAdmin: prefillFrom?.zoneCityAdmin || institution?.zone?.name || "",
+      districtSubcity: prefillFrom?.districtSubcity || institution?.woreda?.name || "",
+      gandaKebele:
+        prefillFrom?.gandaKebele || institution?.kebeleName || institution?.kebele?.name || "",
+      issueDate: new Date().toISOString().slice(0, 10),
+      applicantRole: "",
+      communityConsent: "yes",
+      accurate: false,
+    });
+    setRecognitionOpen(true);
+  };
 
   const { data: mosqueTemplateList } = useQuery({
     queryKey: ["mosque-certificate-template"],
@@ -298,6 +378,18 @@ export default function InstitutionDetailPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || "Failed to regenerate certificate");
+    },
+  });
+
+  const deleteRecognitionMutation = useMutation({
+    mutationFn: (recognitionId: string) => institutionRecognitionApi.delete(recognitionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["institution-recognitions", id] });
+      setDeleteRecognitionTarget(null);
+      toast.success("Mosque certificate deleted");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to delete certificate");
     },
   });
 
@@ -822,18 +914,23 @@ export default function InstitutionDetailPage() {
             </Dialog>
             {canGiveRecognition ? (
               <Button
-                onClick={() => {
-                  setRecognitionOpenedForPaymentResume(false);
-                  setRecognitionStep(1);
-                  setCreatedRecognitionId(null);
-                  setManualBankId("");
-                  setManualFile(null);
-                  setRecognitionOpen(true);
-                }}
-                className="bg-amber-500 hover:bg-amber-600 text-white shadow-lg border-0"
+                onClick={() => openRecognitionIssueDialog(canRenewMosqueCert ? "renew" : "issue")}
+                disabled={isMosqueInstitution ? mosqueIssueDisabled && !canRenewMosqueCert : false}
+                title={
+                  isMosqueInstitution && mosqueIssueDisabled && !canRenewMosqueCert
+                    ? mosqueIssueDisabledReason
+                    : canRenewMosqueCert
+                      ? `Renew recognition for another ${INSTITUTION_RECOGNITION_VALIDITY_YEARS} years`
+                      : undefined
+                }
+                className="bg-amber-500 hover:bg-amber-600 text-white shadow-lg border-0 disabled:opacity-60 disabled:pointer-events-auto"
               >
                 <Award className="h-4 w-4 mr-2" />
-                {isMosqueInstitution ? "Issue mosque recognition" : "Give Recognition"}
+                {isMosqueInstitution
+                  ? canRenewMosqueCert
+                    ? "Renew mosque recognition"
+                    : "Issue mosque recognition"
+                  : "Give Recognition"}
               </Button>
             ) : null}
             <Button
@@ -895,63 +992,109 @@ export default function InstitutionDetailPage() {
         </Card>
       </div>
 
+      {isMosqueInstitution && canGiveRecognition ? (
+        <Card className="shadow-sm border-amber-200/80 overflow-hidden">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <Award className="h-4 w-4 text-amber-700" />
+                Mosque certificate status
+              </p>
+              {activeRecognition ? (
+                <p className="text-sm text-muted-foreground">
+                  Active certificate{" "}
+                  <span className="font-mono font-medium text-foreground">
+                    {activeRecognition.certificateNumber}
+                  </span>
+                  {" · "}issued {formatCertDate(activeRecognition.issueDate)}
+                  {" · "}expires {formatCertDate(recognitionExpiresAt(activeRecognition))}
+                  {" · "}valid for {INSTITUTION_RECOGNITION_VALIDITY_YEARS} years. You can regenerate the PDF
+                  anytime; renew after expiry.
+                </p>
+              ) : canRenewMosqueCert && latestExpiredRecognition ? (
+                <p className="text-sm text-muted-foreground">
+                  Last certificate{" "}
+                  <span className="font-mono font-medium text-foreground">
+                    {latestExpiredRecognition.certificateNumber}
+                  </span>{" "}
+                  expired on {formatCertDate(recognitionExpiresAt(latestExpiredRecognition))}. Renewal is
+                  eligible — issue a new {INSTITUTION_RECOGNITION_VALIDITY_YEARS}-year certificate.
+                </p>
+              ) : pendingRecognitionExists ? (
+                <p className="text-sm text-muted-foreground">
+                  A recognition request is awaiting payment. Complete payment before issuing another certificate.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No active mosque recognition certificate. Certificates are valid for{" "}
+                  {INSTITUTION_RECOGNITION_VALIDITY_YEARS} years from the issue date.
+                </p>
+              )}
+            </div>
+            {canRenewMosqueCert ? (
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                onClick={() => openRecognitionIssueDialog("renew")}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                Renew now
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {(recognitionList?.items?.length ?? 0) > 0 ? (
-        <Card className="shadow-md border-amber-200/80 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 border-b py-4">
+        <Card className="shadow-md border-amber-200/80">
+          <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 border-b py-4 rounded-t-lg">
             <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <Award className="h-5 w-5 text-amber-700" />
               Recognition certificates
             </CardTitle>
             <CardDescription className="text-gray-600">
               {isMosqueInstitution
-                ? "Payment status and ORIASC mosque certificate PDFs (generated from the document template)."
+                ? `One active certificate per mosque · ${INSTITUTION_RECOGNITION_VALIDITY_YEARS}-year validity · View, PDF, Regenerate, Delete`
                 : "Payment status and PDF downloads for Majlis recognition."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
                   <TableHead>Certificate #</TableHead>
                   <TableHead>Name on certificate</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Issued</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="text-right w-[1%] whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recognitionList!.items.map((row) => (
+                {recognitionList!.items.map((row) => {
+                  const life = recognitionCertificateLifecycle(row);
+                  const lifeBadge = recognitionLifecycleBadge(row);
+                  const expires = row.status === "COMPLETED" ? recognitionExpiresAt(row) : null;
+                  return (
                   <TableRow key={row.id}>
                     <TableCell>
                       <Badge
-                        variant={
-                          row.status === "COMPLETED"
-                            ? "default"
-                            : row.status === "MANUAL_PENDING_APPROVAL"
-                              ? "secondary"
-                              : row.status === "PENDING_PAYMENT"
-                                ? "secondary"
-                                : "outline"
-                        }
-                        className={
-                          row.status === "COMPLETED"
-                            ? "bg-emerald-100 text-emerald-900 border-emerald-200"
-                            : row.status === "MANUAL_PENDING_APPROVAL"
-                              ? "bg-amber-100 text-amber-900 border-amber-200"
-                              : row.status === "PENDING_PAYMENT"
-                                ? "bg-sky-100 text-sky-900 border-sky-200"
-                                : ""
-                        }
+                        variant={life === "active" ? "default" : "secondary"}
+                        className={lifeBadge.className}
                       >
-                        {row.status.replace(/_/g, " ")}
+                        {lifeBadge.label}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-mono text-sm">{row.certificateNumber ?? "—"}</TableCell>
                     <TableCell>{row.institutionNameOnCert}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {new Date(row.updatedAt).toLocaleString()}
+                      {row.status === "COMPLETED" ? formatCertDate(row.issueDate) : "—"}
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
+                    <TableCell className="text-muted-foreground text-sm">
+                      {expires ? formatCertDate(expires) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right min-w-[220px]">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
                       {row.status === "PENDING_PAYMENT" && canGiveRecognition ? (
                         <Button
                           size="sm"
@@ -994,13 +1137,15 @@ export default function InstitutionDetailPage() {
                             <Download className="h-3.5 w-3.5 mr-1" />
                             PDF
                           </Button>
-                          {isMosqueInstitution && canGiveRecognition ? (
+                          {isMosqueInstitution && canGiveRecognition && life === "active" ? (
                             <Button
                               variant="outline"
                               size="sm"
+                              className="px-2"
                               disabled={regenerateRecognitionMutation.isPending}
                               onClick={() => regenerateRecognitionMutation.mutate(row.id)}
-                              title="Re-render with the current mosque certificate template"
+                              title="Regenerate PDF with the current mosque certificate template"
+                              aria-label="Regenerate certificate PDF"
                             >
                               {regenerateRecognitionMutation.isPending ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1009,6 +1154,33 @@ export default function InstitutionDetailPage() {
                               )}
                             </Button>
                           ) : null}
+                          {isMosqueInstitution &&
+                          canGiveRecognition &&
+                          life === "expired" &&
+                          canRenewMosqueCert &&
+                          latestExpiredRecognition?.id === row.id ? (
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700 text-white"
+                              onClick={() => openRecognitionIssueDialog("renew")}
+                              title="Start renewal for a new 2-year certificate"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                              Renew
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+                            title="Delete certificate"
+                            aria-label="Delete certificate"
+                            onClick={() => setDeleteRecognitionTarget(row)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Delete
+                          </Button>
                         </>
                       ) : null}
                       {row.status === "MANUAL_PENDING_APPROVAL" && canApproveManual ? (
@@ -1021,9 +1193,27 @@ export default function InstitutionDetailPage() {
                           Approve payment
                         </Button>
                       ) : null}
+                      {(row.status === "PENDING_PAYMENT" ||
+                        row.status === "MANUAL_PENDING_APPROVAL") &&
+                      canDeleteRecognition ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+                          title="Delete recognition request"
+                          aria-label="Delete recognition request"
+                          onClick={() => setDeleteRecognitionTarget(row)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -1393,6 +1583,55 @@ export default function InstitutionDetailPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!deleteRecognitionTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleteRecognitionMutation.isPending) setDeleteRecognitionTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete mosque certificate?</DialogTitle>
+            <DialogDescription>
+              {deleteRecognitionTarget?.certificateNumber
+                ? `This permanently removes certificate ${deleteRecognitionTarget.certificateNumber} and its PDF.`
+                : "This permanently removes this recognition request."}{" "}
+              {deleteRecognitionTarget &&
+              recognitionCertificateLifecycle(deleteRecognitionTarget) === "active"
+                ? "After deletion you can issue a new certificate."
+                : "This cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleteRecognitionMutation.isPending}
+              onClick={() => setDeleteRecognitionTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteRecognitionMutation.isPending || !deleteRecognitionTarget}
+              onClick={() => {
+                if (deleteRecognitionTarget) {
+                  deleteRecognitionMutation.mutate(deleteRecognitionTarget.id);
+                }
+              }}
+            >
+              {deleteRecognitionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

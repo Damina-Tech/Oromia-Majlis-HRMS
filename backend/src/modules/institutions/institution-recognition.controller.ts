@@ -12,6 +12,29 @@ import {
 
 export const INSTITUTION_RECOGNITION_FEE_ETB = 10_000;
 
+/** Mosque (and other) recognition certificates are valid for two years from issue date. */
+export const INSTITUTION_RECOGNITION_VALIDITY_YEARS = 2;
+
+export function recognitionExpiresAtFromIssueDate(issueDate: Date): Date {
+  const expires = new Date(issueDate);
+  expires.setFullYear(expires.getFullYear() + INSTITUTION_RECOGNITION_VALIDITY_YEARS);
+  return expires;
+}
+
+/** Effective expiry: stored value, or issueDate + 2 years for legacy rows. */
+export function effectiveRecognitionExpiresAt(rec: { issueDate: Date; expiresAt?: Date | null }): Date {
+  if (rec.expiresAt) return new Date(rec.expiresAt);
+  return recognitionExpiresAtFromIssueDate(rec.issueDate);
+}
+
+export function isRecognitionCertificateActive(
+  rec: { status: InstitutionRecognitionStatus; issueDate: Date; expiresAt?: Date | null },
+  now = new Date()
+): boolean {
+  if (rec.status !== InstitutionRecognitionStatus.COMPLETED) return false;
+  return effectiveRecognitionExpiresAt(rec) > now;
+}
+
 function getUserId(req: Request): string | undefined {
   return (req as any).user?.id;
 }
@@ -86,6 +109,18 @@ async function hasPendingRecognition(institutionId: string): Promise<boolean> {
   return n > 0;
 }
 
+async function findActiveCompletedRecognition(institutionId: string) {
+  const completed = await prisma.institutionRecognition.findMany({
+    where: {
+      institutionId,
+      status: InstitutionRecognitionStatus.COMPLETED,
+    },
+    orderBy: { issueDate: "desc" },
+  });
+  const now = new Date();
+  return completed.find((r) => isRecognitionCertificateActive(r, now)) ?? null;
+}
+
 async function finalizeRecognitionIssuance(
   recognitionId: string,
   paymentMethod: InstitutionRecognitionPaymentMethod,
@@ -108,7 +143,16 @@ async function finalizeRecognitionIssuance(
     throw new Error("Recognition is not pending payment");
   }
 
+  // Enforce one active certificate per institution (especially mosques)
+  const active = await findActiveCompletedRecognition(rec.institutionId);
+  if (active && active.id !== recognitionId) {
+    throw new Error(
+      "This institution already has an active recognition certificate. Renew only after it expires (2-year validity)."
+    );
+  }
+
   const certificateNumber = await nextRecognitionCertificateNumber();
+  const expiresAt = recognitionExpiresAtFromIssueDate(rec.issueDate);
   const { pdfUrl } = await generateInstitutionRecognitionPdf({
     certificateNumber,
     institutionNameOnCert: rec.institutionNameOnCert,
@@ -117,6 +161,7 @@ async function finalizeRecognitionIssuance(
     districtSubcity: rec.districtSubcity,
     gandaKebele: rec.gandaKebele,
     issueDate: rec.issueDate,
+    expiresAt,
   });
 
   const updated = await prisma.institutionRecognition.update({
@@ -126,6 +171,7 @@ async function finalizeRecognitionIssuance(
       certificateNumber,
       pdfUrl,
       issuedAt: new Date(),
+      expiresAt,
       paymentMethod,
       chapaRefId: chapaRefId ?? undefined,
     },
@@ -139,7 +185,7 @@ async function finalizeRecognitionIssuance(
       actorId: rec.createdById,
       entityType: "InstitutionRecognition",
       entityId: recognitionId,
-      description: `Recognition certificate ${certificateNumber} issued`,
+      description: `Recognition certificate ${certificateNumber} issued (valid until ${expiresAt.toISOString().slice(0, 10)})`,
     },
   });
 
@@ -167,8 +213,10 @@ export async function verifyRecognitionCertificate(req: Request, res: Response) 
       return res.status(404).json({ valid: false, message: "Certificate not found" });
     }
     const now = new Date();
+    const expiresAt = effectiveRecognitionExpiresAt(rec);
+    const valid = expiresAt > now;
     res.json({
-      valid: true,
+      valid,
       certificateNumber: rec.certificateNumber,
       institution: {
         id: rec.institution.id,
@@ -188,10 +236,12 @@ export async function verifyRecognitionCertificate(req: Request, res: Response) 
         gandaKebele: rec.gandaKebele,
         issueDate: rec.issueDate,
         issuedAt: rec.issuedAt,
+        expiresAt,
         paymentMethod: rec.paymentMethod,
         amountEtb: rec.amountEtb.toString(),
       },
       verifiedAt: now.toISOString(),
+      message: valid ? undefined : "Certificate has expired",
     });
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Verification failed" });
@@ -246,6 +296,14 @@ export async function createRecognition(req: Request, res: Response) {
 
     if (await hasPendingRecognition(institutionId)) {
       return res.status(400).json({ message: "This institution already has a recognition request awaiting payment" });
+    }
+
+    const active = await findActiveCompletedRecognition(institutionId);
+    if (active) {
+      const expires = effectiveRecognitionExpiresAt(active);
+      return res.status(400).json({
+        message: `This institution already has an active recognition certificate (${active.certificateNumber}). It is valid until ${expires.toISOString().slice(0, 10)}. Renew after expiry.`,
+      });
     }
 
     const recognition = await prisma.institutionRecognition.create({
@@ -518,6 +576,7 @@ export async function previewRecognitionCertificate(req: Request, res: Response)
       districtSubcity: body.districtSubcity,
       gandaKebele: body.gandaKebele,
       issueDate: body.issueDate,
+      expiresAt: recognitionExpiresAtFromIssueDate(body.issueDate),
     });
 
     if (!buffer) {
@@ -558,6 +617,13 @@ export async function regenerateRecognitionCertificate(req: Request, res: Respon
       return res.status(400).json({ message: "Certificate number missing" });
     }
 
+    const expiresAt = effectiveRecognitionExpiresAt(rec);
+    if (!isRecognitionCertificateActive(rec)) {
+      return res.status(400).json({
+        message: `Certificate expired on ${expiresAt.toISOString().slice(0, 10)}. Use Renew to issue a new 2-year certificate.`,
+      });
+    }
+
     const { pdfUrl } = await generateInstitutionRecognitionPdf({
       certificateNumber: rec.certificateNumber,
       institutionNameOnCert: rec.institutionNameOnCert,
@@ -566,16 +632,62 @@ export async function regenerateRecognitionCertificate(req: Request, res: Respon
       districtSubcity: rec.districtSubcity,
       gandaKebele: rec.gandaKebele,
       issueDate: rec.issueDate,
+      expiresAt,
     });
 
     const updated = await prisma.institutionRecognition.update({
       where: { id: recognitionId },
-      data: { pdfUrl },
+      data: { pdfUrl, expiresAt: rec.expiresAt ?? expiresAt },
       include: { institution: true },
     });
 
     return res.json(updated);
   } catch (e: any) {
     return res.status(400).json({ message: e.message || "Failed to regenerate certificate" });
+  }
+}
+
+/** Delete a recognition certificate (and PDF file). */
+export async function deleteRecognitionCertificate(req: Request, res: Response) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthenticated" });
+
+    const { recognitionId } = req.params;
+    const rec = await prisma.institutionRecognition.findUnique({
+      where: { id: recognitionId },
+      include: { institution: { select: { id: true, type: true, name: true } } },
+    });
+    if (!rec) return res.status(404).json({ message: "Recognition not found" });
+
+    if (rec.pdfUrl) {
+      try {
+        const rel = rec.pdfUrl.startsWith("/") ? rec.pdfUrl.slice(1) : rec.pdfUrl;
+        const abs = path.join(process.cwd(), rel);
+        if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      } catch {
+        /* ignore missing file */
+      }
+    }
+
+    await prisma.institutionRecognition.delete({ where: { id: recognitionId } });
+
+    await prisma.institutionAuditLog.create({
+      data: {
+        institutionId: rec.institutionId,
+        action: InstitutionAuditAction.DELETED,
+        actorId: userId,
+        entityType: "InstitutionRecognition",
+        entityId: recognitionId,
+        description: rec.certificateNumber
+          ? `Recognition certificate ${rec.certificateNumber} deleted`
+          : `Recognition request deleted (status: ${rec.status})`,
+      },
+    });
+
+    return res.json({ message: "Recognition certificate deleted", id: recognitionId });
+  } catch (e: any) {
+    console.error("Delete recognition certificate error:", e);
+    return res.status(400).json({ message: e.message || "Failed to delete certificate" });
   }
 }

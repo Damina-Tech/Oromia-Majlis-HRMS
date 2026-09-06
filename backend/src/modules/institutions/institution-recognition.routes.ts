@@ -13,6 +13,7 @@ import {
   downloadCertificate,
   previewRecognitionCertificate,
   regenerateRecognitionCertificate,
+  deleteRecognitionCertificate,
 } from "./institution-recognition.controller.js";
 
 const router = Router();
@@ -76,6 +77,12 @@ router.post(
   requireAuth,
   hasAnyPermission("majlis.institutions.write"),
   regenerateRecognitionCertificate
+);
+router.delete(
+  "/recognitions/:recognitionId",
+  requireAuth,
+  hasAnyPermission("majlis.institutions.write", "majlis.institutions.approve", "majlis.membership.admin"),
+  deleteRecognitionCertificate
 );
 
 export default router;
