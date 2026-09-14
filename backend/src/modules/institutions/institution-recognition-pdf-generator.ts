@@ -94,6 +94,21 @@ async function resolveMosqueCertificateTemplate() {
   return getActiveCertificateTemplateByType(HalalCertificateTemplateType.MOSQUE_INSTITUTION);
 }
 
+/** Active mosque certificate template metadata for staff / institution-owner UI. */
+export async function getActiveMosqueCertificateTemplateSummary() {
+  const template = await resolveMosqueCertificateTemplate();
+  if (!template) return null;
+  return {
+    id: template.id,
+    code: template.code,
+    name: template.name,
+    status: template.status,
+    certificateType: template.certificateType,
+    sourceFileUrl: template.sourceFileUrl,
+    updatedAt: template.updatedAt,
+  };
+}
+
 /** Render mosque recognition PDF into memory using the active document template. */
 export async function renderMosqueRecognitionCertificateBuffer(params: {
   certificateNumber: string;

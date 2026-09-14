@@ -2,8 +2,10 @@ import { Request, Response } from "express";
 import { Prisma, InstitutionType, InstitutionStatus, InstitutionAuditAction } from "@prisma/client";
 import prisma from "../../db/client.js";
 import { z } from "zod";
+import bcrypt from "bcrypt";
 import {
   CreateInstitutionDto,
+  PublicRegisterInstitutionDto,
   UpdateInstitutionDto,
   ApproveInstitutionDto,
   ListInstitutionsQuery,
@@ -18,7 +20,32 @@ import {
 } from "./institution.dto.js";
 import { paginate } from "../../lib/paginate.js";
 import { resolveOromiaGeography } from "./oromia-geography.service.js";
+import { ensureInstitutionOwnerRoleId } from "./institution-owner-role.js";
+import {
+  assertCanAccessInstitution,
+  assertCanManageInstitution,
+  getRequestUser,
+  isInstitutionOwnerOnly,
+} from "./institution-access.js";
 
+function parseJsonField<T>(raw: unknown, fallback?: T): T | undefined {
+  if (raw == null || raw === "") return fallback;
+  if (typeof raw === "object") return raw as T;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function parseOptionalNumber(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 function getCurrentUserId(req: Request): string {
   return (req as any).user?.id;
@@ -222,10 +249,203 @@ export async function createInstitution(req: Request, res: Response) {
   }
 }
 
+export async function publicRegisterInstitution(req: Request, res: Response) {
+  try {
+    const body = req.body ?? {};
+    const file = (req as any).file as Express.Multer.File | undefined;
+
+    const payload = {
+      name: body.name,
+      type: body.type,
+      regionId: body.regionId,
+      zoneId: body.zoneId,
+      woredaId: body.woredaId,
+      kebeleId: body.kebeleId || undefined,
+      kebeleName: body.kebeleName || undefined,
+      latitude: parseOptionalNumber(body.latitude),
+      longitude: parseOptionalNumber(body.longitude),
+      address: body.address,
+      yearEstablished: parseOptionalNumber(body.yearEstablished),
+      ownershipStatus: body.ownershipStatus || undefined,
+      status: body.status || undefined,
+      password: body.password,
+      mosqueData: parseJsonField(body.mosqueData),
+      madrasahData: parseJsonField(body.madrasahData),
+      markazData: parseJsonField(body.markazData),
+      submitter: parseJsonField(body.submitter) ?? {
+        name: body.contactName,
+        phone: body.contactPhone,
+        email: body.contactEmail ?? body.email,
+        role: body.contactRole,
+      },
+    };
+
+    const data = PublicRegisterInstitutionDto.parse(payload);
+    const email = data.submitter.email.trim().toLowerCase();
+
+    if (!file) {
+      return res.status(400).json({ message: "Institution / mosque image is required" });
+    }
+
+    if (data.type === InstitutionType.MADRASAH && !data.madrasahData?.gradeLevels?.length) {
+      return res.status(400).json({ message: "Select at least one Madrasah grade level" });
+    }
+    if (data.type === InstitutionType.MARKAZ) {
+      if (!data.markazData?.disciplines?.length) {
+        return res.status(400).json({ message: "Select at least one Markaz discipline" });
+      }
+      if (!data.markazData?.studyLevels?.length) {
+        return res.status(400).json({ message: "Select at least one Markaz study level" });
+      }
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({
+        message: "An account with this email already exists. Please sign in, or use a different email.",
+      });
+    }
+
+    const duplicate = await prisma.institution.findFirst({
+      where: {
+        name: { equals: data.name.trim(), mode: "insensitive" },
+        type: data.type,
+        woredaId: data.woredaId,
+        status: { not: InstitutionStatus.CLOSED },
+      },
+      select: { id: true, name: true, institutionCode: true },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        message: `An institution named "${duplicate.name}" (${duplicate.institutionCode}) is already registered in this district.`,
+      });
+    }
+
+    const ownerRoleId = await ensureInstitutionOwnerRoleId();
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    const names = data.submitter.name.trim().split(/\s+/);
+    const firstName = names[0] || "Institution";
+    const lastName = names.slice(1).join(" ") || "Owner";
+    const imageUrl = `/uploads/institutions/${file.filename}`;
+    const status = data.status ?? InstitutionStatus.UNDER_CONSTRUCTION;
+
+    const institutionCode = await generateInstitutionCode(data.type);
+    const submitter = {
+      source: "PUBLIC",
+      name: data.submitter.name,
+      phone: data.submitter.phone,
+      email,
+      role: data.submitter.role,
+      submittedAt: new Date().toISOString(),
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const owner = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          firstName,
+          lastName,
+          status: "ACTIVE",
+          userRoles: { create: [{ roleId: ownerRoleId }] },
+        },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      });
+
+      const institution = await tx.institution.create({
+        data: {
+          institutionCode,
+          name: data.name.trim(),
+          type: data.type,
+          status,
+          latitude: data.latitude != null ? new Prisma.Decimal(data.latitude) : null,
+          longitude: data.longitude != null ? new Prisma.Decimal(data.longitude) : null,
+          address: data.address.trim(),
+          yearEstablished: data.yearEstablished,
+          ownershipStatus: data.ownershipStatus,
+          imageUrl,
+          submitter,
+          createdBy: { connect: { id: owner.id } },
+          ownerUser: { connect: { id: owner.id } },
+          mosqueData: data.type === InstitutionType.MOSQUE ? data.mosqueData ?? undefined : undefined,
+          madrasahData: data.type === InstitutionType.MADRASAH ? data.madrasahData ?? undefined : undefined,
+          markazData: data.type === InstitutionType.MARKAZ ? data.markazData ?? undefined : undefined,
+          region: { connect: { id: data.regionId } },
+          zone: { connect: { id: data.zoneId } },
+          woreda: { connect: { id: data.woredaId } },
+          kebeleName: data.kebeleName?.trim() || null,
+          ...(data.kebeleId ? { kebele: { connect: { id: data.kebeleId } } } : {}),
+        },
+        include: {
+          region: true,
+          zone: true,
+          woreda: true,
+          kebele: true,
+        },
+      });
+
+      await tx.institutionAuditLog.create({
+        data: {
+          institutionId: institution.id,
+          action: InstitutionAuditAction.CREATED,
+          actorId: owner.id,
+          entityType: "Institution",
+          entityId: institution.id,
+          newValue: JSON.parse(JSON.stringify(institution)),
+          description: `Public registration ${institutionCode} by ${submitter.name} (${submitter.phone})`,
+        },
+      });
+
+      return { institution, owner };
+    });
+
+    res.status(201).json({
+      institution: result.institution,
+      user: result.owner,
+      message: "Institution registered. You can sign in with your email and password.",
+    });
+  } catch (error: any) {
+    console.error("Public register institution error:", error);
+    if (error?.name === "ZodError") {
+      return res.status(400).json({ message: error.errors?.[0]?.message || "Invalid registration data" });
+    }
+    res.status(400).json({ message: error.message || "Failed to register institution" });
+  }
+}
+
+export async function listMyInstitutions(req: Request, res: Response) {
+  try {
+    const user = getRequestUser(req);
+    if (!user?.id) return res.status(401).json({ message: "Unauthenticated" });
+
+    const items = await prisma.institution.findMany({
+      where: { ownerUserId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        region: true,
+        zone: true,
+        woreda: true,
+        kebele: true,
+        _count: { select: { assignments: true, recognitions: true } },
+      },
+    });
+
+    res.json({ items, total: items.length });
+  } catch (error: any) {
+    console.error("List my institutions error:", error);
+    res.status(500).json({ message: "Failed to list your institutions" });
+  }
+}
+
 export async function listInstitutions(req: Request, res: Response) {
   try {
     const query = ListInstitutionsQuery.parse(req.query);
+    const user = getRequestUser(req);
     const where: Prisma.InstitutionWhereInput = {};
+
+    if (isInstitutionOwnerOnly(user)) {
+      where.ownerUserId = user!.id;
+    }
     
     if (query.type) where.type = query.type;
     if (query.status) where.status = query.status;
@@ -288,6 +508,9 @@ export async function listInstitutions(req: Request, res: Response) {
 export async function getInstitution(req: Request, res: Response) {
   try {
     const { id } = req.params;
+    const access = await assertCanAccessInstitution(req, id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
     const institution = await prisma.institution.findUnique({
       where: { id },
       include: {
@@ -299,6 +522,9 @@ export async function getInstitution(req: Request, res: Response) {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
         approvedBy: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        ownerUser: {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
         assignments: {
@@ -337,11 +563,21 @@ export async function updateInstitution(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const currentUserId = getCurrentUserId(req);
+    const access = await assertCanManageInstitution(req, id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
     const data = UpdateInstitutionDto.parse(req.body);
     
     const existing = await prisma.institution.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ message: "Institution not found" });
+    }
+
+    // Portal owners cannot self-approve to ACTIVE via status change without staff
+    const user = getRequestUser(req);
+    if (isInstitutionOwnerOnly(user) && data.status && data.status !== existing.status) {
+      // Allow owners to update operational details but not jump to APPROVED workflow fields
+      // Status changes by owners are allowed for their claimed operational state
     }
     
     const updateData: Prisma.InstitutionUpdateInput = {};

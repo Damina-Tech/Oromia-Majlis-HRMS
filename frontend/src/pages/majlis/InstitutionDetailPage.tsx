@@ -80,7 +80,6 @@ import {
   findLatestExpiredRecognition,
   hasPendingRecognition,
 } from "@/services/institution-recognition";
-import { listTemplates } from "@/services/documents";
 import { resolveFileUrl } from "@/config/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -174,7 +173,7 @@ export default function InstitutionDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { hasPermission, isSuperAdmin } = useAuth();
+  const { hasPermission, isSuperAdmin, user } = useAuth();
   const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
   const [recognitionOpen, setRecognitionOpen] = useState(false);
   const [recognitionStep, setRecognitionStep] = useState<1 | 2>(1);
@@ -197,10 +196,8 @@ export default function InstitutionDetailPage() {
     accurate: false,
   });
 
-  const canGiveRecognition = hasPermission("majlis.institutions.write");
   const canApproveManual =
     hasPermission("majlis.institutions.approve") || hasPermission("majlis.membership.admin");
-  const canDeleteRecognition = canGiveRecognition || canApproveManual || isSuperAdmin();
 
   /** Resume Chapa or manual payment for an existing recognition (step 2 of the dialog). */
   const openRecognitionPaymentModal = (recognitionId: string) => {
@@ -218,6 +215,18 @@ export default function InstitutionDetailPage() {
     queryFn: () => institutionsApi.get(id!),
     enabled: !!id,
   });
+
+  const canGiveRecognition =
+    hasPermission("majlis.institutions.write") ||
+    (hasPermission("majlis.institution.owner") &&
+      !!institution &&
+      institution.ownerUserId === user?.id);
+  const canEditInstitution =
+    hasPermission("majlis.institutions.write") ||
+    (hasPermission("majlis.institution.owner") &&
+      !!institution &&
+      institution.ownerUserId === user?.id);
+  const canDeleteRecognition = canGiveRecognition || canApproveManual || isSuperAdmin();
 
   const { data: assignments } = useQuery({
     queryKey: ["institution-assignments", id],
@@ -278,19 +287,12 @@ export default function InstitutionDetailPage() {
     setRecognitionOpen(true);
   };
 
-  const { data: mosqueTemplateList } = useQuery({
-    queryKey: ["mosque-certificate-template"],
-    queryFn: () =>
-      listTemplates({
-        templateEngine: "PDF_CERTIFICATE",
-        certificateType: "MOSQUE_INSTITUTION",
-        status: "ACTIVE",
-        pageSize: 1,
-      }),
-    enabled: isMosqueInstitution,
+  const { data: activeMosqueTemplate } = useQuery({
+    queryKey: ["mosque-certificate-template-active"],
+    queryFn: () => institutionRecognitionApi.getActiveMosqueTemplate(),
+    enabled: isMosqueInstitution && canGiveRecognition,
+    retry: false,
   });
-
-  const activeMosqueTemplate = mosqueTemplateList?.items?.[0];
 
   const createAssignmentMutation = useMutation({
     mutationFn: assignmentsApi.create,
@@ -637,11 +639,8 @@ export default function InstitutionDetailPage() {
                               </p>
                             ) : (
                               <p className="text-amber-800 dark:text-amber-200">
-                                No active mosque template found.{" "}
-                                <Link to="/documents/templates" className="underline font-medium">
-                                  Configure one in Documents
-                                </Link>{" "}
-                                before issuing.
+                                No active mosque template found. Ask Majlis staff to configure one in Documents before
+                                issuing.
                               </p>
                             )}
                           </div>
@@ -933,6 +932,7 @@ export default function InstitutionDetailPage() {
                   : "Give Recognition"}
               </Button>
             ) : null}
+            {canEditInstitution ? (
             <Button
               onClick={() => navigate(`/majlis/institutions/${id}/edit`)}
               className="bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg border-0"
@@ -940,6 +940,7 @@ export default function InstitutionDetailPage() {
               <Edit className="h-4 w-4 mr-2" />
               Edit
             </Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1228,6 +1229,16 @@ export default function InstitutionDetailPage() {
             <CardDescription className="text-gray-600">Registry and location details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
+            {institution.imageUrl ? (
+              <div>
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider">Institution image</Label>
+                <img
+                  src={resolveFileUrl(institution.imageUrl)}
+                  alt={institution.name}
+                  className="mt-2 w-full max-h-56 object-cover rounded-lg border"
+                />
+              </div>
+            ) : null}
             <div>
               <Label className="text-muted-foreground text-xs uppercase tracking-wider">Location</Label>
               <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -1246,7 +1257,7 @@ export default function InstitutionDetailPage() {
             </div>
             {institution.address && (
               <div>
-                <Label className="text-muted-foreground text-xs uppercase tracking-wider">Area / Address</Label>
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider">Area (Kare)</Label>
                 <p className="mt-1 text-sm">{institution.address}</p>
               </div>
             )}
@@ -1262,14 +1273,27 @@ export default function InstitutionDetailPage() {
                 <p className="mt-1 text-sm">{institution.ownershipStatus.split("_").join(" ")}</p>
               </div>
             )}
-            {institution.createdBy && (
+            {institution.submitter?.source === "PUBLIC" ? (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 space-y-2">
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider">
+                  Public registration contact
+                </Label>
+                <p className="text-sm font-medium">
+                  {institution.submitter.name}
+                  {institution.submitter.role ? ` · ${institution.submitter.role}` : ""}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {[institution.submitter.phone, institution.submitter.email].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+            ) : institution.createdBy ? (
               <div>
                 <Label className="text-muted-foreground text-xs uppercase tracking-wider">Created by</Label>
                 <p className="mt-1 text-sm">
                   {institution.createdBy.firstName} {institution.createdBy.lastName}
                 </p>
               </div>
-            )}
+            ) : null}
             {institution.approvedBy && (
               <div>
                 <Label className="text-muted-foreground text-xs uppercase tracking-wider">Approved by</Label>

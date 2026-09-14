@@ -6,6 +6,7 @@ import {
   isHalalBusinessPortalOnly,
   isHalalCompetencyPortalOnly,
   isMemberPortalOnly,
+  isInstitutionOwnerPortalOnly,
   userCanUsePermissionInScope,
   userHasDivision,
   type UserDivisionContext,
@@ -45,6 +46,9 @@ export function getLoginRedirect(user: User, explicitRedirect?: string): string 
   }
   if (isMemberPortalOnly(user)) {
     return "/my-membership";
+  }
+  if (isInstitutionOwnerPortalOnly(user)) {
+    return "/my-institutions";
   }
 
   return "/dashboard";

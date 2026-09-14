@@ -8,7 +8,9 @@ import { CreateInstitutionRecognitionDto, PreviewInstitutionRecognitionDto } fro
 import {
   generateInstitutionRecognitionPdf,
   renderMosqueRecognitionCertificateBuffer,
+  getActiveMosqueCertificateTemplateSummary,
 } from "./institution-recognition-pdf-generator.js";
+import { assertCanManageInstitution, assertCanAccessInstitution } from "./institution-access.js";
 
 export const INSTITUTION_RECOGNITION_FEE_ETB = 10_000;
 
@@ -289,6 +291,9 @@ export async function createRecognition(req: Request, res: Response) {
     if (!userId) return res.status(401).json({ message: "Unauthenticated" });
 
     const { institutionId } = req.params;
+    const manage = await assertCanManageInstitution(req, institutionId);
+    if (!manage.ok) return res.status(manage.status).json({ message: manage.message });
+
     const body = CreateInstitutionRecognitionDto.parse(req.body);
 
     const institution = await prisma.institution.findUnique({ where: { id: institutionId } });
@@ -346,6 +351,9 @@ export async function createRecognition(req: Request, res: Response) {
 export async function listRecognitionsForInstitution(req: Request, res: Response) {
   try {
     const { institutionId } = req.params;
+    const access = await assertCanAccessInstitution(req, institutionId);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
     const items = await prisma.institutionRecognition.findMany({
       where: { institutionId },
       orderBy: { createdAt: "desc" },
@@ -372,6 +380,8 @@ export async function getRecognition(req: Request, res: Response) {
       },
     });
     if (!rec) return res.status(404).json({ message: "Not found" });
+    const access = await assertCanAccessInstitution(req, rec.institutionId);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
     res.json(rec);
   } catch (e: any) {
     res.status(500).json({ message: e.message || "Failed to get recognition" });
@@ -386,6 +396,8 @@ export async function initChapaPayment(req: Request, res: Response) {
       include: { institution: true, createdBy: true },
     });
     if (!rec) return res.status(404).json({ message: "Recognition not found" });
+    const manage = await assertCanManageInstitution(req, rec.institutionId);
+    if (!manage.ok) return res.status(manage.status).json({ message: manage.message });
     if (rec.status !== InstitutionRecognitionStatus.PENDING_PAYMENT) {
       return res.status(400).json({ message: "Recognition is not awaiting payment" });
     }
@@ -558,9 +570,28 @@ export async function downloadCertificate(req: Request, res: Response) {
 }
 
 /** Preview mosque recognition PDF using the active document template (draft fields). */
+export async function getActiveMosqueTemplate(req: Request, res: Response) {
+  try {
+    const template = await getActiveMosqueCertificateTemplateSummary();
+    if (!template) {
+      return res.status(404).json({
+        message:
+          "No active mosque certificate template found. Configure one under Documents → Certificate templates.",
+      });
+    }
+    res.json(template);
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to load mosque template" });
+  }
+}
+
+/** Preview mosque recognition PDF using the active document template (draft fields). */
 export async function previewRecognitionCertificate(req: Request, res: Response) {
   try {
     const { institutionId } = req.params;
+    const manage = await assertCanManageInstitution(req, institutionId);
+    if (!manage.ok) return res.status(manage.status).json({ message: manage.message });
+
     const body = PreviewInstitutionRecognitionDto.parse(req.body);
 
     const institution = await prisma.institution.findUnique({ where: { id: institutionId } });

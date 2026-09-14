@@ -106,6 +106,17 @@ export function isMemberPortalOnly(user: AuthUserShape | null | undefined): bool
   return (roles.includes("MEMBER") || perms.includes("majlis.member")) && perms.includes("majlis.member");
 }
 
+/** Portal-only institution / mosque registrant (no staff role). */
+export function isInstitutionOwnerPortalOnly(user: AuthUserShape | null | undefined): boolean {
+  if (!user || isInternalStaffUser(user)) return false;
+  const roles = (user.roles ?? []).map((r) => String(r).toUpperCase());
+  const perms = user.permissions ?? [];
+  return (
+    (roles.includes("INSTITUTION_OWNER") || perms.includes("majlis.institution.owner")) &&
+    perms.includes("majlis.institution.owner")
+  );
+}
+
 function permissionBelongsToDivision(permissionName: string, code: string): boolean {
   const modules = DIVISION_PERMISSION_MODULES[code] ?? [];
   return modules.some(

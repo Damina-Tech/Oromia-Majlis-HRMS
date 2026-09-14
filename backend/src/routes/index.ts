@@ -20,6 +20,11 @@ import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import leadsRoutes from "../modules/leads/lead.routes.js";
 import notificationRoutes from "../modules/notifications/notification.routes.js";
 import institutionRoutes from "../modules/institutions/institution.routes.js";
+import {
+  publicRegisterInstitution,
+  resolveOromiaGeographyHandler,
+} from "../modules/institutions/institution.controller.js";
+import { uploadInstitutionImage } from "../lib/upload.js";
 import institutionRecognitionRoutes from "../modules/institutions/institution-recognition.routes.js";
 import halalRoutes from "../modules/halal/halal.routes.js";
 import membershipRoutes from "../modules/membership/membership.routes.js";
@@ -87,6 +92,13 @@ router.use(
   requireAuth,
   notificationRoutes
 );
+router.post(
+  "/v1/institutions/public/register",
+  uploadInstitutionImage.single("image"),
+  publicRegisterInstitution
+);
+router.post("/v1/institutions/public/geography/resolve", resolveOromiaGeographyHandler);
+
 router.use(
   "/v1/institutions",
   requireAuth,

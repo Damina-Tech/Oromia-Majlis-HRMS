@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createInstitution,
   listInstitutions,
+  listMyInstitutions,
   getInstitution,
   updateInstitution,
   approveInstitution,
@@ -31,6 +32,7 @@ router.post("/kebeles", createKebele);
 // Institution routes
 router.post("/", createInstitution);
 router.get("/", listInstitutions);
+router.get("/mine", listMyInstitutions);
 router.get("/stats", getInstitutionStats);
 
 // Assignment routes (must come before /:id route to avoid route conflicts)
@@ -45,4 +47,3 @@ router.patch("/:id", updateInstitution);
 router.post("/:id/approve", approveInstitution);
 
 export default router;
-

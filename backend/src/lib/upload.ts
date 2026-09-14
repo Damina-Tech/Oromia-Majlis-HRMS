@@ -232,6 +232,31 @@ export const uploadMembershipFile = multer({
   fileFilter: membershipFileFilter,
 });
 
+// Institution / mosque images (public registration + staff)
+const institutionUploadsDir = path.join(__dirname, "../../uploads/institutions");
+if (!fs.existsSync(institutionUploadsDir)) {
+  fs.mkdirSync(institutionUploadsDir, { recursive: true });
+}
+const institutionImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, institutionUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".jpg";
+    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "institution";
+    cb(null, `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+const institutionImageFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = /jpeg|jpg|png|webp/;
+  const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+  if (allowed.test(ext) || /image\//.test(file.mimetype)) cb(null, true);
+  else cb(new Error("Invalid image type. Allowed: JPEG, PNG, WebP"));
+};
+export const uploadInstitutionImage = multer({
+  storage: institutionImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: institutionImageFilter,
+});
+
 // Document template source files (e.g. Halal certification agreement PDF)
 const documentTemplateSourceDir = path.join(__dirname, "../../uploads/document-template-sources");
 if (!fs.existsSync(documentTemplateSourceDir)) {

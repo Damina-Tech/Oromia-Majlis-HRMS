@@ -71,6 +71,7 @@ export const PERMISSIONS = [
   { name: "majlis.institutions.write", module: "majlis", action: "institutions.write", description: "Create/Edit institutions" },
   { name: "majlis.institutions.approve", module: "majlis", action: "institutions.approve", description: "Approve institutions" },
   { name: "majlis.institutions.delete", module: "majlis", action: "institutions.delete", description: "Delete institutions" },
+  { name: "majlis.institution.owner", module: "majlis", action: "institution.owner", description: "Manage own registered institution and recognition requests" },
   { name: "majlis.assignments.read", module: "majlis", action: "assignments.read", description: "View assignments" },
   { name: "majlis.assignments.write", module: "majlis", action: "assignments.write", description: "Create/Edit assignments" },
   { name: "majlis.assignments.approve", module: "majlis", action: "assignments.approve", description: "Approve assignments" },
@@ -101,6 +102,8 @@ export const ROLE_PERMISSIONS = {
   HALAL_COMPETENCY: ["dashboard.view", "profile.read", "profile.write", "halal.competency"],
   MAJLIS_REPRESENTATIVE: ["dashboard.view", "profile.read", "profile.write", "majlis.membership.view", "majlis.membership.register", "majlis.dashboard.view", "majlis.institutions.read", "majlis.assignments.read"],
   MEMBER: ["dashboard.view", "profile.read", "profile.write", "majlis.member"],
+  /** Public mosque/institution registrant portal */
+  INSTITUTION_OWNER: ["dashboard.view", "profile.read", "profile.write", "majlis.institution.owner"],
   HR_DIVISION_ADMIN: [
     "dashboard.view", "profile.read", "profile.write", "divisions.read",
     "employees.read", "employees.write", "employees.delete", "employees.id.generate", "employees.id.batch",

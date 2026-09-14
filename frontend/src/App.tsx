@@ -8,6 +8,7 @@ import {
   isHalalBusinessPortalOnly,
   isHalalCompetencyPortalOnly,
   isMemberPortalOnly,
+  isInstitutionOwnerPortalOnly,
 } from "./lib/division-access";
 import { ThemeProvider } from "./contexts/ThemeProvider";
 import Layout from "./components/layout/Layout";
@@ -65,9 +66,11 @@ import NotFound from "./pages/common/NotFound";
 import LeadsPage from "./pages/leads/LeadsPage";
 import LeadDetailPage from "./pages/leads/LeadDetailPage";
 import MajlisInstitutionsPage from "./pages/majlis/MajlisInstitutionsPage";
+import InstitutionRegisterPage from "./pages/majlis/InstitutionRegisterPage";
 import MajlisDashboardPage from "./pages/majlis/MajlisDashboardPage";
 import InstitutionDetailPage from "./pages/majlis/InstitutionDetailPage";
 import EditInstitutionPage from "./pages/majlis/EditInstitutionPage";
+import MyInstitutionsPage from "./pages/majlis/MyInstitutionsPage";
 import MajlisAssignmentsPage from "./pages/majlis/MajlisAssignmentsPage";
 import MajlisReportsPage from "./pages/majlis/MajlisReportsPage";
 import HalalDashboardPage from "./pages/halal/HalalDashboardPage";
@@ -154,6 +157,9 @@ function DashboardOrRedirect() {
   if (!user) return <Dashboard />;
   if (isMemberPortalOnly(user)) {
     return <Navigate to="/my-membership" replace />;
+  }
+  if (isInstitutionOwnerPortalOnly(user)) {
+    return <Navigate to="/my-institutions" replace />;
   }
   if (isHalalCompetencyPortalOnly(user)) {
     return <Navigate to="/halal/competency" replace />;
@@ -291,6 +297,10 @@ function AppRoutes() {
         }
       />
 
+      {/* Public: Majlis institution registration (shareable; stays open if already signed in) */}
+      <Route path="/register/institution" element={<InstitutionRegisterPage />} />
+      <Route path="/register/majlis" element={<Navigate to="/register/institution" replace />} />
+
       {/* Protected Routes */}
       <Route
         path="/*"
@@ -317,6 +327,14 @@ function AppRoutes() {
         <Route path="majlis/institutions" element={<MajlisInstitutionsPage />} />
         <Route path="majlis/institutions/:id/edit" element={<EditInstitutionPage />} />
         <Route path="majlis/institutions/:id" element={<InstitutionDetailPage />} />
+        <Route
+          path="my-institutions"
+          element={
+            <PermissionRoute permissions={["majlis.institution.owner", "majlis.institutions.read"]}>
+              <MyInstitutionsPage />
+            </PermissionRoute>
+          }
+        />
         <Route path="majlis/assignments" element={<MajlisAssignmentsPage />} />
         <Route path="majlis/reports" element={<MajlisReportsPage />} />
         <Route path="majlis/membership" element={<MembershipDashboardPage />} />

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { ChevronLeft, ChevronRight, UserPlus, CreditCard, Loader2, Award, Building2, Upload, Banknote, ArrowLeft } from "lucide-react";
+import PublicAuthNavbar from "@/components/layout/PublicAuthNavbar";
 import { membershipApi, type MemberCategory, type MembershipPlan } from "@/services/membership";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -507,7 +508,9 @@ export default function MembershipRegisterPage() {
   if (isSuccessPage) {
     if (!subscriptionIdParam && !draftTokenParam) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex items-center justify-center p-4 sm:p-6">
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex flex-col">
+          {!canConfirmManual && <PublicAuthNavbar />}
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
           <Card className="w-full max-w-md shadow-xl border-indigo-200/60 dark:border-indigo-900/50">
             <CardHeader>
               <CardTitle className="text-indigo-900 dark:text-indigo-100">Completing registration…</CardTitle>
@@ -524,6 +527,7 @@ export default function MembershipRegisterPage() {
               </Button>
             </CardContent>
           </Card>
+          </div>
         </div>
       );
     }
@@ -546,7 +550,9 @@ export default function MembershipRegisterPage() {
 
     if (chapaFailed || completeErrorMessage) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex items-center justify-center p-4 sm:p-6">
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex flex-col">
+          {!canConfirmManual && <PublicAuthNavbar />}
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
           <Card className="w-full max-w-md shadow-xl border-indigo-200/60 dark:border-indigo-900/50">
             <CardHeader>
               <CardTitle className="text-indigo-900 dark:text-indigo-100">
@@ -567,12 +573,15 @@ export default function MembershipRegisterPage() {
               </Button>
             </CardContent>
           </Card>
+          </div>
         </div>
       );
     }
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex items-center justify-center p-4 sm:p-6">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 flex flex-col">
+        {!canConfirmManual && <PublicAuthNavbar />}
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <Card className="w-full max-w-md shadow-xl border-indigo-200/60 dark:border-indigo-900/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-indigo-900 dark:text-indigo-100">
@@ -621,26 +630,16 @@ export default function MembershipRegisterPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-950 dark:via-indigo-950/20 dark:to-slate-900 flex flex-col items-center justify-center p-4 sm:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50/30 to-indigo-100 dark:from-slate-950 dark:via-indigo-950/20 dark:to-slate-900 flex flex-col">
+      {!canConfirmManual && <PublicAuthNavbar />}
+      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-xl space-y-4 sm:space-y-6">
-        {!canConfirmManual && (
-          <div className="flex justify-center sm:justify-end w-full">
-            <p className="text-sm text-indigo-700/80 dark:text-indigo-300/80">
-              Already registered?{" "}
-              <Link
-                to="/login"
-                className="font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline-offset-4 hover:underline"
-              >
-                Sign in
-              </Link>
-            </p>
-          </div>
-        )}
         {canConfirmManual && (
           <div className="flex items-center gap-4 w-full">
             <Button variant="ghost" size="sm" onClick={() => navigate("/majlis/membership")}>
@@ -1090,6 +1089,7 @@ export default function MembershipRegisterPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

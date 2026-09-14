@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   isMemberPortalOnly,
+  isInstitutionOwnerPortalOnly,
   isHalalBusinessPortalOnly,
   isHalalCompetencyPortalOnly,
 } from '@/lib/division-access';
@@ -234,6 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
 
   // Member-only portal users — hide main Dashboard; staff/admin always keep it
   const isMemberOnly = isMemberPortalOnly(user);
+  const isInstitutionOwnerOnly = isInstitutionOwnerPortalOnly(user);
 
   const filteredMenuItems = menuItems.filter((item) => {
     // Hide main Dashboard only for Halal-only or Member-only users (permission-based: show when user has dashboard.view)
@@ -241,6 +243,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       if (isHalalBusinessOnly) return false;
       if (isHalalCompetencyOnly) return false;
       if (isMemberOnly) return false;
+      if (isInstitutionOwnerOnly) return false;
       return hasPermission('dashboard.view');
     }
     // Always show items with '*' permission (for authenticated users)
@@ -254,6 +257,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         hasPermission('majlis.membership.register') ||
         hasPermission('majlis.membership.admin') ||
         hasPermission('majlis.member')
+      );
+    }
+    // Majlis institutions: staff read or institution owner portal
+    if (item.id === 'majlisInstitutions') {
+      return (
+        hasPermission('majlis.institutions.read') ||
+        hasPermission('majlis.dashboard.view') ||
+        hasPermission('majlis.institution.owner')
       );
     }
     // Halal Certification: show for any halal permission
@@ -456,6 +467,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
     if (hasPermission('reports.view')) {
       majlisSubmenuItems.push({ titleKey: 'majlisReports', href: '/majlis/reports', permission: 'reports.view' });
     }
+  }
+  if (hasPermission('majlis.institution.owner')) {
+    majlisSubmenuItems.push({ titleKey: 'myInstitutions', href: '/my-institutions', permission: 'majlis.institution.owner' });
   }
 
   // Membership submenu items
@@ -899,7 +913,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
             const isPayrollPage = location.pathname.startsWith('/payroll') || location.pathname.startsWith('/my-salary');
             
             const isMajlis = item.id === 'majlisInstitutions';
-            const isMajlisPage = location.pathname.startsWith('/majlis');
+            const isMajlisPage = location.pathname.startsWith('/majlis') || location.pathname.startsWith('/my-institutions');
             
             if (isMajlis && majlisSubmenuItems.length > 0 && !isCollapsed) {
               return (

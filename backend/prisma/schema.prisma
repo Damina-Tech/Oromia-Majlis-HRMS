@@ -68,6 +68,7 @@ model User {
   employeeIdCardsGenerated        EmployeeIdCard[]
   institutionsCreated              Institution[]           @relation("InstitutionCreatedBy")
   institutionsApproved             Institution[]           @relation("InstitutionApprovedBy")
+  institutionsOwned                Institution[]           @relation("InstitutionOwnedBy")
   assignmentsApproved              InstitutionAssignment[] @relation("AssignmentApprovedBy")
   institutionAuditLogs             InstitutionAuditLog[]   @relation("InstitutionAuditActor")
   institutionRecognitionsCreated   InstitutionRecognition[] @relation("InstitutionRecognitionCreatedBy")
@@ -2271,6 +2272,8 @@ model Institution {
   // Basic info
   yearEstablished   Int?
   ownershipStatus   OwnershipStatus?
+  /** Institution / mosque photo (public registration or staff upload) */
+  imageUrl          String?
   
   // Approval workflow
   createdById       String
@@ -2278,6 +2281,10 @@ model Institution {
   approvedById      String?
   approvedBy        User?             @relation("InstitutionApprovedBy", fields: [approvedById], references: [id])
   approvedAt        DateTime?
+
+  /** Portal account that registered / owns this institution */
+  ownerUserId       String?
+  ownerUser         User?             @relation("InstitutionOwnedBy", fields: [ownerUserId], references: [id])
   
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -2286,6 +2293,9 @@ model Institution {
   mosqueData        Json?             // Capacity, Jummah, Women space, Utilities
   madrasahData      Json?             // Curriculum, Grade levels, Accreditation, Students, Teachers, etc.
   markazData        Json?             // Disciplines, Study levels, Da'wah, Students, Scholars, etc.
+
+  /** Public registration contact: { source, name, phone, email, role, submittedAt } */
+  submitter         Json?
   
   // Relations
   assignments       InstitutionAssignment[]
@@ -2296,6 +2306,7 @@ model Institution {
   @@index([regionId, zoneId, woredaId])
   @@index([status])
   @@index([createdById])
+  @@index([ownerUserId])
 }
 
 model InstitutionRecognition {

@@ -81,6 +81,23 @@ export const CreateInstitutionDto = z.object({
   markazData: MarkazDataSchema.optional(),
 });
 
+export const PublicInstitutionSubmitterDto = z.object({
+  name: z.string().trim().min(2, "Contact name is required").max(120),
+  phone: z.string().trim().min(8, "Phone number is required").max(40),
+  email: z.string().trim().email("A valid email is required for your login account"),
+  role: z.string().trim().min(2, "Your role at the institution is required").max(80),
+});
+
+export const PublicRegisterInstitutionDto = CreateInstitutionDto.extend({
+  regionId: z.string().min(1, "Zone and district are required"),
+  zoneId: z.string().min(1, "Zone is required"),
+  woredaId: z.string().min(1, "District is required"),
+  address: z.string().trim().min(1, "Institution area (Kare) is required").max(500),
+  status: z.nativeEnum(InstitutionStatus).optional(),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  submitter: PublicInstitutionSubmitterDto,
+});
+
 export const UpdateInstitutionDto = CreateInstitutionDto.partial().extend({
   status: z.nativeEnum(InstitutionStatus).optional(),
 });
@@ -138,6 +155,7 @@ export type CreateZoneInput = z.infer<typeof CreateZoneDto>;
 export type CreateWoredaInput = z.infer<typeof CreateWoredaDto>;
 export type CreateKebeleInput = z.infer<typeof CreateKebeleDto>;
 export type CreateInstitutionInput = z.infer<typeof CreateInstitutionDto>;
+export type PublicRegisterInstitutionInput = z.infer<typeof PublicRegisterInstitutionDto>;
 export type UpdateInstitutionInput = z.infer<typeof UpdateInstitutionDto>;
 export type ApproveInstitutionInput = z.infer<typeof ApproveInstitutionDto>;
 export type CreateAssignmentInput = z.infer<typeof CreateAssignmentDto>;

@@ -109,6 +109,18 @@ export interface CreateInstitutionRecognitionBody {
 export type PreviewInstitutionRecognitionBody = Omit<CreateInstitutionRecognitionBody, "questionnaire">;
 
 export const institutionRecognitionApi = {
+  getActiveMosqueTemplate: async (): Promise<{
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+    certificateType?: string | null;
+    sourceFileUrl?: string | null;
+    updatedAt?: string;
+  }> => {
+    const response = await api.get(`${base}/mosque-template/active`);
+    return response.data;
+  },
   list: async (institutionId: string): Promise<{ items: InstitutionRecognition[] }> => {
     const response = await api.get(`${base}/institutions/${institutionId}/recognitions`);
     return response.data;

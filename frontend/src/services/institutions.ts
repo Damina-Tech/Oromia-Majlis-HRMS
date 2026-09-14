@@ -80,6 +80,48 @@ export interface MarkazData {
   hasLibrary?: boolean;
 }
 
+export interface InstitutionSubmitter {
+  source?: "PUBLIC" | "ADMIN";
+  name?: string;
+  phone?: string;
+  email?: string | null;
+  role?: string;
+  submittedAt?: string;
+}
+
+export type InstitutionCreatePayload = {
+  name: string;
+  type: InstitutionType;
+  status?: InstitutionStatus;
+  regionId?: string;
+  zoneId?: string;
+  woredaId?: string;
+  kebeleId?: string;
+  kebeleName?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  yearEstablished?: number;
+  ownershipStatus?: OwnershipStatus;
+  mosqueData?: MosqueData;
+  madrasahData?: MadrasahData;
+  markazData?: MarkazData;
+  submitter?: {
+    name: string;
+    phone: string;
+    email?: string;
+    role: string;
+  };
+  password?: string;
+  imageFile?: File;
+};
+
+export type InstitutionPublicRegisterResponse = {
+  institution: Institution;
+  user: { id: string; email: string; firstName: string; lastName: string };
+  message?: string;
+};
+
 export interface Institution {
   id: string;
   institutionCode: string;
@@ -100,6 +142,7 @@ export interface Institution {
   address?: string;
   yearEstablished?: number;
   ownershipStatus?: OwnershipStatus;
+  imageUrl?: string | null;
   mosqueData?: MosqueData;
   madrasahData?: MadrasahData;
   markazData?: MarkazData;
@@ -109,6 +152,14 @@ export interface Institution {
     firstName: string;
     lastName: string;
   };
+  ownerUserId?: string | null;
+  ownerUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+  } | null;
+  submitter?: InstitutionSubmitter | null;
   approvedById?: string;
   approvedBy?: {
     id: string;
@@ -221,25 +272,41 @@ export const institutionsApi = {
     const response = await api.get(`/institutions/${id}`);
     return response.data;
   },
-  create: async (data: {
-    name: string;
-    type: InstitutionType;
-    status?: InstitutionStatus;
-    regionId?: string;
-    zoneId?: string;
-    woredaId?: string;
-    kebeleId?: string;
-    kebeleName?: string;
-    latitude?: number;
-    longitude?: number;
-    address?: string;
-    yearEstablished?: number;
-    ownershipStatus?: OwnershipStatus;
-    mosqueData?: MosqueData;
-    madrasahData?: MadrasahData;
-    markazData?: MarkazData;
-  }): Promise<Institution> => {
+  listMine: async (): Promise<{ items: Institution[]; total: number }> => {
+    const response = await api.get("/institutions/mine");
+    return response.data;
+  },
+  create: async (data: InstitutionCreatePayload): Promise<Institution> => {
     const response = await api.post("/institutions", data);
+    return response.data;
+  },
+  registerPublic: async (data: InstitutionCreatePayload): Promise<InstitutionPublicRegisterResponse> => {
+    if (!data.password || !data.imageFile || !data.submitter) {
+      throw new Error("Password, image, and contact details are required");
+    }
+    const fd = new FormData();
+    fd.append("name", data.name);
+    fd.append("type", data.type);
+    if (data.status) fd.append("status", data.status);
+    if (data.regionId) fd.append("regionId", data.regionId);
+    if (data.zoneId) fd.append("zoneId", data.zoneId);
+    if (data.woredaId) fd.append("woredaId", data.woredaId);
+    if (data.kebeleId) fd.append("kebeleId", data.kebeleId);
+    if (data.kebeleName) fd.append("kebeleName", data.kebeleName);
+    if (data.latitude != null) fd.append("latitude", String(data.latitude));
+    if (data.longitude != null) fd.append("longitude", String(data.longitude));
+    if (data.address) fd.append("address", data.address);
+    if (data.yearEstablished != null) fd.append("yearEstablished", String(data.yearEstablished));
+    if (data.ownershipStatus) fd.append("ownershipStatus", data.ownershipStatus);
+    if (data.mosqueData) fd.append("mosqueData", JSON.stringify(data.mosqueData));
+    if (data.madrasahData) fd.append("madrasahData", JSON.stringify(data.madrasahData));
+    if (data.markazData) fd.append("markazData", JSON.stringify(data.markazData));
+    fd.append("submitter", JSON.stringify(data.submitter));
+    fd.append("password", data.password);
+    fd.append("image", data.imageFile);
+    const response = await api.post("/institutions/public/register", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return response.data;
   },
   update: async (id: string, data: Partial<Institution>): Promise<Institution> => {

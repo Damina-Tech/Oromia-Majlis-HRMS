@@ -18,10 +18,14 @@ export type ResolvedOromiaLocationIds = {
 export async function resolveOromiaLocationIds(
   zone: string,
   district: string,
-  scope: "membership" | "institutions" = "membership"
+  scope: "membership" | "institutions" | "public" = "membership"
 ): Promise<ResolvedOromiaLocationIds> {
   const path =
-    scope === "membership" ? "/membership/geography/resolve" : "/institutions/geography/resolve";
+    scope === "public"
+      ? "/institutions/public/geography/resolve"
+      : scope === "membership"
+        ? "/membership/geography/resolve"
+        : "/institutions/geography/resolve";
   const response = await api.post<ResolvedOromiaLocationIds>(path, {
     zoneName: zone.trim(),
     districtName: district.trim(),
